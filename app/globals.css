@@ -1,0 +1,301 @@
+@import "tailwindcss";
+
+/* ── Dark mode via class ── */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Modo claro del panel admin (scope .panel-light) ── */
+@custom-variant light (&:where(.panel-light, .panel-light *));
+
+/* ── Custom theme tokens ── */
+@theme {
+  /* ARIDO brand colors */
+  --color-arido-chocolate: #493c36;
+  --color-arido-arena: #dfd4c0;
+  --color-arido-beige: #c0ae98;
+  --color-arido-red: #c42f42;
+  --color-arido-orange: #ea501e;
+  --color-arido-dark: #1a1008;
+  --color-arido-dark-surface: #2a1e14;
+  /* Rediseño "Horizonte" (v2): tinta con contraste real sobre arena, noche más honda */
+  --color-arido-tinta: #241a12;
+  --color-arido-noche: #140c06;
+
+  /* LGB brand colors */
+  --color-lgb-black: #0a0a0a;
+  --color-lgb-dark: #111111;
+  --color-lgb-surface: #1a1a1a;
+  --color-lgb-red: #c42f42;
+  --color-lgb-gold: #d4af37;
+  --color-lgb-white: #f0f0f0;
+
+  /* Fonts */
+  --font-coolvetica: "Coolvetica", sans-serif;
+  --font-asphaltic: "Asphaltic Grain", serif;
+
+  /* Animations */
+  --animate-fade-in: fadeIn 0.6s ease-out forwards;
+  --animate-slide-up: slideUp 0.7s ease-out forwards;
+  --animate-slide-in-left: slideInLeft 0.7s ease-out forwards;
+  --animate-pulse-glow: pulseGlow 2s ease-in-out infinite;
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slideInLeft {
+    from { opacity: 0; transform: translateX(-30px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 10px rgba(196,47,66,0.3); }
+    50% { box-shadow: 0 0 30px rgba(196,47,66,0.8); }
+  }
+}
+
+/* ── Font faces ── */
+@font-face {
+  font-family: "Coolvetica";
+  src: url("/fonts/Coolvetica-Rg.otf") format("opentype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Coolvetica";
+  src: url("/fonts/Coolvetica-Cond.otf") format("opentype");
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Coolvetica";
+  src: url("/fonts/Coolvetica-HvComp.otf") format("opentype");
+  font-weight: 700;
+  font-display: swap;
+}
+/* La demo de Asphaltic Grain no trae números: cubre todo EXCEPTO dígitos */
+@font-face {
+  font-family: "Asphaltic Grain";
+  src: url("/fonts/Asphaltic-Grain-Condensed.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0000-002F, U+003A-10FFFF;
+}
+/* Los dígitos salen de Anton (OFL, fuente libre similar) */
+@font-face {
+  font-family: "Asphaltic Grain";
+  src: url("/fonts/anton-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0030-0039;
+}
+
+/* ── CSS Variables for dynamic theming ── */
+:root {
+  --bg: #dfd4c0;
+  --bg-2: #c0ae98;
+  --surface: #ede5d5;
+  --fg: #493c36;
+  --fg-2: #6b5548;
+  --accent: #c42f42;
+  --accent-2: #ea501e;
+  --border: rgba(73,60,54,0.15);
+  --nav-bg: rgba(223,212,192,0.92);
+}
+.dark {
+  --bg: #1a1008;
+  --bg-2: #2a1e14;
+  --surface: #231811;
+  --fg: #dfd4c0;
+  --fg-2: #c0ae98;
+  --accent: #c42f42;
+  --accent-2: #ea501e;
+  --border: rgba(223,212,192,0.1);
+  --nav-bg: rgba(26,16,8,0.92);
+}
+
+/* ── Base ── */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: "Coolvetica", sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+::selection { background: var(--accent); color: #fff; }
+
+/* ── Utility: hide scrollbar (horizontal pill rows) ── */
+.hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ── Admin: inputs ── */
+.input {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #fff;
+  border-radius: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input:focus { border-color: rgba(196,47,66,0.5); }
+.input::placeholder { color: rgba(255,255,255,0.3); }
+
+/* ───────────────────────────────────────────────
+   MODO CLARO del panel admin (papel cálido)
+   Scope: .panel-light en el wrapper del panel.
+   Truco: en Tailwind v4 las utilidades compilan a var(--color-*).
+   Redefinir esas variables aquí voltea de golpe los ~446 text-white,
+   139 bg-white/* y 107 border-white/* SIN tocar cada clase:
+   'white' pasa a tinta cálida oscura; los fondos lgb a tonos claros.
+   ─────────────────────────────────────────────── */
+.panel-light {
+  /* Fondos base (antes oscuros) */
+  --color-lgb-black: #f0ece3;    /* fondo de página */
+  --color-lgb-dark:  #e7e0d3;    /* nav / paneles secundarios */
+  --color-lgb-surface: #faf8f3;  /* tarjetas destacadas */
+
+  /* Familia 'white' -> tinta cálida (texto, tintes de fondo, bordes) */
+  --color-white: #241c14;
+  --color-lgb-white: #241c14;
+
+  /* Tonos semánticos claros -> versión legible sobre fondo claro.
+     Al redefinir la variable, también cubre las variantes con opacidad
+     (p. ej. text-green-300/70 usa var(--color-green-300)). */
+  --color-red-200: #dc2626;
+  --color-red-300: #dc2626;
+  --color-red-400: #dc2626;
+  --color-green-300: #16a34a;
+  --color-green-400: #16a34a;
+  --color-amber-300: #b45309;
+  --color-blue-300: #2563eb;
+  --color-purple-300: #9333ea;
+}
+
+/* El texto blanco SÍ se mantiene sobre botones/badges de color */
+.panel-light :is(
+  .bg-lgb-red, .bg-lgb-gold,
+  .bg-red-500, .bg-red-600, .bg-red-700,
+  .bg-amber-500, .bg-amber-600,
+  .bg-green-500, .bg-green-600,
+  .bg-emerald-500, .bg-emerald-600,
+  .bg-blue-600
+).text-white { color: #fff; }
+
+/* Inputs en claro */
+.panel-light .input {
+  color: var(--color-white);
+  background: rgba(36,28,20,0.04);
+  border-color: rgba(36,28,20,0.15);
+}
+.panel-light .input:focus { border-color: rgba(196,47,66,0.5); }
+.panel-light .input::placeholder { color: rgba(36,28,20,0.4); }
+
+/* Menús desplegables nativos legibles en claro */
+.panel-light select option { color: #241c14; background: #faf8f3; }
+
+/* ── Marquee (artists strip) ── */
+@keyframes marqueeScroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee {
+  width: max-content;
+  animation: marqueeScroll 30s linear infinite;
+}
+.marquee:hover { animation-play-state: paused; }
+
+/* ── Scroll reveal ── */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .marquee { animation: none; }
+}
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 3px; }
+
+
+/* ─────────────────────────────────────────────────────────────
+   REDISEÑO "ORO Y NOCHE" (v2) — dark luxury, código del corrido.
+   Reglas duras para NO caer en el sitio de música oscuro genérico:
+   · CERO glow, neón, gradientes y glassmorphism
+   · Oro SOLO en filete y una marca — nunca texto entero en oro
+   · 100% serif + monoespaciada, CERO sans geométrica
+   · Textura de grano en vez de degradados (árido = textura)
+   ───────────────────────────────────────────────────────────── */
+
+.v2-display { font-family: var(--font-playfair), Georgia, "Times New Roman", serif; }
+.v2-mono    { font-family: var(--font-mono-v2), ui-monospace, "SF Mono", monospace; }
+
+/* Grano: da materia sin usar un solo degradado. */
+.v2-grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.16;
+  /* Los paréntesis del filter van codificados (%28 %29): un url() anidado
+     dentro del data-URI rompe el parser de CSS y tumba el resto del archivo. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url%28%23n%29' opacity='0.5'/%3E%3C/svg%3E");
+}
+
+/* Filete de oro: el único adorno permitido. */
+.v2-rule { height: 1px; background: #d4af37; opacity: 0.55; }
+
+/* Renglón del índice de obra: se comporta como lista tipografiada,
+   no como tarjeta. El oro entra solo al pasar el cursor. */
+.v2-row { border-top: 1px solid rgba(240, 240, 240, 0.12); transition: color 220ms ease, background-color 220ms ease; }
+.v2-row:last-child { border-bottom: 1px solid rgba(240, 240, 240, 0.12); }
+@media (hover: hover) {
+  .v2-row:hover { background: rgba(212, 175, 55, 0.05); }
+  .v2-row:hover .v2-idx { color: #d4af37; }
+}
+
+@keyframes v2-up   { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes v2-wipe { from { transform: scaleX(0); } to { transform: none; } }
+.v2-up   { animation: v2-up 760ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.v2-wipe { transform-origin: left; animation: v2-wipe 900ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .v2-up, .v2-wipe { animation: none; }
+  .v2-row { transition: none; }
+}
+
+/* ── Resplandor: "esto es lo que te avisamos" ─────────────────────────────────
+   Se le pone al proyecto, tarea o contacto al que llegas desde una campanita o
+   una notificación push. Dura ~4 s y se apaga solo: es para encontrar la cosa
+   entre 30 tarjetas, no para dejarla marcada.
+   Se anima box-shadow y NO el borde: cambiar `border` recalcula el layout de la
+   tarjeta en cada cuadro y se ve tembloroso. */
+@keyframes arido-resplandor {
+  0%   { box-shadow: 0 0 0 0 rgba(196, 47, 66, 0);   background-color: rgba(196, 47, 66, 0); }
+  12%  { box-shadow: 0 0 0 3px rgba(196, 47, 66, 0.75), 0 0 26px 4px rgba(196, 47, 66, 0.4);
+         background-color: rgba(196, 47, 66, 0.09); }
+  70%  { box-shadow: 0 0 0 3px rgba(196, 47, 66, 0.45), 0 0 20px 3px rgba(196, 47, 66, 0.22);
+         background-color: rgba(196, 47, 66, 0.06); }
+  100% { box-shadow: 0 0 0 0 rgba(196, 47, 66, 0);   background-color: rgba(196, 47, 66, 0); }
+}
+.arido-destacado {
+  animation: arido-resplandor 4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  border-radius: 0.75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Sin pulso, pero que SÍ se distinga: si no, quien pide menos movimiento
+     llega a la lista sin saber cuál era. */
+  .arido-destacado { animation: none; box-shadow: 0 0 0 2px rgba(196, 47, 66, 0.7); }
+}

@@ -1,0 +1,153 @@
+[
+  {
+    "id": "basic",
+    "badge": "MP3",
+    "color": "#9ca3af",
+    "price": 25,
+    "popular": false,
+    "exclusive": false,
+    "files": ["MP3"],
+    "name": { "es": "Basic License", "en": "Basic License" },
+    "description": {
+      "es": "Ideal para empezar: demos, sencillos y crecimiento en plataformas.",
+      "en": "Perfect to get started: demos, singles and platform growth."
+    },
+    "features": {
+      "es": [
+        "Archivo MP3 de alta calidad",
+        "Uso para grabación de música",
+        "Distribuye hasta 2,000 copias",
+        "200,000 streams de audio en línea",
+        "1 video musical",
+        "Actuaciones en vivo con fines de lucro",
+        "Radio: 1 estación"
+      ],
+      "en": [
+        "High quality MP3 file",
+        "Use for music recording",
+        "Distribute up to 2,000 copies",
+        "200,000 online audio streams",
+        "1 music video",
+        "For-profit live performances",
+        "Radio broadcasting: 1 station"
+      ]
+    },
+    "notIncluded": {
+      "es": ["Archivos WAV y stems", "Streams ilimitados", "Exclusividad del beat"],
+      "en": ["WAV & stem files", "Unlimited streams", "Beat exclusivity"]
+    }
+  },
+  {
+    "id": "premium",
+    "badge": "WAV + MP3",
+    "color": "#c42f42",
+    "price": 50,
+    "popular": true,
+    "exclusive": false,
+    "files": ["WAV", "MP3"],
+    "name": { "es": "Premium License", "en": "Premium License" },
+    "description": {
+      "es": "Calidad de estudio en WAV para lanzamientos serios en plataformas.",
+      "en": "Studio quality WAV for serious releases on streaming platforms."
+    },
+    "features": {
+      "es": [
+        "Archivos WAV + MP3",
+        "Uso para grabación de música",
+        "Distribuye hasta 3,000 copias",
+        "300,000 streams de audio en línea",
+        "1 video musical",
+        "Actuaciones en vivo con fines de lucro",
+        "Radio: 1 estación"
+      ],
+      "en": [
+        "WAV + MP3 files",
+        "Use for music recording",
+        "Distribute up to 3,000 copies",
+        "300,000 online audio streams",
+        "1 music video",
+        "For-profit live performances",
+        "Radio broadcasting: 1 station"
+      ]
+    },
+    "notIncluded": {
+      "es": ["Stems (pistas separadas)", "Streams ilimitados", "Exclusividad del beat"],
+      "en": ["Stems (track-outs)", "Unlimited streams", "Beat exclusivity"]
+    }
+  },
+  {
+    "id": "premium-plus",
+    "badge": "WAV + STEMS + MP3",
+    "color": "#ea501e",
+    "price": 100,
+    "popular": false,
+    "exclusive": false,
+    "files": ["WAV", "STEMS", "MP3"],
+    "name": { "es": "Premium Plus License", "en": "Premium Plus License" },
+    "description": {
+      "es": "Control total con stems para mezclar tu tema a tu manera.",
+      "en": "Full control with stems to mix your record your way."
+    },
+    "features": {
+      "es": [
+        "Archivos WAV + STEMS + MP3",
+        "Uso para grabación de música",
+        "Distribuye hasta 10,000 copias",
+        "500,000 streams de audio en línea",
+        "1 video musical",
+        "Actuaciones en vivo con fines de lucro",
+        "Radio: 3 estaciones"
+      ],
+      "en": [
+        "WAV + STEMS + MP3 files",
+        "Use for music recording",
+        "Distribute up to 10,000 copies",
+        "500,000 online audio streams",
+        "1 music video",
+        "For-profit live performances",
+        "Radio broadcasting: 3 stations"
+      ]
+    },
+    "notIncluded": {
+      "es": ["Uso ilimitado", "Exclusividad del beat"],
+      "en": ["Unlimited usage", "Beat exclusivity"]
+    }
+  },
+  {
+    "id": "exclusive",
+    "badge": "EXCLUSIVA",
+    "color": "#d4af37",
+    "price": null,
+    "popular": false,
+    "exclusive": true,
+    "files": ["WAV", "STEMS", "MP3"],
+    "name": { "es": "Exclusive License", "en": "Exclusive License" },
+    "description": {
+      "es": "El beat es tuyo: se retira de la venta y todo es ilimitado.",
+      "en": "The beat is yours: removed from sale, everything unlimited."
+    },
+    "features": {
+      "es": [
+        "Archivos WAV + STEMS + MP3",
+        "Uso para grabación de música",
+        "Copias ilimitadas",
+        "Streams ilimitados",
+        "Videos musicales ilimitados",
+        "Actuaciones en vivo con fines de lucro",
+        "Radio: estaciones ilimitadas",
+        "El beat se retira de la venta pública"
+      ],
+      "en": [
+        "WAV + STEMS + MP3 files",
+        "Use for music recording",
+        "Unlimited copies",
+        "Unlimited online audio streams",
+        "Unlimited music videos",
+        "For-profit live performances",
+        "Radio broadcasting: unlimited stations",
+        "Beat is removed from public sale"
+      ]
+    },
+    "notIncluded": { "es": [], "en": [] }
+  }
+]
