@@ -58,6 +58,9 @@ const CONTRATO_ESTADO: Record<string, { label: string; cls: string }> = {
   cancelado: { label: "Cancelado", cls: "bg-red-500/15 text-red-300" },
 };
 
+const chip = (active: boolean) =>
+  `px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors cursor-pointer ${active ? "bg-lgb-red text-white" : "bg-white/5 text-white/50 hover:text-white"}`;
+
 const fmt = (n: number, cur = "MXN") => `$${(Number(n) || 0).toLocaleString("es-MX")} ${cur}`;
 const subtotalDe = (items: QuoteItem[]) => items.reduce((a, i) => a + (Number(i.qty) || 0) * (Number(i.unitPrice) || 0), 0);
 
@@ -371,6 +374,24 @@ function CotizacionesList({ items, rastro, isAdmin, onEdit, onConvert, onConvert
   const [enviando, setEnviando] = useState<string | null>(null);
   /** Cotización con el panel de cobro por Stripe abierto (null = ninguno). */
   const [cobrando, setCobrando] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [estadoF, setEstadoF] = useState("todos");
+
+  const filtered = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return items.filter((c) => {
+      if (estadoF !== "todos" && c.estado !== estadoF) return false;
+      if (!term) return true;
+      return (
+        (c.folio ?? "").toLowerCase().includes(term) ||
+        (c.cliente_nombre ?? "").toLowerCase().includes(term) ||
+        (c.cliente_email ?? "").toLowerCase().includes(term) ||
+        (c.cliente_telefono ?? "").toLowerCase().includes(term) ||
+        (c.notas ?? "").toLowerCase().includes(term) ||
+        c.items.some((i) => i.label.toLowerCase().includes(term))
+      );
+    });
+  }, [items, q, estadoF]);
 
   const enviar = async (c: Cotizacion, extra: string[]) => {
     setBusy(c.id);
@@ -398,7 +419,23 @@ function CotizacionesList({ items, rastro, isAdmin, onEdit, onConvert, onConvert
 
   return (
     <div className="flex flex-col gap-2">
-      {items.map((c) => {
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar por folio, cliente, correo, concepto…"
+          className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-lgb-red flex-1 min-w-[220px]"
+        />
+        <button onClick={() => setEstadoF("todos")} className={chip(estadoF === "todos")}>Todas</button>
+        {Object.entries(COT_ESTADO).map(([k, v]) => (
+          <button key={k} onClick={() => setEstadoF(k)} className={chip(estadoF === k)}>{v.label}</button>
+        ))}
+      </div>
+      {(q.trim() || estadoF !== "todos") && (
+        <p className="text-white/30 text-xs px-1">Mostrando {filtered.length} de {items.length}</p>
+      )}
+      {filtered.length === 0 && <Empty label="Sin cotizaciones con ese filtro." />}
+      {filtered.map((c) => {
         const est = COT_ESTADO[c.estado] ?? COT_ESTADO.borrador;
         const r = rastro[c.id] ?? { venta: null, proyecto: null, contrato: null, acuerdo: null };
         return (
@@ -453,6 +490,25 @@ function ContratosList({ items, tipos, isAdmin, onEdit }: {
   /** Contrato con el panel de envío abierto (null = ninguno). */
   const [enviando, setEnviando] = useState<string | null>(null);
   const tipoLabel = (id: string) => tipos.find((t) => t.id === id)?.label ?? id;
+  const [q, setQ] = useState("");
+  const [estadoF, setEstadoF] = useState("todos");
+
+  const filtered = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return items.filter((c) => {
+      if (estadoF !== "todos" && c.estado !== estadoF) return false;
+      if (!term) return true;
+      return (
+        (c.folio ?? "").toLowerCase().includes(term) ||
+        (c.cliente_nombre ?? "").toLowerCase().includes(term) ||
+        (c.cliente_email ?? "").toLowerCase().includes(term) ||
+        (c.cliente_telefono ?? "").toLowerCase().includes(term) ||
+        (c.concepto ?? "").toLowerCase().includes(term) ||
+        (c.notas ?? "").toLowerCase().includes(term) ||
+        c.items.some((i) => i.label.toLowerCase().includes(term))
+      );
+    });
+  }, [items, q, estadoF]);
 
   const enviar = async (c: Contrato, extra: string[]) => {
     setBusy(c.id);
@@ -480,7 +536,23 @@ function ContratosList({ items, tipos, isAdmin, onEdit }: {
 
   return (
     <div className="flex flex-col gap-2">
-      {items.map((c) => {
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar por folio, cliente, correo, concepto…"
+          className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-lgb-red flex-1 min-w-[220px]"
+        />
+        <button onClick={() => setEstadoF("todos")} className={chip(estadoF === "todos")}>Todos</button>
+        {Object.entries(CONTRATO_ESTADO).map(([k, v]) => (
+          <button key={k} onClick={() => setEstadoF(k)} className={chip(estadoF === k)}>{v.label}</button>
+        ))}
+      </div>
+      {(q.trim() || estadoF !== "todos") && (
+        <p className="text-white/30 text-xs px-1">Mostrando {filtered.length} de {items.length}</p>
+      )}
+      {filtered.length === 0 && <Empty label="Sin contratos con ese filtro." />}
+      {filtered.map((c) => {
         const est = CONTRATO_ESTADO[c.estado] ?? CONTRATO_ESTADO.borrador;
         return (
           <div key={c.id} className="bg-lgb-surface border border-white/5 rounded-2xl p-3 sm:p-4">
