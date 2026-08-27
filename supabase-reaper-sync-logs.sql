@@ -1,6 +1,6 @@
 -- Consola de logs de reaper-sync (el script local que crea carpetas/proyectos
 -- de REAPER). No es información operativa del equipo — es una herramienta de
--- desarrollo, visible SOLO para altiplanoprod@gmail.com.
+-- desarrollo, visible SOLO para djrochaoerre@gmail.com.
 
 create table if not exists public.reaper_sync_logs (
   id         uuid primary key default gen_random_uuid(),
