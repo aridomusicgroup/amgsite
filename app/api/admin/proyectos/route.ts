@@ -191,7 +191,7 @@ export async function POST(req: NextRequest) {
   if (proy?.id && b.canciones) {
     const canciones = String(b.canciones).split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
     if (canciones.length) {
-      const rows = canciones.map((titulo, i) => ({ proyecto_id: proy.id, titulo, responsable_id: leadResp, orden: i }));
+      const rows = canciones.map((titulo, i) => ({ proyecto_id: proy.id, titulo, responsable_id: leadResp, orden: i, es_cancion: true }));
       await sb.from("proyecto_tareas").insert(rows);
     }
   }

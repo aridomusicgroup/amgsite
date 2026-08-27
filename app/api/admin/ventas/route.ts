@@ -216,7 +216,7 @@ export async function POST(req: NextRequest) {
       const libres = String(b.tareas_libres || "").split(/[\n;]+/).map((s) => s.trim()).filter(Boolean);
       if (proy?.id) {
         if (canciones.length) {
-          const rows = canciones.map((titulo, i) => ({ proyecto_id: proy.id, titulo, responsable_id: responsableId, orden: i }));
+          const rows = canciones.map((titulo, i) => ({ proyecto_id: proy.id, titulo, responsable_id: responsableId, orden: i, es_cancion: true }));
           await sb.from("proyecto_tareas").insert(rows);
         } else if (libres.length) {
           const rows = libres.map((titulo, i) => ({ proyecto_id: proy.id, titulo, responsable_id: responsableId, orden: i }));
