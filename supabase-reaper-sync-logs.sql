@@ -18,7 +18,7 @@ alter table public.reaper_sync_logs enable row level security;  -- sin policy: n
 -- los cambios en el navegador).
 drop policy if exists dev_rt_read on public.reaper_sync_logs;
 create policy dev_rt_read on public.reaper_sync_logs for select to authenticated
-  using ((auth.jwt() ->> 'email') = 'altiplanoprod@gmail.com');
+  using ((auth.jwt() ->> 'email') = 'djrochaoerre@gmail.com');
 
 do $$
 begin

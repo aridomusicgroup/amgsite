@@ -112,7 +112,7 @@ export async function getProduccionEmail(): Promise<string | null> {
 }
 
 /** Único correo con acceso a herramientas de desarrollo (consola de logs de reaper-sync). */
-const DEV_EMAIL = "altiplanoprod@gmail.com";
+const DEV_EMAIL = "djrochaoerre@gmail.com";
 
 /** Correo SOLO si es el desarrollador. No es un rol de negocio — nadie más del equipo lo tiene. */
 export async function getDevEmail(): Promise<string | null> {
