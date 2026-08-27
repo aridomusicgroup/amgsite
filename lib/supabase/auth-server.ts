@@ -111,6 +111,15 @@ export async function getProduccionEmail(): Promise<string | null> {
   return s && (s.role === "admin" || s.role === "crm" || s.role === "produccion") ? s.email : null;
 }
 
+/** Único correo con acceso a herramientas de desarrollo (consola de logs de reaper-sync). */
+const DEV_EMAIL = "altiplanoprod@gmail.com";
+
+/** Correo SOLO si es el desarrollador. No es un rol de negocio — nadie más del equipo lo tiene. */
+export async function getDevEmail(): Promise<string | null> {
+  const s = await getSession();
+  return s && s.email === DEV_EMAIL ? s.email : null;
+}
+
 /**
  * Para páginas de "oficina" (Marketing, Pedidos, Beats, Clientes, Importar):
  * exige sesión admin|crm. El rol 'produccion' se manda a su panel; sin sesión, al login.

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, Wallet, Users, Music2, Receipt, DownloadCloud, Megaphone, ClipboardList, BarChart3, TrendingUp, Settings, LogOut, Bot, ExternalLink, FileText, History, GraduationCap } from "lucide-react";
+import { LayoutDashboard, Package, Wallet, Users, Music2, Receipt, DownloadCloud, Megaphone, ClipboardList, BarChart3, TrendingUp, Settings, LogOut, Bot, ExternalLink, FileText, History, GraduationCap, Terminal } from "lucide-react";
 import { createAuthClient } from "@/lib/supabase/auth-client";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { VersionWatcher } from "./VersionWatcher";
@@ -41,7 +41,7 @@ const allLinks = [
 
 const VISTO_KEY = "arido-actividad-visto";
 
-export function AdminNav({ email, modules, order }: { email: string; modules: string[]; order?: string[] | null }) {
+export function AdminNav({ email, modules, order, isDev }: { email: string; modules: string[]; order?: string[] | null; isDev?: boolean }) {
   const pathname = usePathname();
 
   // Tiempo real en TODO el panel: una sola suscripción (la nav está en todas
@@ -80,6 +80,9 @@ export function AdminNav({ email, modules, order }: { email: string; modules: st
   const hayNovedades = novedades > 0;
 
   let links = allLinks.filter((l) => modules.includes(l.href));
+  // Fuera del sistema de módulos a propósito: no es un módulo de negocio que un
+  // admin pueda prenderle a alguien más, es una herramienta de desarrollo solo mía.
+  if (isDev) links = [...links, { href: "/admin/dev-logs", label: "Logs", icon: Terminal }];
   if (order && order.length) {
     links = [...links].sort((a, b) => {
       const ia = order.indexOf(a.href), ib = order.indexOf(b.href);

@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { redirect } from "next/navigation";
-import { getSession, getUserPrefs } from "@/lib/supabase/auth-server";
+import { getSession, getUserPrefs, getDevEmail } from "@/lib/supabase/auth-server";
 import { effectiveModules } from "@/lib/modules";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { Toaster } from "@/components/admin/Toaster";
@@ -27,13 +27,14 @@ export default async function PanelLayout({
   const prefs = await getUserPrefs(session.email);
   const modules = effectiveModules(session.role, prefs?.modules_extra);
   const light = prefs?.theme === "light";
+  const isDev = !!(await getDevEmail());
 
   return (
     <div className={`min-h-screen ${light ? "panel-light" : ""} bg-lgb-black text-white flex flex-col md:flex-row`}>
       <PrefsApplier fontSize={prefs?.font_size ?? "md"} />
       <NotificacionRouter />
       <DiagnosticoScroll />
-      <AdminNav email={session.email} modules={modules} order={prefs?.module_order ?? null} />
+      <AdminNav email={session.email} modules={modules} order={prefs?.module_order ?? null} isDev={isDev} />
       <main className="flex-1 min-w-0 md:ml-60 p-5 sm:p-8 pb-32 md:pb-8">{children}</main>
       <Toaster />
     </div>
