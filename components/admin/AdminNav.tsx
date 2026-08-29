@@ -82,7 +82,7 @@ export function AdminNav({ email, modules, order, isDev }: { email: string; modu
   let links = allLinks.filter((l) => modules.includes(l.href));
   // Fuera del sistema de módulos a propósito: no es un módulo de negocio que un
   // admin pueda prenderle a alguien más, es una herramienta de desarrollo solo mía.
-  if (isDev) links = [...links, { href: "/admin/dev-logs", label: "Logs", icon: Terminal }];
+  if (isDev) links = [...links, { href: "/admin/dev-logs", label: "REAPER", icon: Terminal }];
   if (order && order.length) {
     links = [...links].sort((a, b) => {
       const ia = order.indexOf(a.href), ib = order.indexOf(b.href);
