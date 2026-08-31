@@ -1,10 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Music4, Package, Layers, Loader2 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { toast } from "@/lib/toast";
-import type { Renderizable, TipoRender } from "@/lib/render-jobs";
+import type { Renderizable, TipoRender, RenderJob } from "@/lib/render-jobs";
 
 interface LogRow {
   id: string;
@@ -23,12 +23,15 @@ const NIVEL_PREFIX: Record<string, string> = { info: "✓", warn: "⚠", error: 
 
 /** Estados que significan "hay algo corriendo, no pidas otro". */
 const EN_VUELO = ["pendiente", "renderizando", "subiendo"];
-const ESTADO_TXT: Record<string, string> = {
-  pendiente: "en cola",
-  renderizando: "renderizando…",
-  subiendo: "subiendo…",
-  error: "falló",
-};
+
+/**
+ * Cuánto tarda cada render, medido sobre canciones reales de ~3 min con la
+ * cadena de plugins completa. Se muestra en pantalla porque sin esto un
+ * "en cola" de 12 minutos se ve idéntico a que algo se trabó.
+ */
+const MINUTOS: Record<TipoRender, number> = { previo: 4, entregables: 10, stems: 6 };
+
+const TIPO_TXT: Record<string, string> = { previo: "Previo", entregables: "Entregables", stems: "Stems" };
 
 const hora = (iso: string) =>
   new Date(iso).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -121,6 +124,7 @@ function RenderList({ proyectos, pidiendo, onPedir }: {
                 <BotonRender
                   icono={<Music4 size={14} />}
                   texto={p.ultimoPrevio > 0 ? `Previo ${p.ultimoPrevio + 1}` : "Previo"}
+                  titulo={`MP3 128 kbps / 44.1 kHz · tarda ~${MINUTOS.previo} min`}
                   ocupado={pidiendo === `${p.key}:previo`}
                   deshabilitado={!!enVuelo}
                   onClick={() => onPedir(p, "previo")}
@@ -128,6 +132,7 @@ function RenderList({ proyectos, pidiendo, onPedir }: {
                 <BotonRender
                   icono={<Package size={14} />}
                   texto="Entregables"
+                  titulo={`MP3 320 kbps / 48 kHz + WAV 32-bit · tarda ~${MINUTOS.entregables} min`}
                   ocupado={pidiendo === `${p.key}:entregables`}
                   deshabilitado={!!enVuelo}
                   onClick={() => onPedir(p, "entregables")}
@@ -135,6 +140,7 @@ function RenderList({ proyectos, pidiendo, onPedir }: {
                 <BotonRender
                   icono={<Layers size={14} />}
                   texto="Stems"
+                  titulo={`WAV 24-bit por grupo, con mezcla y máster · tarda ~${MINUTOS.stems} min`}
                   ocupado={pidiendo === `${p.key}:stems`}
                   deshabilitado={!!enVuelo}
                   onClick={() => onPedir(p, "stems")}
@@ -142,12 +148,7 @@ function RenderList({ proyectos, pidiendo, onPedir }: {
               </div>
             </div>
 
-            {enVuelo && (
-              <p className="text-[11px] text-amber-300 mt-2 flex items-center gap-1.5">
-                <Loader2 size={12} className="animate-spin" />
-                {enVuelo.tipo} · {ESTADO_TXT[enVuelo.estado] ?? enVuelo.estado}
-              </p>
-            )}
+            {enVuelo && <EnCurso job={enVuelo} />}
             {ultimoError && (
               <p className="text-[11px] text-red-300 mt-2 break-words">
                 ✗ {ultimoError.tipo}: {ultimoError.error}
@@ -160,12 +161,46 @@ function RenderList({ proyectos, pidiendo, onPedir }: {
   );
 }
 
-function BotonRender({ icono, texto, ocupado, deshabilitado, onClick }: {
-  icono: React.ReactNode; texto: string; ocupado: boolean; deshabilitado: boolean; onClick: () => void;
+/**
+ * Estado de un render en curso, con el tiempo que lleva y el que se espera.
+ *
+ * El reloj corre en el cliente: sin él, un trabajo largo se ve congelado y la
+ * reacción natural es volver a picarle o pensar que se rompió (ya pasó).
+ */
+function EnCurso({ job }: { job: RenderJob }) {
+  const [ahora, setAhora] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setAhora(Date.now()), 10000);
+    return () => clearInterval(t);
+  }, []);
+
+  const min = Math.max(0, Math.floor((ahora - new Date(job.createdAt).getTime()) / 60000));
+  const esperado = MINUTOS[job.tipo] ?? 8;
+  const tarde = min > esperado + 5;
+
+  const detalle =
+    job.estado === "pendiente"
+      ? "en cola — REAPER lo toma en menos de 2 min"
+      : job.estado === "subiendo"
+        ? "subiendo a Drive…"
+        : `renderizando… (suele tardar ~${esperado} min)`;
+
+  return (
+    <p className={`text-[11px] mt-2 flex items-center gap-1.5 ${tarde ? "text-red-300" : "text-amber-300"}`}>
+      <Loader2 size={12} className="animate-spin" />
+      {TIPO_TXT[job.tipo] ?? job.tipo} · {detalle} · lleva {min} min
+      {tarde && " · más de lo normal, revisa la Consola"}
+    </p>
+  );
+}
+
+function BotonRender({ icono, texto, titulo, ocupado, deshabilitado, onClick }: {
+  icono: React.ReactNode; texto: string; titulo?: string; ocupado: boolean; deshabilitado: boolean; onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
+      title={deshabilitado ? "Espera a que termine el render en curso" : titulo}
       disabled={ocupado || deshabilitado}
       className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 text-white/80 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
     >
