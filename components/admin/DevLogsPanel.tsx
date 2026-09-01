@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { Music4, Package, Layers, Loader2 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { toast } from "@/lib/toast";
-import type { Renderizable, TipoRender, RenderJob } from "@/lib/render-jobs";
+import { RenderOpciones } from "./RenderOpciones";
+import type { Renderizable, TipoRender, RenderJob, OpcionesRender } from "@/lib/render-jobs";
 
 interface LogRow {
   id: string;
@@ -39,27 +40,30 @@ const hora = (iso: string) =>
 export function DevLogsPanel({ logs, proyectos }: { logs: LogRow[]; proyectos: Renderizable[] }) {
   const router = useRouter();
   const [tab, setTab] = useState<"renders" | "logs">("renders");
-  const [pidiendo, setPidiendo] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  // Qué cuadro de opciones está abierto. Se abre al picarle a un botón y ahí se
+  // elige el .rpp base, el rango y (en stems) las pistas.
+  const [abierto, setAbierto] = useState<{ p: Renderizable; tipo: TipoRender } | null>(null);
 
-  useRealtimeRefresh("rt-dev-logs", ["reaper_sync_logs", "render_jobs"]);
+  useRealtimeRefresh("rt-dev-logs", ["reaper_sync_logs", "render_jobs", "render_inventario"]);
 
-  const pedir = async (p: Renderizable, tipo: TipoRender) => {
-    const clave = `${p.key}:${tipo}`;
-    setPidiendo(clave);
+  const enviar = async (p: Renderizable, tipo: TipoRender, opciones: OpcionesRender) => {
+    setEnviando(true);
     try {
       const res = await fetch("/api/admin/render", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ proyectoId: p.proyectoId, tareaId: p.tareaId, tipo }),
+        body: JSON.stringify({ proyectoId: p.proyectoId, tareaId: p.tareaId, tipo, opciones }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Error");
       toast("✓ En cola — REAPER lo toma en menos de 2 min");
+      setAbierto(null);
       router.refresh();
     } catch (e) {
       toast(`⚠️ ${e instanceof Error ? e.message : "No se pudo encolar"}`);
     } finally {
-      setPidiendo(null);
+      setEnviando(false);
     }
   };
 
@@ -78,18 +82,27 @@ export function DevLogsPanel({ logs, proyectos }: { logs: LogRow[]; proyectos: R
       </div>
 
       {tab === "renders" ? (
-        <RenderList proyectos={proyectos} pidiendo={pidiendo} onPedir={pedir} />
+        <RenderList proyectos={proyectos} onAbrir={(p, tipo) => setAbierto({ p, tipo })} />
       ) : (
         <Consola logs={logs} />
+      )}
+
+      {abierto && (
+        <RenderOpciones
+          p={abierto.p}
+          tipo={abierto.tipo}
+          enviando={enviando}
+          onCerrar={() => !enviando && setAbierto(null)}
+          onConfirmar={(op) => enviar(abierto.p, abierto.tipo, op)}
+        />
       )}
     </div>
   );
 }
 
-function RenderList({ proyectos, pidiendo, onPedir }: {
+function RenderList({ proyectos, onAbrir }: {
   proyectos: Renderizable[];
-  pidiendo: string | null;
-  onPedir: (p: Renderizable, t: TipoRender) => void;
+  onAbrir: (p: Renderizable, t: TipoRender) => void;
 }) {
   if (proyectos.length === 0) {
     return (
@@ -125,25 +138,22 @@ function RenderList({ proyectos, pidiendo, onPedir }: {
                   icono={<Music4 size={14} />}
                   texto={p.ultimoPrevio > 0 ? `Previo ${p.ultimoPrevio + 1}` : "Previo"}
                   titulo={`MP3 128 kbps / 44.1 kHz · tarda ~${MINUTOS.previo} min`}
-                  ocupado={pidiendo === `${p.key}:previo`}
                   deshabilitado={!!enVuelo}
-                  onClick={() => onPedir(p, "previo")}
+                  onClick={() => onAbrir(p, "previo")}
                 />
                 <BotonRender
                   icono={<Package size={14} />}
                   texto="Entregables"
                   titulo={`MP3 320 kbps / 48 kHz + WAV 32-bit · tarda ~${MINUTOS.entregables} min`}
-                  ocupado={pidiendo === `${p.key}:entregables`}
                   deshabilitado={!!enVuelo}
-                  onClick={() => onPedir(p, "entregables")}
+                  onClick={() => onAbrir(p, "entregables")}
                 />
                 <BotonRender
                   icono={<Layers size={14} />}
                   texto="Stems"
                   titulo={`WAV 24-bit por grupo, con mezcla y máster · tarda ~${MINUTOS.stems} min`}
-                  ocupado={pidiendo === `${p.key}:stems`}
                   deshabilitado={!!enVuelo}
-                  onClick={() => onPedir(p, "stems")}
+                  onClick={() => onAbrir(p, "stems")}
                 />
               </div>
             </div>
@@ -194,17 +204,17 @@ function EnCurso({ job }: { job: RenderJob }) {
   );
 }
 
-function BotonRender({ icono, texto, titulo, ocupado, deshabilitado, onClick }: {
-  icono: React.ReactNode; texto: string; titulo?: string; ocupado: boolean; deshabilitado: boolean; onClick: () => void;
+function BotonRender({ icono, texto, titulo, deshabilitado, onClick }: {
+  icono: React.ReactNode; texto: string; titulo?: string; deshabilitado: boolean; onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
       title={deshabilitado ? "Espera a que termine el render en curso" : titulo}
-      disabled={ocupado || deshabilitado}
+      disabled={deshabilitado}
       className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 text-white/80 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
     >
-      {ocupado ? <Loader2 size={14} className="animate-spin" /> : icono}
+      {icono}
       {texto}
     </button>
   );

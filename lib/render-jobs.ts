@@ -22,6 +22,55 @@ export const TIPO_RENDER_LABEL: Record<TipoRender, string> = {
 const ESTADOS_ACTIVOS = ["cola", "produccion", "revision"];
 const TIPOS_ALBUM = ["ep", "album"];
 
+/** Una pista del .rpp, tal como la publica el script local. */
+export interface PistaRpp {
+  nombre: string;
+  /** Si el script la exportaría por su cuenta (regla automática). */
+  esStem: boolean;
+  silenciada: boolean;
+  /** Nivel de anidamiento, para dibujar los grupos. */
+  profundidad: number;
+}
+
+export interface MarcadorRpp {
+  nombre: string;
+  seg: number;
+}
+
+/** Selección de tiempo guardada. `valida` es false si viene en cero o invertida. */
+export interface SeleccionRpp {
+  inicio: number;
+  fin: number;
+  valida: boolean;
+}
+
+export interface ArchivoRpp {
+  archivo: string;
+  mtime: number;
+  bytes: number;
+  marcadores: MarcadorRpp[];
+  seleccion: SeleccionRpp | null;
+  pistas: PistaRpp[];
+  error: string | null;
+}
+
+/** Lo que hay dentro de la carpeta del proyecto, según el último escaneo. */
+export interface Inventario {
+  carpeta: string | null;
+  /** Los .rpp, del más reciente al más viejo. */
+  proyectos: ArchivoRpp[];
+  error: string | null;
+  escaneadoEn: string;
+}
+
+/** Lo que el usuario eligió en el cuadro de opciones. Todo es opcional: sin
+ *  nada, el script hace lo de siempre (último .rpp, proyecto completo). */
+export interface OpcionesRender {
+  rpp?: string;
+  rango?: { inicio: number; fin: number } | null;
+  pistas?: string[] | null;
+}
+
 export interface RenderJob {
   id: string;
   proyectoId: string;
@@ -47,6 +96,8 @@ export interface Renderizable {
   estado: string;
   ultimoPrevio: number;
   jobs: RenderJob[];
+  /** Null mientras el script local no haya escaneado la carpeta todavía. */
+  inventario: Inventario | null;
 }
 
 function mapJob(r: Record<string, unknown>): RenderJob {
@@ -99,6 +150,18 @@ export async function renderizables(): Promise<Renderizable[]> {
     .order("created_at", { ascending: false });
   const jobs = (jobsRaw ?? []).map(mapJob);
 
+  // Qué hay en cada carpeta del disco, según el último escaneo del script local.
+  const { data: invRaw } = await sb.from("render_inventario").select("*").in("proyecto_id", ids);
+  const inventarios = new Map<string, Inventario>();
+  for (const r of invRaw ?? []) {
+    inventarios.set(r.clave as string, {
+      carpeta: (r.carpeta as string | null) ?? null,
+      proyectos: (r.proyectos as ArchivoRpp[] | null) ?? [],
+      error: (r.error as string | null) ?? null,
+      escaneadoEn: r.escaneado_en as string,
+    });
+  }
+
   const porClave = (proyectoId: string, tareaId: string | null) =>
     jobs.filter((j) => j.proyectoId === proyectoId && j.tareaId === tareaId);
 
@@ -124,6 +187,7 @@ export async function renderizables(): Promise<Renderizable[]> {
           estado: p.estado as string,
           ultimoPrevio: Math.max(0, ...js.filter((j) => j.tipo === "previo" && j.previoNum).map((j) => j.previoNum!)),
           jobs: js,
+          inventario: inventarios.get(c.id as string) ?? null,
         });
       }
       continue;
@@ -141,6 +205,7 @@ export async function renderizables(): Promise<Renderizable[]> {
       estado: p.estado as string,
       ultimoPrevio: Math.max(0, ...js.filter((j) => j.tipo === "previo" && j.previoNum).map((j) => j.previoNum!)),
       jobs: js,
+      inventario: inventarios.get(p.id as string) ?? null,
     });
   }
   return out;
@@ -157,6 +222,7 @@ export async function encolarRender(
   tareaId: string | null,
   tipo: TipoRender,
   pedidoPor: string,
+  opciones: OpcionesRender | null = null,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const sb = supabaseAdmin();
 
@@ -186,7 +252,11 @@ export async function encolarRender(
 
   const { data, error } = await sb
     .from("render_jobs")
-    .insert({ proyecto_id: proyectoId, tarea_id: tareaId, tipo, previo_num: previoNum, pedido_por: pedidoPor })
+    .insert({
+      proyecto_id: proyectoId, tarea_id: tareaId, tipo,
+      previo_num: previoNum, pedido_por: pedidoPor,
+      opciones: opciones && Object.keys(opciones).length ? opciones : null,
+    })
     .select("id")
     .single();
   if (error) return { ok: false, error: error.message };
