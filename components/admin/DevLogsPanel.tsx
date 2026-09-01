@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Music4, Package, Layers, Loader2 } from "lucide-react";
+import { Music4, Package, Layers, Loader2, Cloud } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { toast } from "@/lib/toast";
 import { RenderOpciones } from "./RenderOpciones";
@@ -117,6 +117,7 @@ function RenderList({ proyectos, onAbrir }: {
       {proyectos.map((p) => {
         const enVuelo = p.jobs.find((j) => EN_VUELO.includes(j.estado));
         const ultimoError = !enVuelo && p.jobs[0]?.estado === "error" ? p.jobs[0] : null;
+        const enDrive = p.jobs.find((j) => j.estado === "listo" && j.driveUrls?.length);
 
         return (
           <div key={p.key} className="bg-lgb-surface border border-white/5 rounded-2xl p-3 sm:p-4">
@@ -159,6 +160,24 @@ function RenderList({ proyectos, onAbrir }: {
             </div>
 
             {enVuelo && <EnCurso job={enVuelo} />}
+            {enDrive && (
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
+                <span className="flex items-center gap-1 text-[11px] text-white/30 shrink-0">
+                  <Cloud size={12} /> {TIPO_TXT[enDrive.tipo] ?? enDrive.tipo} en Drive:
+                </span>
+                {enDrive.driveUrls!.map((d) => (
+                  <a
+                    key={d.id}
+                    href={d.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] text-white/50 hover:text-white underline underline-offset-2 truncate max-w-[180px]"
+                  >
+                    {d.archivo}
+                  </a>
+                ))}
+              </div>
+            )}
             {ultimoError && (
               <p className="text-[11px] text-red-300 mt-2 break-words">
                 ✗ {ultimoError.tipo}: {ultimoError.error}

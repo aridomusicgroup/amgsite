@@ -71,6 +71,13 @@ export interface OpcionesRender {
   pistas?: string[] | null;
 }
 
+/** Un archivo ya subido a Drive por el script local. */
+export interface ArchivoDrive {
+  archivo: string;
+  id: string;
+  url: string;
+}
+
 export interface RenderJob {
   id: string;
   proyectoId: string;
@@ -80,6 +87,8 @@ export interface RenderJob {
   previoNum: number | null;
   error: string | null;
   createdAt: string;
+  /** Null si Drive no está conectado o la subida falló (los archivos siguen en disco). */
+  driveUrls: ArchivoDrive[] | null;
 }
 
 /** Una cosa renderizable: una producción normal, o una canción de un EP/Álbum. */
@@ -110,6 +119,7 @@ function mapJob(r: Record<string, unknown>): RenderJob {
     previoNum: r.previo_num === null || r.previo_num === undefined ? null : Number(r.previo_num),
     error: (r.error as string | null) ?? null,
     createdAt: r.created_at as string,
+    driveUrls: (r.drive_urls as ArchivoDrive[] | null) ?? null,
   };
 }
 
