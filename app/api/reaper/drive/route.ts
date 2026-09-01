@@ -23,10 +23,13 @@ export const runtime = "nodejs";
  *                                                               / ENTREGABLES/{nombre} STEMS
  */
 export async function POST(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
+  // Secreto propio, no el CRON_SECRET: ese está guardado como "Secret" en
+  // Vercel y no se puede volver a leer, así que compartirlo con la máquina
+  // local obligaría a rotarlo y a arriesgar los crons que ya dependen de él.
+  const secret = process.env.REAPER_SECRET;
   // A diferencia de las rutas de cron, aquí NO se permite pasar sin secreto:
   // esta entrega un token de escritura en Drive.
-  if (!secret) return NextResponse.json({ error: "Falta CRON_SECRET" }, { status: 503 });
+  if (!secret) return NextResponse.json({ error: "Falta REAPER_SECRET" }, { status: 503 });
   if (req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
