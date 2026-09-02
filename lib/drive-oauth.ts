@@ -26,6 +26,24 @@ export function driveOAuthConfigured(): boolean {
   return !!creds();
 }
 
+const VARS = ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_DRIVE_REFRESH_TOKEN"] as const;
+
+/**
+ * Qué le falta a la integración de Drive, o null si está bien.
+ *
+ * Existe porque "Drive no está conectado" no dice qué arreglar: no es lo mismo
+ * que falte una variable en Vercel (se agrega y ya) a que Google haya revocado
+ * el refresh token (hay que volver a autorizar la cuenta).
+ */
+export async function diagnosticoDrive(): Promise<string | null> {
+  const faltan = VARS.filter((k) => !process.env[k]);
+  if (faltan.length) return `Faltan variables en Vercel: ${faltan.join(", ")}`;
+  if (!(await getAccessToken())) {
+    return "Google rechazó el refresh token (caducó o se revocó el acceso). Reconecta entrando a /api/admin/drive-oauth/start";
+  }
+  return null;
+}
+
 let cached: { token: string; exp: number } | null = null;
 
 /**

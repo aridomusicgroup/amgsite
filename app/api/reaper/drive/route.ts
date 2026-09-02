@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { carpetaDelProyecto } from "@/lib/proyecto-carpeta";
-import { buscarOCrearCarpeta, tokenParaNavegador } from "@/lib/drive-oauth";
+import { buscarOCrearCarpeta, tokenParaNavegador, diagnosticoDrive } from "@/lib/drive-oauth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -41,7 +41,9 @@ export async function POST(req: NextRequest) {
   if (!proyectoId) return NextResponse.json({ error: "Falta el proyecto." }, { status: 400 });
 
   const cred = await tokenParaNavegador();
-  if (!cred) return NextResponse.json({ error: "Drive no está conectado (falta OAuth)." }, { status: 503 });
+  if (!cred) {
+    return NextResponse.json({ error: (await diagnosticoDrive()) ?? "Drive no está conectado." }, { status: 503 });
+  }
 
   const sb = supabaseAdmin();
   let carpeta = await carpetaDelProyecto(sb, proyectoId);
