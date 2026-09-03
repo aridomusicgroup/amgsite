@@ -92,7 +92,10 @@ interface ArchivoDrive {
   mimeType: string;
   size?: string;
   createdTime?: string;
+  modifiedTime?: string;
   webViewLink?: string;
+  thumbnailLink?: string;
+  iconLink?: string;
 }
 
 /** Busca una subcarpeta por nombre exacto dentro de `parentId`, o la crea si no existe. */
@@ -128,6 +131,8 @@ export async function buscarOCrearCarpeta(nombre: string, parentId: string | nul
   return nueva?.id ?? null;
 }
 
+const ARCHIVO_FIELDS = "id,name,mimeType,size,createdTime,modifiedTime,webViewLink,thumbnailLink,iconLink";
+
 /** Lo que hay en una carpeta (solo archivos, no subcarpetas) — para pintar la lista de subidos. */
 export async function archivosDeCarpeta(folderId: string): Promise<ArchivoDrive[]> {
   const token = await getAccessToken();
@@ -136,7 +141,7 @@ export async function archivosDeCarpeta(folderId: string): Promise<ArchivoDrive[
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files?${new URLSearchParams({
       q,
-      fields: "files(id,name,mimeType,size,createdTime,webViewLink)",
+      fields: `files(${ARCHIVO_FIELDS})`,
       orderBy: "createdTime desc",
       supportsAllDrives: "true",
       includeItemsFromAllDrives: "true",
@@ -145,4 +150,57 @@ export async function archivosDeCarpeta(folderId: string): Promise<ArchivoDrive[
   );
   const j = await res.json().catch(() => null);
   return (j?.files ?? []) as ArchivoDrive[];
+}
+
+/** Misma lista, paginada — para el explorador embebido de una carpeta con muchos archivos (stems, previos). */
+export async function archivosDeCarpetaPaginado(
+  folderId: string,
+  pageToken?: string,
+): Promise<{ files: ArchivoDrive[]; nextPageToken: string | null }> {
+  const token = await getAccessToken();
+  if (!token) return { files: [], nextPageToken: null };
+  const q = `'${folderId}' in parents and mimeType != '${FOLDER_MIME}' and trashed = false`;
+  const params: Record<string, string> = {
+    q,
+    fields: `nextPageToken, files(${ARCHIVO_FIELDS})`,
+    orderBy: "createdTime desc",
+    pageSize: "60",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  };
+  if (pageToken) params.pageToken = pageToken;
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams(params)}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const j = await res.json().catch(() => null);
+  return { files: (j?.files ?? []) as ArchivoDrive[], nextPageToken: (j?.nextPageToken as string | undefined) ?? null };
+}
+
+/**
+ * `thumbnailLink`/`webContentLink` de Drive necesitan el MISMO Authorization
+ * que el resto de esta integración (el scope `drive.file` no hace públicas las
+ * miniaturas) — un <img src> directo del navegador del admin recibiría 403. Se
+ * descarga aquí, con el token del server, y la ruta que lo llama la sirve como
+ * si fuera propia (ver drive-files/thumb/route.ts).
+ */
+export async function descargarThumbnail(url: string): Promise<{ data: ArrayBuffer; contentType: string } | null> {
+  const token = await getAccessToken();
+  if (!token) return null;
+  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+  if (!res.ok) return null;
+  const contentType = res.headers.get("content-type") || "image/jpeg";
+  const data = await res.arrayBuffer();
+  return { data, contentType };
+}
+
+/** Manda una carpeta (y su contenido) a la papelera de Drive — recuperable 30 días, no es un borrado permanente. */
+export async function papeleraCarpeta(folderId: string): Promise<boolean> {
+  const token = await getAccessToken();
+  if (!token) return false;
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}?supportsAllDrives=true`, {
+    method: "PATCH",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ trashed: true }),
+  });
+  return res.ok;
 }

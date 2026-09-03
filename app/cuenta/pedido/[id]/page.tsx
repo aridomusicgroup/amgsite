@@ -3,10 +3,11 @@ import { redirect } from "next/navigation";
 import Image from "next/image";
 import { ArrowLeft, Clock, FolderDown } from "lucide-react";
 import { getCustomerEmail } from "@/lib/cuenta-auth";
-import { getPedidoDetalle } from "@/lib/cuenta-cliente";
+import { getPedidoDetalle, rendersDelPedido } from "@/lib/cuenta-cliente";
 import { acuerdosPendientes } from "@/lib/acuerdos/server";
 import { PedidoProgreso } from "@/components/cuenta/PedidoProgreso";
 import { SubirArchivos } from "@/components/cuenta/SubirArchivos";
+import { RendersPedido } from "@/components/cuenta/RendersPedido";
 import { SOCIALS } from "@/lib/site";
 import { WhatsappIcon } from "@/components/shared/BrandIcons";
 
@@ -31,6 +32,9 @@ export default async function PedidoPage({ params }: Props) {
 
   const d = await getPedidoDetalle(email, id);
   if (!d) redirect("/cuenta");
+
+  // Previos y entregables que el equipo marcó para compartirle.
+  const renders = await rendersDelPedido(email, id);
 
   const entregado = d.total > 0 && d.hechas >= d.total;
   // Solo enlaces http(s) (evita esquemas peligrosos como javascript:).
@@ -86,6 +90,8 @@ export default async function PedidoPage({ params }: Props) {
             </p>
           </div>
         )}
+
+        <RendersPedido pedidoId={id} renders={renders} />
 
         {d.proyectoEstado !== null && (
           <div className="mt-8">

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useMemo, useEffect, useRef, type ReactNode, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Plus, X, Loader2, ChevronDown, GripVertical, Eye, EyeOff, Check, Trash2, Pencil, CalendarClock, CircleDollarSign, CalendarDays, LayoutGrid, ChevronLeft, ChevronRight, MoreHorizontal, Hourglass, Bell, BellOff } from "lucide-react";
 import { DndContext, closestCenter, MouseSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -47,20 +48,20 @@ export function edadDe(p: { fechaVenta: string | null; creado: string }): number
 }
 const COLS_BASE = ["cola", "produccion", "revision", "entregado"];
 const COLS_FIN = ["cerrado", "pausado", "cancelado"];
-const TIPOS_PROD = ["beat_personalizado", "bp_letra", "grabacion", "mezcla_master", "ep", "album", "beat", "creacion_contenido"];
-const TIPOS_INT = ["contenido", "creacion_contenido", "distribucion", "admin"];
+export const TIPOS_PROD = ["beat_personalizado", "bp_letra", "grabacion", "mezcla_master", "ep", "album", "beat", "creacion_contenido"];
+export const TIPOS_INT = ["contenido", "creacion_contenido", "distribucion", "admin"];
 const TIPOS_CONTENIDO = ["creacion_contenido", "contenido", "beat"];
-const esContenido = (tipo: string | null) => !!tipo && TIPOS_CONTENIDO.includes(tipo);
+export const esContenido = (tipo: string | null) => !!tipo && TIPOS_CONTENIDO.includes(tipo);
 // Campos de publicación (plataforma / fecha de publicación / link del post) SOLO para Creación de contenido (no Beat).
-const esContenidoPub = (tipo: string | null) => tipo === "creacion_contenido" || tipo === "contenido";
-const PLATAFORMAS = ["Instagram", "TikTok", "YouTube", "Facebook", "Spotify", "Otro"];
+export const esContenidoPub = (tipo: string | null) => tipo === "creacion_contenido" || tipo === "contenido";
+export const PLATAFORMAS = ["Instagram", "TikTok", "YouTube", "Facebook", "Spotify", "Otro"];
 
-const inp = "bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-lgb-red w-full";
-const lblS = "block text-[10px] text-white/40 mb-1";
+export const inp = "bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-lgb-red w-full";
+export const lblS = "block text-[10px] text-white/40 mb-1";
 
-type Equipo = { id: string; nombre: string };
+export type Equipo = { id: string; nombre: string };
 type Cliente = { nombre: string; email: string | null; telefono: string | null };
-type VentaLite = { id: string; label: string };
+export type VentaLite = { id: string; label: string };
 
 const norm = (s: string) => (s || "").replace(/\s+/g, " ").trim().toLowerCase();
 
@@ -604,7 +605,13 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
         <div className="flex items-start gap-2">
           <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${PRIOR_DOT[p.prioridad] ?? "bg-white/30"}`} title={`Prioridad ${PRIORIDAD_LABEL[p.prioridad]}`} />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium leading-tight">{p.titulo}</p>
+            <Link
+              href={`/admin/proyectos/${p.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="text-sm font-medium leading-tight hover:text-lgb-red hover:underline underline-offset-2 transition-colors block truncate"
+            >
+              {p.titulo}
+            </Link>
             <div className="flex items-center gap-2 mt-1 flex-wrap text-[10px] text-white/40">
               {p.clase === "interna"
                 ? <span className="px-1.5 py-0.5 rounded-full bg-white/5 text-white/50">{p.tipo ? (TIPO_PROY_LABEL[p.tipo] ?? p.tipo) : "Tarea"}</span>
@@ -1252,7 +1259,7 @@ function RecordatorioTarea({ tareaId, actual, responsableId, equipo, miId }: {
   );
 }
 
-function ResponsablesPicker({ equipo, value, onChange }: { equipo: Equipo[]; value: string[]; onChange: (v: string[]) => void }) {
+export function ResponsablesPicker({ equipo, value, onChange }: { equipo: Equipo[]; value: string[]; onChange: (v: string[]) => void }) {
   const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
   return (
     <div className="flex flex-wrap gap-1.5">

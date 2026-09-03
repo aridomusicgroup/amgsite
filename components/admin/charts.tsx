@@ -32,7 +32,7 @@ export function Delta({ curr, prev, invert = false }: { curr: number; prev: numb
 }
 
 export function KpiCard({ label, value, delta, sub, accent, icon }: {
-  label: string; value: string; delta?: ReactNode; sub?: string; accent?: boolean; icon?: ReactNode;
+  label: string; value: ReactNode; delta?: ReactNode; sub?: string; accent?: boolean; icon?: ReactNode;
 }) {
   return (
     <div className={`rounded-2xl border p-4 sm:p-5 ${accent ? "border-lgb-red/40 bg-lgb-red/5" : "border-white/8 bg-white/[0.03]"}`}>

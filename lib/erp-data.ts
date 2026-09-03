@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { extraerShortcode } from "@/lib/shortcode";
 import { esProyectoDeCliente } from "@/lib/pedido-sync";
-import { ESTADOS_NO_ABIERTOS, type DashProyecto } from "@/lib/entregas";
+import { ESTADOS_NO_ABIERTOS, calcEntregas, type DashProyecto, type EntregasResumen } from "@/lib/entregas";
 
 export type { DashProyecto };
 
@@ -719,6 +719,219 @@ export async function getProyectos(): Promise<Proyecto[]> {
       revisionActual: Number(p.revision_actual) || 0,
     } as Proyecto;
   });
+}
+
+// ─── Detalle completo de un proyecto (vista 360°) ────────────────────────────
+export interface PagoProyecto { id: string; fecha: string; monto_mxn: number; medio_pago: string | null; tipo: string | null }
+export interface ContratoResumen { id: string; folio: string | null; estado: string; monto: number; moneda: string | null; created_at: string }
+export interface CotizacionResumen { id: string; folio: string | null; estado: string; created_at: string }
+export interface RenderJobResumen { id: string; tipo: string; estado: string; tarea_id: string | null; created_at: string; drive_urls: string[] | null }
+export interface RenderInventarioItem { id: string; tarea_id: string | null; clave: string; datos: unknown; updated_at: string }
+export interface ActividadItem { id: string; tipo: string; titulo: string; actor: string | null; created_at: string }
+/** a_tiempo/en_riesgo comparan contra la mediana histórica del mismo tipo (ver getEntregasReferencia). */
+export type SaludEntrega = "sin_fecha" | "a_tiempo" | "en_riesgo" | "atrasado" | "entregado";
+
+export interface ProyectoDetalle extends Proyecto {
+  contactoEmail: string | null;
+  contactoTelefono: string | null;
+  pagos: PagoProyecto[];
+  contratos: ContratoResumen[];
+  cotizacion: CotizacionResumen | null;
+  renderJobs: RenderJobResumen[];
+  renderInventario: RenderInventarioItem[];
+  actividad: ActividadItem[];
+  diasParaEntrega: number | null;
+  diasDeAtraso: number | null;
+  saludEntrega: SaludEntrega;
+  entregasReferencia: EntregasResumen | null;
+}
+
+/** Cohorte de referencia (mismo tipo) para juzgar si ESTE proyecto va a tiempo — calcEntregas es agregado, aquí se compara 1 contra el resto. */
+export async function getEntregasReferencia(tipo: string | null): Promise<EntregasResumen | null> {
+  if (!tipo) return null;
+  const sb = supabaseAdmin();
+  const { data } = await sb.from("proyectos")
+    .select("id, folio, titulo, tipo, estado, fecha_entrega, fecha_entrega_real, created_at, venta_id")
+    .eq("tipo", tipo)
+    .limit(500);
+  if (!data || !data.length) return null;
+  const ventaIds = [...new Set(data.map((p) => p.venta_id as string | null).filter((x): x is string => !!x))];
+  const ventaFechaMap = new Map<string, string>();
+  if (ventaIds.length) {
+    const { data: vs } = await sb.from("ventas").select("id, fecha").in("id", ventaIds);
+    for (const v of vs ?? []) if (v.fecha) ventaFechaMap.set(v.id as string, v.fecha as string);
+  }
+  const lista: DashProyecto[] = data.map((p) => ({
+    id: p.id as string, folio: (p.folio as string | null) ?? null, titulo: p.titulo as string,
+    tipo: p.tipo as string | null, estado: p.estado as string, esCliente: true,
+    fechaVenta: p.venta_id ? ventaFechaMap.get(p.venta_id as string) ?? null : null,
+    creado: ((p.created_at as string | null) ?? "").slice(0, 10),
+    fechaEntrega: (p.fecha_entrega as string | null) ?? null,
+    fechaEntregaReal: (p.fecha_entrega_real as string | null) ?? null,
+  }));
+  return calcEntregas(lista);
+}
+
+/** Vista 360° de un solo proyecto: todo lo que ya calcula getProyectos() más lo que le falta (contratos, cotización, renders, bitácora). */
+export async function getProyectoDetalle(id: string): Promise<ProyectoDetalle | null> {
+  const sb = supabaseAdmin();
+  const { data: p } = await sb.from("proyectos").select("*, contactos(nombre, email, telefono)").eq("id", id).single();
+  if (!p) return null;
+
+  const ventaId = (p.venta_id as string | null) ?? null;
+  const cotizacionId = (p.cotizacion_id as string | null) ?? null;
+
+  const [tareasRes, equipoRes, ventaRes, contratosRes, cotizacionRes, renderJobsRes, renderInvRes, actividadRes, postsRes, referencia] = await Promise.all([
+    sb.from("proyecto_tareas").select("id, proyecto_id, titulo, hecho, responsable_id, notas, fecha, orden, link_post, visible_cliente, revision").eq("proyecto_id", id).order("orden", { ascending: true }),
+    sb.from("equipo").select("id, nombre"),
+    ventaId
+      ? sb.from("ventas").select("id, total_mxn, fecha, moneda").eq("id", ventaId).single()
+      : Promise.resolve({ data: null as { id: string; total_mxn: number; fecha: string | null; moneda: string | null } | null }),
+    sb.from("contratos").select("id, folio, estado, monto, moneda, created_at").eq("proyecto_id", id).order("created_at", { ascending: false }),
+    cotizacionId
+      ? sb.from("cotizaciones").select("id, folio, estado, created_at").eq("id", cotizacionId).single()
+      : Promise.resolve({ data: null as { id: string; folio: string | null; estado: string; created_at: string } | null }),
+    sb.from("render_jobs").select("id, tipo, estado, tarea_id, created_at, drive_urls").eq("proyecto_id", id).order("created_at", { ascending: false }),
+    sb.from("render_inventario").select("id, tarea_id, clave, datos, updated_at").eq("proyecto_id", id),
+    sb.from("actividad").select("id, tipo, titulo, actor, created_at").eq("proyecto_id", id).order("created_at", { ascending: false }).limit(100),
+    sb.from("social_posts").select("media_id, permalink, likes, comentarios, guardados, compartidos, alcance, reproducciones"),
+    getEntregasReferencia(p.tipo as string | null),
+  ]);
+
+  const tareaIds = (tareasRes.data ?? []).map((t) => t.id as string);
+  const [subtareasRes, pagosRes] = await Promise.all([
+    tareaIds.length
+      ? sb.from("proyecto_subtareas").select("id, tarea_id, titulo, hecho, responsable_id, orden").in("tarea_id", tareaIds).order("orden", { ascending: true })
+      : Promise.resolve({ data: [] as { id: string; tarea_id: string; titulo: string; hecho: boolean; responsable_id: string | null; orden: number }[] }),
+    ventaId
+      ? sb.from("pagos").select("id, fecha, monto_mxn, medio_pago, tipo").eq("venta_id", ventaId).order("fecha", { ascending: false })
+      : Promise.resolve({ data: [] as { id: string; fecha: string; monto_mxn: number; medio_pago: string | null; tipo: string | null }[] }),
+  ]);
+
+  const equipoMap = new Map<string, string>();
+  for (const e of equipoRes.data ?? []) equipoMap.set(e.id as string, e.nombre as string);
+
+  const metricasPorCode = new Map<string, PostMetricas>();
+  for (const sp of postsRes.data ?? []) {
+    const code = extraerShortcode(sp.permalink as string | null);
+    if (!code) continue;
+    const likes = Number(sp.likes) || 0, comentarios = Number(sp.comentarios) || 0;
+    const guardados = Number(sp.guardados) || 0, compartidos = Number(sp.compartidos) || 0;
+    metricasPorCode.set(code, {
+      media_id: sp.media_id as string, permalink: (sp.permalink as string | null) ?? null,
+      likes, comentarios, guardados, compartidos,
+      alcance: Number(sp.alcance) || 0, reproducciones: Number(sp.reproducciones) || 0,
+      interacciones: likes + comentarios + guardados + compartidos,
+    });
+  }
+
+  const subtareasPorTarea = new Map<string, SubTarea[]>();
+  for (const s of subtareasRes.data ?? []) {
+    const tid = s.tarea_id as string;
+    const arr = subtareasPorTarea.get(tid) ?? [];
+    const srid = (s.responsable_id as string | null) ?? null;
+    arr.push({
+      id: s.id as string, titulo: s.titulo as string, hecho: Boolean(s.hecho), orden: Number(s.orden) || 0,
+      responsable_id: srid, responsable: srid ? equipoMap.get(srid) ?? null : null,
+    });
+    subtareasPorTarea.set(tid, arr);
+  }
+
+  const tareas: ProyectoTarea[] = (tareasRes.data ?? []).map((t) => {
+    const rid = (t.responsable_id as string | null) ?? null;
+    return {
+      id: t.id as string, titulo: t.titulo as string, hecho: Boolean(t.hecho),
+      responsable_id: rid, responsable: rid ? equipoMap.get(rid) ?? null : null, orden: Number(t.orden) || 0,
+      notas: (t.notas as string | null) ?? null, fecha: (t.fecha as string | null) ?? null,
+      link_post: (t.link_post as string | null) ?? null,
+      metricas: metricasPorCode.get(extraerShortcode(t.link_post as string | null) ?? "") ?? null,
+      visible_cliente: t.visible_cliente !== false,
+      revision: Number(t.revision) || 0,
+      subtareas: subtareasPorTarea.get(t.id as string) ?? [],
+    };
+  });
+
+  let progreso = 0;
+  if (tareas.length) {
+    const sum = tareas.reduce((a, t) =>
+      a + (t.hecho ? 1 : (t.subtareas.length ? t.subtareas.filter((s) => s.hecho).length / t.subtareas.length : 0)), 0);
+    progreso = Math.round((sum / tareas.length) * 100);
+  }
+
+  const venta = ventaRes.data;
+  const ventaTotal = venta ? Number(venta.total_mxn) || 0 : 0;
+  const pagos: PagoProyecto[] = (pagosRes.data ?? []).map((pg) => ({
+    id: pg.id as string, fecha: pg.fecha as string, monto_mxn: Number(pg.monto_mxn) || 0,
+    medio_pago: (pg.medio_pago as string | null) ?? null, tipo: (pg.tipo as string | null) ?? null,
+  }));
+  const cobrado = pagos.length ? pagos.reduce((a, pg) => a + pg.monto_mxn, 0) : ventaTotal;
+  const ventaSaldo = Math.max(0, ventaTotal - cobrado);
+
+  const rid = (p.responsable_id as string | null) ?? null;
+  const respIds = (((p.responsables as string[] | null) ?? (rid ? [rid] : [])) as string[]).filter(Boolean);
+  const respNombres = respIds.map((r) => equipoMap.get(r)).filter((n): n is string => !!n);
+
+  const hoyStr = new Date().toISOString().slice(0, 10);
+  const fechaEntrega = (p.fecha_entrega as string | null) ?? null;
+  const entregado = ["entregado", "cerrado"].includes(p.estado as string);
+  let diasParaEntrega: number | null = null;
+  let diasDeAtraso: number | null = null;
+  let saludEntrega: SaludEntrega = "sin_fecha";
+  if (entregado) {
+    saludEntrega = "entregado";
+  } else if (fechaEntrega) {
+    const diff = Math.round((new Date(fechaEntrega + "T12:00:00").getTime() - new Date(hoyStr + "T12:00:00").getTime()) / 86400000);
+    if (diff < 0) {
+      diasDeAtraso = -diff;
+      saludEntrega = "atrasado";
+    } else {
+      diasParaEntrega = diff;
+      const umbral = referencia?.mediana != null ? Math.max(2, Math.round(referencia.mediana * 0.25)) : 3;
+      saludEntrega = diff <= umbral ? "en_riesgo" : "a_tiempo";
+    }
+  }
+
+  const contactoRaw = p.contactos as { nombre: string | null; email: string | null; telefono: string | null } | null;
+
+  return {
+    id: p.id as string, folio: p.folio as string | null, clase: (p.clase as "produccion" | "interna") ?? "produccion",
+    titulo: p.titulo as string, tipo: p.tipo as string | null, estado: p.estado as string, prioridad: (p.prioridad as string) || "media",
+    contacto: contactoRaw?.nombre ?? null, contacto_id: (p.contacto_id as string | null) ?? null,
+    venta_id: ventaId, ventaTotal, ventaSaldo,
+    responsable_id: rid, responsable: rid ? equipoMap.get(rid) ?? null : null,
+    responsables: respIds, responsablesNombres: respNombres,
+    fecha_inicio: p.fecha_inicio as string | null, fecha_entrega: fechaEntrega,
+    fecha_entrega_real: p.fecha_entrega_real as string | null,
+    fechaVenta: venta?.fecha ?? null,
+    creado: ((p.created_at as string | null) ?? "").slice(0, 10),
+    brief: p.brief as string | null, entregable_url: p.entregable_url as string | null, notas: p.notas as string | null,
+    drive_folder_id: (p.drive_folder_id as string | null) ?? null,
+    plataforma: (p.plataforma as string | null) ?? null,
+    fecha_publicacion: (p.fecha_publicacion as string | null) ?? null,
+    link_post: (p.link_post as string | null) ?? null,
+    metricas: metricasPorCode.get(extraerShortcode(p.link_post as string | null) ?? "") ?? null,
+    tareas, progreso,
+    revisionActual: Number(p.revision_actual) || 0,
+    contactoEmail: contactoRaw?.email ?? null,
+    contactoTelefono: contactoRaw?.telefono ?? null,
+    pagos,
+    contratos: (contratosRes.data ?? []).map((c) => ({
+      id: c.id as string, folio: (c.folio as string | null) ?? null, estado: c.estado as string,
+      monto: Number(c.monto) || 0, moneda: (c.moneda as string | null) ?? null, created_at: c.created_at as string,
+    })),
+    cotizacion: cotizacionRes.data
+      ? { id: cotizacionRes.data.id, folio: cotizacionRes.data.folio ?? null, estado: cotizacionRes.data.estado, created_at: cotizacionRes.data.created_at }
+      : null,
+    renderJobs: (renderJobsRes.data ?? []).map((r) => ({
+      id: r.id as string, tipo: r.tipo as string, estado: r.estado as string,
+      tarea_id: (r.tarea_id as string | null) ?? null, created_at: r.created_at as string,
+      drive_urls: (r.drive_urls as string[] | null) ?? null,
+    })),
+    renderInventario: (renderInvRes.data ?? []) as RenderInventarioItem[],
+    actividad: (actividadRes.data ?? []) as ActividadItem[],
+    diasParaEntrega, diasDeAtraso, saludEntrega,
+    entregasReferencia: referencia,
+  };
 }
 
 // ─── Rendimiento del equipo ──────────────────────────────────────────────────

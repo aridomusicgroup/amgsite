@@ -332,3 +332,64 @@ export async function getClienteContratos(email: string): Promise<ClienteContrat
     return [];
   }
 }
+
+export interface ArchivoRender {
+  /** Índice dentro del trabajo — así el navegador nunca ve el id de Drive. */
+  idx: number;
+  nombre: string;
+  /** Se puede reproducir en el navegador (MP3); si no, sólo se descarga. */
+  audio: boolean;
+}
+
+export interface RenderDelPedido {
+  jobId: string;
+  tipo: "previo" | "entregables" | "stems";
+  previoNum: number | null;
+  fecha: string;
+  archivos: ArchivoRender[];
+}
+
+/**
+ * Los renders que el equipo decidió COMPARTIR con este cliente, del más
+ * reciente al más viejo.
+ *
+ * `compartir` es la única puerta: un previo interno (la casilla desmarcada al
+ * encolarlo) no existe para el cliente aunque esté subido a Drive.
+ */
+export async function rendersDelPedido(email: string, orderId: string): Promise<RenderDelPedido[]> {
+  const proy = await proyectoDelPedido(email, orderId);
+  if (!proy) return [];
+
+  const sb = supabaseAdmin();
+  try {
+    const { data } = await sb
+      .from("render_jobs")
+      .select("id, tipo, previo_num, drive_urls, updated_at")
+      .eq("proyecto_id", proy.proyectoId)
+      .eq("compartir", true)
+      .eq("estado", "listo")
+      .not("drive_urls", "is", null)
+      .order("updated_at", { ascending: false });
+
+    return (data ?? [])
+      .map((j) => {
+        const urls = (j.drive_urls as { archivo: string }[] | null) ?? [];
+        return {
+          jobId: j.id as string,
+          tipo: j.tipo as RenderDelPedido["tipo"],
+          previoNum: j.previo_num === null || j.previo_num === undefined ? null : Number(j.previo_num),
+          fecha: j.updated_at as string,
+          archivos: urls.map((a, idx) => ({
+            idx,
+            nombre: a.archivo,
+            audio: /\.mp3$/i.test(a.archivo),
+          })),
+        };
+      })
+      .filter((r) => r.archivos.length > 0);
+  } catch {
+    // La columna `compartir` puede no existir todavía (SQL sin correr): el
+    // panel del cliente no debe romperse por eso.
+    return [];
+  }
+}

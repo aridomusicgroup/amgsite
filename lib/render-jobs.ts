@@ -69,6 +69,8 @@ export interface OpcionesRender {
   rpp?: string;
   rango?: { inicio: number; fin: number } | null;
   pistas?: string[] | null;
+  /** Avisar al cliente y mostrarle el archivo en /cuenta cuando quede listo. */
+  avisar?: boolean;
 }
 
 /** Un archivo ya subido a Drive por el script local. */
@@ -103,6 +105,8 @@ export interface Renderizable {
   cliente: string;
   folio: string | null;
   estado: string;
+  /** Si tiene pedido ligado y correo: sin esto el aviso al cliente no puede salir. */
+  puedeAvisar: boolean;
   ultimoPrevio: number;
   jobs: RenderJob[];
   /** Null mientras el script local no haya escaneado la carpeta todavía. */
@@ -133,7 +137,7 @@ export async function renderizables(): Promise<Renderizable[]> {
 
   const { data: proyectos } = await sb
     .from("proyectos")
-    .select("id, folio, titulo, tipo, estado, contactos(nombre)")
+    .select("id, folio, titulo, tipo, estado, order_id, contactos(nombre, email)")
     .eq("clase", "produccion")
     .in("estado", ESTADOS_ACTIVOS)
     .not("venta_id", "is", null)
@@ -179,6 +183,8 @@ export async function renderizables(): Promise<Renderizable[]> {
   for (const p of proyectos) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cliente = ((p.contactos as any)?.nombre as string | null) ?? "—";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const puedeAvisar = Boolean(p.order_id && ((p.contactos as any)?.email as string | null)?.trim());
     const esAlbum = TIPOS_ALBUM.includes(p.tipo as string);
     const propias = (canciones ?? []).filter((c) => c.proyecto_id === p.id);
 
@@ -195,6 +201,7 @@ export async function renderizables(): Promise<Renderizable[]> {
           cliente,
           folio: (p.folio as string | null) ?? null,
           estado: p.estado as string,
+          puedeAvisar,
           ultimoPrevio: Math.max(0, ...js.filter((j) => j.tipo === "previo" && j.previoNum).map((j) => j.previoNum!)),
           jobs: js,
           inventario: inventarios.get(c.id as string) ?? null,
@@ -213,6 +220,7 @@ export async function renderizables(): Promise<Renderizable[]> {
       cliente,
       folio: (p.folio as string | null) ?? null,
       estado: p.estado as string,
+      puedeAvisar,
       ultimoPrevio: Math.max(0, ...js.filter((j) => j.tipo === "previo" && j.previoNum).map((j) => j.previoNum!)),
       jobs: js,
       inventario: inventarios.get(p.id as string) ?? null,
@@ -266,6 +274,7 @@ export async function encolarRender(
       proyecto_id: proyectoId, tarea_id: tareaId, tipo,
       previo_num: previoNum, pedido_por: pedidoPor,
       opciones: opciones && Object.keys(opciones).length ? opciones : null,
+      compartir: opciones?.avisar === true,
     })
     .select("id")
     .single();

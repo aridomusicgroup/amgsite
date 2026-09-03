@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
   const q = (url.searchParams.get("q") || "").trim();
   const desde = (url.searchParams.get("desde") || "").trim();
   const modulo = (url.searchParams.get("modulo") || "").trim() as Modulo | "";
+  const proyectoId = (url.searchParams.get("proyecto_id") || "").trim();
 
   try {
     const sb = supabaseAdmin();
@@ -31,9 +32,11 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(limit);
 
-    // Campanita por módulo. Producción se reconoce por proyecto_id/tarea_id
-    // porque sus eventos son anteriores a la columna `entidad` y no la llenan.
-    if (modulo === "produccion") {
+    // Bitácora de UN proyecto (pestaña Actividad de la página de detalle) — pasa
+    // por encima del filtro por módulo, no se combinan.
+    if (proyectoId) {
+      query = query.eq("proyecto_id", proyectoId);
+    } else if (modulo === "produccion") {
       query = query.or(
         `proyecto_id.not.is.null,tarea_id.not.is.null,entidad.in.(${ENTIDADES_DE.produccion.join(",")})`,
       );

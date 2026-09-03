@@ -16,6 +16,7 @@
     "@supabase/supabase-js": "^2.108.1",
     "@types/web-push": "^3.6.4",
     "@vercel/analytics": "^2.0.1",
+    "framer-motion": "^11.18.2",
     "hls.js": "^1.6.16",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",

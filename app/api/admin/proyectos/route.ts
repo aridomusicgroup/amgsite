@@ -7,6 +7,7 @@ import { seguimientoAuto, DIAS_TRAS_ENTREGA } from "@/lib/seguimiento-auto";
 import { pushAResponsables } from "@/lib/push";
 import { crearTareasDeProyecto, parseInstrumentos } from "@/lib/produccion-tareas";
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
+import { papeleraCarpeta } from "@/lib/drive-oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -371,16 +372,53 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-// ── Eliminar proyecto (SOLO admin total) ── tareas se borran por cascade
+// ── Eliminar proyecto (SOLO admin total) ── tareas/subtareas/recordatorios/
+// renders se borran por cascade en la BD. Venta+pagos, contrato y Drive son
+// opcionales — el que llama (el diálogo de confirmación) decide cuáles, porque
+// son dinero, un documento legal o archivos: nunca se borran solo por inercia.
 export async function DELETE(req: NextRequest) {
-  if (!(await getFullAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const email = await getFullAdminEmail();
+  if (!email) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const b = await req.json().catch(() => ({}));
   const id = String(b.id || new URL(req.url).searchParams.get("id") || "").trim();
   if (!id) return NextResponse.json({ error: "Falta el id del proyecto." }, { status: 400 });
 
   const sb = supabaseAdmin();
+  const { data: proy } = await sb.from("proyectos").select("titulo, folio, venta_id, drive_folder_id").eq("id", id).single();
+  if (!proy) return NextResponse.json({ error: "Proyecto no encontrado." }, { status: 404 });
+
+  if (b.eliminarDrive && proy.drive_folder_id) {
+    try { await papeleraCarpeta(proy.drive_folder_id as string); } catch { /* best-effort: no bloquea el borrado del proyecto */ }
+  }
+  if (b.eliminarContrato) {
+    const { error: errContrato } = await sb.from("contratos").delete().eq("proyecto_id", id);
+    if (errContrato) return NextResponse.json({ error: `No se pudo borrar el contrato: ${errContrato.message}` }, { status: 500 });
+  }
+  if (b.eliminarVenta && proy.venta_id) {
+    // La FK de interacciones a ventas NO tiene cascade (mismo caso que el borrado
+    // normal de una venta en /api/admin/ventas) — sin esto, el delete de abajo
+    // fallaría por violación de FK y el catch silencioso lo dejaría pasar como
+    // si sí hubiera borrado la venta (bitácora mintiendo, proyecto ya borrado).
+    await sb.from("interacciones").update({ venta_id: null }).eq("venta_id", proy.venta_id);
+    // pagos_musico SÍ tiene cascade sobre venta_id — borrar la venta se lleva
+    // también los pagos a músicos de esa venta (costo, no solo el anticipo/saldo).
+    const { error: errVenta } = await sb.from("ventas").delete().eq("id", proy.venta_id); // pagos y pagos_musico se borran por cascade
+    if (errVenta) return NextResponse.json({ error: `No se pudo borrar la venta: ${errVenta.message}` }, { status: 500 });
+  }
+
   const { error } = await sb.from("proyectos").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  try {
+    await registrarActividad(sb, {
+      tipo: "proyecto_estado",
+      titulo: `${await nombreDeActor(sb, email)} eliminó el proyecto "${proy.titulo}" (${proy.folio ?? "sin folio"})`,
+      actor: email,
+      entidad_nombre: `${proy.folio ?? ""} ${proy.titulo}`.trim(),
+      meta: { eliminarVenta: !!b.eliminarVenta, eliminarContrato: !!b.eliminarContrato, eliminarDrive: !!b.eliminarDrive },
+    });
+  } catch { /* bitácora best-effort, y ya se confirmó que el borrado sí ocurrió */ }
+
   return NextResponse.json({ ok: true });
 }

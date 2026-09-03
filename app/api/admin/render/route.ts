@@ -40,6 +40,8 @@ function leerOpciones(raw: unknown): { ok: true; op: OpcionesRender | null } | {
     op.rango = { inicio, fin };
   }
 
+  if (b.avisar !== undefined) op.avisar = b.avisar === true;
+
   if (b.pistas !== undefined && b.pistas !== null) {
     if (!Array.isArray(b.pistas)) return { ok: false, error: "La lista de pistas no es válida." };
     const pistas = b.pistas.map((p) => String(p).trim()).filter(Boolean);

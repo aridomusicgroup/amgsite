@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { X, Loader2, FolderOpen, AlertTriangle } from "lucide-react";
+import { X, Loader2, FolderOpen, AlertTriangle, Send } from "lucide-react";
 import type { ArchivoRpp, Renderizable, TipoRender, OpcionesRender } from "@/lib/render-jobs";
 
 /**
@@ -52,6 +52,9 @@ export function RenderOpciones({ p, tipo, enviando, onCerrar, onConfirmar }: {
   const seleccion = actual?.seleccion?.valida ? actual.seleccion : null;
   const pistas = actual?.pistas ?? [];
 
+  // Marcado por defecto: lo normal al sacar un render es que el cliente lo vea.
+  // Desmarcarlo lo deja sólo para uso interno — ni correo ni aparece en /cuenta.
+  const [avisar, setAvisar] = useState(p.puedeAvisar);
   const [modo, setModo] = useState<ModoRango>("todo");
   const [desde, setDesde] = useState(0);
   const [hasta, setHasta] = useState(Math.max(0, marcadores.length - 1));
@@ -93,7 +96,7 @@ export function RenderOpciones({ p, tipo, enviando, onCerrar, onConfirmar }: {
 
   const confirmar = () => {
     if (!listo || !actual) return;
-    const op: OpcionesRender = { rpp: actual.archivo };
+    const op: OpcionesRender = { rpp: actual.archivo, avisar: avisar && p.puedeAvisar };
     if (rango) op.rango = rango;
     if (tipo === "stems") op.pistas = [...marcadas];
     onConfirmar(op);
@@ -240,6 +243,32 @@ export function RenderOpciones({ p, tipo, enviando, onCerrar, onConfirmar }: {
                   )}
                 </Seccion>
               )}
+
+              <Seccion titulo="Cliente">
+                <label
+                  className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
+                    avisar ? "bg-lgb-red/10 border-lgb-red/40" : "bg-white/5 border-transparent"
+                  } ${p.puedeAvisar ? "cursor-pointer hover:bg-white/10" : "opacity-40 cursor-not-allowed"}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={avisar}
+                    disabled={!p.puedeAvisar}
+                    onChange={(e) => setAvisar(e.target.checked)}
+                    className="accent-lgb-red mt-0.5"
+                  />
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-1.5 text-sm">
+                      <Send size={13} /> Avisar a {p.cliente}
+                    </span>
+                    <span className="block text-[11px] text-white/40 mt-0.5 leading-relaxed">
+                      {p.puedeAvisar
+                        ? "Le llega un correo y el archivo aparece en su cuenta para escucharlo. Sin marcar, el render queda solo para uso interno."
+                        : "Este proyecto no tiene pedido ligado o el cliente no tiene correo, así que no se le puede avisar."}
+                    </span>
+                  </span>
+                </label>
+              </Seccion>
             </>
           )}
         </div>
