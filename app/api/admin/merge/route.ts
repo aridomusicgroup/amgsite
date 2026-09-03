@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { TABLAS_DEL_CONTACTO, heredarSeguimiento } from "@/lib/fusionar-contactos";
 
 export const dynamic = "force-dynamic";
 
@@ -48,9 +49,10 @@ export async function POST(req: NextRequest) {
   const etapaBest = miembros.reduce((best, m) => (ETAPA_ORDER[m.etapa] > ETAPA_ORDER[best] ? m.etapa : best), surv.etapa);
 
   for (const l of losers) {
-    await sb.from("ventas").update({ contacto_id: surv.id }).eq("contacto_id", l.id);
-    await sb.from("identidades_canal").update({ contacto_id: surv.id }).eq("contacto_id", l.id);
-    await sb.from("interacciones").update({ contacto_id: surv.id }).eq("contacto_id", l.id);
+    for (const t of TABLAS_DEL_CONTACTO) {
+      await sb.from(t).update({ contacto_id: surv.id }).eq("contacto_id", l.id);
+    }
+    await heredarSeguimiento(sb, l.id, surv.id);
     await sb.from("contactos").update({ merged_into: surv.id }).eq("id", l.id);
   }
 
