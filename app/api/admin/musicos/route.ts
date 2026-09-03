@@ -16,7 +16,7 @@ function parseInstrumentos(v: unknown): string[] {
   return out;
 }
 
-const SEL = "id, nombre, instrumentos, tarifa, telefono, activo, nota";
+const SEL = "id, nombre, instrumentos, tarifa, telefono, email, activo, nota";
 
 // ── GET: catálogo de músicos (todos; el cliente filtra activos si quiere) ──
 export async function GET() {
@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
     instrumentos: parseInstrumentos(b.instrumentos),
     tarifa: Number(b.tarifa) || 0,
     telefono: (b.telefono || "").trim() || null,
+    email: (b.email || "").trim().toLowerCase() || null,
     nota: (b.nota || "").trim() || null,
     activo: b.activo === undefined ? true : Boolean(b.activo),
   }).select(SEL).single();
@@ -59,6 +60,7 @@ export async function PATCH(req: NextRequest) {
   if ("instrumentos" in b) patch.instrumentos = parseInstrumentos(b.instrumentos);
   if (b.tarifa !== undefined) patch.tarifa = Number(b.tarifa) || 0;
   if ("telefono" in b) patch.telefono = b.telefono ? String(b.telefono).trim() : null;
+  if ("email" in b) patch.email = b.email ? String(b.email).trim().toLowerCase() : null;
   if ("nota" in b) patch.nota = b.nota ? String(b.nota).trim() : null;
   if ("activo" in b) patch.activo = Boolean(b.activo);
 

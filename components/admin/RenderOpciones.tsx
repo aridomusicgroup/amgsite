@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { X, Loader2, FolderOpen, AlertTriangle, Send } from "lucide-react";
-import type { ArchivoRpp, Renderizable, TipoRender, OpcionesRender } from "@/lib/render-jobs";
+import type { ArchivoRpp, Renderizable, TipoRender, OpcionesRender, MusicoLite } from "@/lib/render-jobs";
 
 /**
  * Cuadro de opciones antes de encolar un render.
@@ -15,12 +15,14 @@ const TITULO: Record<TipoRender, string> = {
   previo: "Previo",
   entregables: "Entregables",
   stems: "Stems",
+  musico: "Previo para músico",
 };
 
 const FORMATO: Record<TipoRender, string> = {
   previo: "MP3 128 kbps · 44.1 kHz",
   entregables: "MP3 320 kbps · 48 kHz + WAV 32-bit float",
   stems: "WAV 24-bit por pista, con mezcla y máster",
+  musico: "MP3 128 kbps · 44.1 kHz · con BPM y tonalidad en el nombre",
 };
 
 type ModoRango = "todo" | "seleccion" | "marcadores";
@@ -37,13 +39,20 @@ function cuando(ms: number): string {
   return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export function RenderOpciones({ p, tipo, enviando, onCerrar, onConfirmar }: {
+export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirmar }: {
   p: Renderizable;
   tipo: TipoRender;
+  musicos: MusicoLite[];
   enviando: boolean;
   onCerrar: () => void;
   onConfirmar: (op: OpcionesRender) => void;
 }) {
+  const esMusico = tipo === "musico";
+  // Sólo se puede mandar a quien tenga correo registrado.
+  const conCorreo = musicos.filter((m) => m.email);
+  const [musicoId, setMusicoId] = useState("");
+  const [bpm, setBpm] = useState("");
+  const [tonalidad, setTonalidad] = useState("");
   const archivos = useMemo(() => p.inventario?.proyectos ?? [], [p.inventario]);
   const [rpp, setRpp] = useState(archivos[0]?.archivo ?? "");
   const actual: ArchivoRpp | undefined = archivos.find((a) => a.archivo === rpp) ?? archivos[0];
@@ -92,13 +101,25 @@ export function RenderOpciones({ p, tipo, enviando, onCerrar, onConfirmar }: {
 
   const rangoMalo = modo === "marcadores" && (!rango || rango.fin - rango.inicio < 1);
   const sinPistas = tipo === "stems" && marcadas.size === 0;
-  const listo = !!actual && !rangoMalo && !sinPistas && !enviando;
+  // BPM y tonalidad son obligatorios: van en el nombre del archivo y son lo que
+  // el músico necesita para ensayar. Sin eso el botón no se habilita.
+  const bpmNum = Number(bpm);
+  const musicoIncompleto =
+    esMusico && (!musicoId || !bpm || !Number.isFinite(bpmNum) || bpmNum < 20 || bpmNum > 400 || !tonalidad.trim());
+  const listo = !!actual && !rangoMalo && !sinPistas && !musicoIncompleto && !enviando;
 
   const confirmar = () => {
     if (!listo || !actual) return;
-    const op: OpcionesRender = { rpp: actual.archivo, avisar: avisar && p.puedeAvisar };
+    const op: OpcionesRender = { rpp: actual.archivo };
     if (rango) op.rango = rango;
     if (tipo === "stems") op.pistas = [...marcadas];
+    if (esMusico) {
+      op.musicoId = musicoId;
+      op.bpm = bpmNum;
+      op.tonalidad = tonalidad.trim();
+    } else {
+      op.avisar = avisar && p.puedeAvisar;
+    }
     onConfirmar(op);
   };
 
@@ -244,6 +265,60 @@ export function RenderOpciones({ p, tipo, enviando, onCerrar, onConfirmar }: {
                 </Seccion>
               )}
 
+              {esMusico ? (
+                <Seccion titulo="Para quién es" nota="obligatorio">
+                  {conCorreo.length === 0 ? (
+                    <Aviso>
+                      Ningún músico tiene correo registrado. Agrégaselo en Ajustes → Músicos y
+                      vuelve aquí.
+                    </Aviso>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      <select
+                        value={musicoId}
+                        onChange={(e) => setMusicoId(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-lgb-red cursor-pointer"
+                      >
+                        <option value="" className="bg-lgb-dark">Elige al músico…</option>
+                        {conCorreo.map((m) => (
+                          <option key={m.id} value={m.id} className="bg-lgb-dark">
+                            {m.nombre}{m.instrumentos.length ? ` — ${m.instrumentos.join(", ")}` : ""}
+                          </option>
+                        ))}
+                      </select>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="block">
+                          <span className="block text-[11px] text-white/40 mb-1">BPM</span>
+                          <input
+                            type="number" min={20} max={400} value={bpm} placeholder="154"
+                            onChange={(e) => setBpm(e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-white/25 focus:outline-none focus:border-lgb-red"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="block text-[11px] text-white/40 mb-1">Tonalidad</span>
+                          <input
+                            type="text" maxLength={12} value={tonalidad} placeholder="Am"
+                            onChange={(e) => setTonalidad(e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-white/25 focus:outline-none focus:border-lgb-red"
+                          />
+                        </label>
+                      </div>
+
+                      <p className="text-[11px] text-white/30 leading-relaxed">
+                        Van en el nombre del archivo:{" "}
+                        <span className="text-white/50">
+                          {p.titulo.toUpperCase()} {bpm || "___"}bpm {tonalidad || "__"}.mp3
+                        </span>
+                        <br />
+                        Se le manda por correo un enlace de Drive. Ese enlace lo puede abrir
+                        cualquiera que lo tenga, así que no lo reenvíes de más.
+                      </p>
+                    </div>
+                  )}
+                </Seccion>
+              ) : (
               <Seccion titulo="Cliente">
                 <label
                   className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
@@ -269,6 +344,7 @@ export function RenderOpciones({ p, tipo, enviando, onCerrar, onConfirmar }: {
                   </span>
                 </label>
               </Seccion>
+              )}
             </>
           )}
         </div>

@@ -10,6 +10,7 @@ interface Musico {
   instrumentos: string[];
   tarifa: number;
   telefono: string | null;
+  email: string | null;
   activo: boolean;
   nota: string | null;
 }
@@ -24,9 +25,9 @@ const peso = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
 export function MusicosSection() {
   const [musicos, setMusicos] = useState<Musico[] | null>(null);
   const [busy, setBusy] = useState(false);
-  const [nuevo, setNuevo] = useState({ nombre: "", instrumentos: "", tarifa: "" });
+  const [nuevo, setNuevo] = useState({ nombre: "", instrumentos: "", tarifa: "", email: "", telefono: "" });
   const [editId, setEditId] = useState<string | null>(null);
-  const [ef, setEf] = useState({ nombre: "", instrumentos: "", tarifa: "" });
+  const [ef, setEf] = useState({ nombre: "", instrumentos: "", tarifa: "", email: "", telefono: "" });
 
   const inp = "bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-lgb-red";
 
@@ -49,7 +50,7 @@ export function MusicosSection() {
       });
       const d = await r.json();
       if (!r.ok) { toast(d.error || "No se pudo guardar"); return; }
-      setNuevo({ nombre: "", instrumentos: "", tarifa: "" });
+      setNuevo({ nombre: "", instrumentos: "", tarifa: "", email: "", telefono: "" });
       await cargar();
       toast("✓ Músico agregado");
     } catch { toast("Error de red"); } finally { setBusy(false); }
@@ -57,7 +58,7 @@ export function MusicosSection() {
 
   const abrirEdit = (m: Musico) => {
     setEditId(m.id);
-    setEf({ nombre: m.nombre, instrumentos: m.instrumentos.join(", "), tarifa: String(m.tarifa || "") });
+    setEf({ nombre: m.nombre, instrumentos: m.instrumentos.join(", "), tarifa: String(m.tarifa || ""), email: m.email ?? "", telefono: m.telefono ?? "" });
   };
   const guardarEdit = async (id: string) => {
     setBusy(true);
@@ -85,7 +86,8 @@ export function MusicosSection() {
     <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
       <h2 className="font-coolvetica text-lg">Músicos (proveedores)</h2>
       <p className="text-white/40 text-xs mt-0.5 mb-3">
-        Quién toca qué instrumento. Se usa para sugerir a quién pagar según los instrumentos de cada venta.
+        Quién toca qué instrumento. Se usa para sugerir a quién pagar según los instrumentos de cada venta,
+        y el correo es a donde le llega el previo cuando le mandas uno desde REAPER.
       </p>
 
       {musicos === null ? (
@@ -99,6 +101,8 @@ export function MusicosSection() {
                   <input value={ef.nombre} onChange={(e) => setEf((s) => ({ ...s, nombre: e.target.value }))} placeholder="Nombre" className={`${inp} w-32`} />
                   <input value={ef.instrumentos} onChange={(e) => setEf((s) => ({ ...s, instrumentos: e.target.value }))} placeholder="tololoche, bajo" className={`${inp} flex-1 min-w-[140px]`} />
                   <input type="number" step="any" value={ef.tarifa} onChange={(e) => setEf((s) => ({ ...s, tarifa: e.target.value }))} placeholder="Tarifa" className={`${inp} w-24`} />
+                  <input type="email" value={ef.email} onChange={(e) => setEf((s) => ({ ...s, email: e.target.value }))} placeholder="correo@ejemplo.com" className={`${inp} flex-1 min-w-[160px]`} />
+                  <input type="tel" value={ef.telefono} onChange={(e) => setEf((s) => ({ ...s, telefono: e.target.value }))} placeholder="Teléfono" className={`${inp} w-36`} />
                   <button onClick={() => guardarEdit(m.id)} disabled={busy} className="flex items-center gap-1 bg-lgb-red text-white px-2.5 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50">
                     {busy ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Guardar
                   </button>
@@ -113,6 +117,8 @@ export function MusicosSection() {
                     )) : <span className="text-white/30 text-xs">sin instrumentos</span>}
                   </span>
                   {m.tarifa > 0 && <span className="text-white/40 text-xs">· {peso(m.tarifa)}</span>}
+                  {m.email && <span className="text-white/40 text-xs truncate">· {m.email}</span>}
+                  {m.telefono && <span className="text-white/40 text-xs">· {m.telefono}</span>}
                   <div className="ml-auto flex items-center gap-1">
                     <button onClick={() => abrirEdit(m)} className="text-white/30 hover:text-white p-1" title="Editar"><Pencil size={13} /></button>
                     <button onClick={() => borrar(m.id)} className="text-white/25 hover:text-red-300 p-1" title="Eliminar"><Trash2 size={13} /></button>
@@ -130,11 +136,13 @@ export function MusicosSection() {
         <input value={nuevo.nombre} onChange={(e) => setNuevo((s) => ({ ...s, nombre: e.target.value }))} placeholder="Nombre (ej. Anel Rocha)" className={`${inp} w-40`} />
         <input value={nuevo.instrumentos} onChange={(e) => setNuevo((s) => ({ ...s, instrumentos: e.target.value }))} placeholder="Instrumentos: tololoche, bajo" className={`${inp} flex-1 min-w-[160px]`} />
         <input type="number" step="any" value={nuevo.tarifa} onChange={(e) => setNuevo((s) => ({ ...s, tarifa: e.target.value }))} placeholder="Tarifa (opcional)" className={`${inp} w-32`} />
+        <input type="email" value={nuevo.email} onChange={(e) => setNuevo((s) => ({ ...s, email: e.target.value }))} placeholder="correo@ejemplo.com" className={`${inp} flex-1 min-w-[170px]`} />
+        <input type="tel" value={nuevo.telefono} onChange={(e) => setNuevo((s) => ({ ...s, telefono: e.target.value }))} placeholder="Teléfono" className={`${inp} w-36`} />
         <button onClick={agregar} disabled={busy} className="flex items-center gap-1 bg-lgb-red text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50">
           {busy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Agregar
         </button>
       </div>
-      <p className="text-white/25 text-[10px] mt-1.5">Separa varios instrumentos con coma. Ej. Anel Rocha → tololoche, bajo.</p>
+      <p className="text-white/25 text-[10px] mt-1.5">Separa varios instrumentos con coma. Ej. Anel Rocha → tololoche, bajo. Sin correo no se le puede mandar un previo.</p>
     </div>
   );
 }

@@ -376,6 +376,44 @@ export function renderListoEmail(d: {
 }
 
 /**
+ * Previo para el músico de sesión: la pista sobre la que va a grabar.
+ *
+ * Lleva BPM y tonalidad en grande porque es lo primero que necesita para
+ * preparar su parte — el nombre del archivo también los trae, pero en el correo
+ * se ven sin abrir nada.
+ */
+export function previoMusicoEmail(d: {
+  musico: string | null;
+  proyecto: string;
+  bpm: number;
+  tonalidad: string;
+  instrumentos: string[];
+  url: string;
+}): { subject: string; html: string } {
+  const parte = d.instrumentos.length ? ` de <b style="color:#fff;">${escHtml(d.instrumentos.join(", "))}</b>` : "";
+  const content = `
+    <tr><td>
+      <h1 style="color:#fff;font-size:24px;margin:0 0 6px;">Pista lista para grabar 🎷</h1>
+      <p style="color:#999;font-size:14px;margin:0 0 16px;">${d.musico ? `${escHtml(d.musico)}, aquí` : "Aquí"} está el previo de <b style="color:#fff;">${escHtml(d.proyecto)}</b> para que prepares tu parte${parte}.</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#141414;border:1px solid #222;border-radius:14px;margin-bottom:16px;">
+        <tr>
+          <td align="center" style="padding:16px;border-right:1px solid #222;">
+            <p style="color:#c42f42;font-size:11px;font-weight:bold;letter-spacing:2px;margin:0 0 4px;">TEMPO</p>
+            <p style="color:#fff;font-size:26px;font-weight:bold;margin:0;">${d.bpm}<span style="font-size:13px;color:#888;"> bpm</span></p>
+          </td>
+          <td align="center" style="padding:16px;">
+            <p style="color:#c42f42;font-size:11px;font-weight:bold;letter-spacing:2px;margin:0 0 4px;">TONALIDAD</p>
+            <p style="color:#fff;font-size:26px;font-weight:bold;margin:0;">${escHtml(d.tonalidad)}</p>
+          </td>
+        </tr>
+      </table>
+      <a href="${d.url}" style="display:block;background:#c42f42;color:#fff;text-decoration:none;text-align:center;padding:14px;border-radius:30px;font-size:15px;font-weight:bold;">Escuchar y descargar la pista</a>
+      <p style="color:#666;font-size:12px;margin:14px 0 0;">Se abre en Google Drive. Cualquier duda contéstanos este correo o mándanos WhatsApp.</p>
+    </td></tr>`;
+  return { subject: `🎷 ${d.proyecto} — ${d.bpm}bpm en ${d.tonalidad}`, html: wrap(content) };
+}
+
+/**
  * Correo de recompra: el mismo mensaje que se manda por WhatsApp, pero armado
  * como correo — con lo que le toca comprar después y un botón para contestar
  * por donde de verdad contesta la gente (WhatsApp).

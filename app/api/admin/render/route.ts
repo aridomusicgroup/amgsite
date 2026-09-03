@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDevEmail } from "@/lib/supabase/auth-server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { encolarRender, TIPOS_RENDER, type TipoRender, type OpcionesRender } from "@/lib/render-jobs";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +43,10 @@ function leerOpciones(raw: unknown): { ok: true; op: OpcionesRender | null } | {
 
   if (b.avisar !== undefined) op.avisar = b.avisar === true;
 
+  if (b.musicoId) op.musicoId = String(b.musicoId).trim();
+  if (b.bpm !== undefined && b.bpm !== null && b.bpm !== "") op.bpm = Number(b.bpm);
+  if (b.tonalidad) op.tonalidad = String(b.tonalidad).trim();
+
   if (b.pistas !== undefined && b.pistas !== null) {
     if (!Array.isArray(b.pistas)) return { ok: false, error: "La lista de pistas no es válida." };
     const pistas = b.pistas.map((p) => String(p).trim()).filter(Boolean);
@@ -68,6 +73,28 @@ export async function POST(req: NextRequest) {
 
   const op = leerOpciones(b.opciones);
   if (!op.ok) return NextResponse.json({ error: op.error }, { status: 400 });
+
+  // El previo de músico lleva bpm y tonalidad EN EL NOMBRE DEL ARCHIVO: es lo
+  // que necesita quien va a grabar encima. Sin eso el render no tiene sentido,
+  // así que se exige aquí y no sólo en el formulario.
+  if (tipo === "musico") {
+    const o = op.op;
+    if (!o?.musicoId) return NextResponse.json({ error: "Elige a qué músico se le manda." }, { status: 400 });
+    if (!o.bpm || !Number.isFinite(o.bpm) || o.bpm < 20 || o.bpm > 400) {
+      return NextResponse.json({ error: "El BPM tiene que ser un número entre 20 y 400." }, { status: 400 });
+    }
+    if (!o.tonalidad || o.tonalidad.length > 12) {
+      return NextResponse.json({ error: "Pon la tonalidad (ej. Am, F#, D)." }, { status: 400 });
+    }
+    const sb = supabaseAdmin();
+    const { data: m } = await sb.from("musicos").select("email").eq("id", o.musicoId).maybeSingle();
+    if (!m) return NextResponse.json({ error: "Ese músico ya no existe." }, { status: 409 });
+    if (!String(m.email || "").trim()) {
+      return NextResponse.json({ error: "Ese músico no tiene correo registrado. Agrégaselo en Ajustes." }, { status: 409 });
+    }
+  } else if (op.op?.musicoId || op.op?.bpm || op.op?.tonalidad) {
+    return NextResponse.json({ error: "Músico, BPM y tonalidad sólo aplican al previo de músico." }, { status: 400 });
+  }
   // Elegir pistas sólo tiene sentido en stems; en otro tipo sería una elección
   // silenciosamente ignorada.
   if (tipo !== "stems" && op.op?.pistas) {

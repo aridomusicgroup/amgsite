@@ -9,13 +9,14 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
  * disco: el script resuelve la carpeta igual que cuando la creó.
  */
 
-export const TIPOS_RENDER = ["previo", "entregables", "stems"] as const;
+export const TIPOS_RENDER = ["previo", "entregables", "stems", "musico"] as const;
 export type TipoRender = (typeof TIPOS_RENDER)[number];
 
 export const TIPO_RENDER_LABEL: Record<TipoRender, string> = {
   previo: "Previo",
   entregables: "Entregables",
   stems: "Stems",
+  musico: "Previo músico",
 };
 
 /** Etapas en las que todavía tiene sentido pedir un render. */
@@ -71,6 +72,19 @@ export interface OpcionesRender {
   pistas?: string[] | null;
   /** Avisar al cliente y mostrarle el archivo en /cuenta cuando quede listo. */
   avisar?: boolean;
+  /** Sólo en 'musico': a quién se le manda, y los datos que van en el nombre
+   *  del archivo. El músico los necesita para ensayar, así que son obligatorios. */
+  musicoId?: string;
+  bpm?: number;
+  tonalidad?: string;
+}
+
+/** Un músico de sesión al que se le puede mandar un previo. */
+export interface MusicoLite {
+  id: string;
+  nombre: string;
+  email: string | null;
+  instrumentos: string[];
 }
 
 /** Un archivo ya subido a Drive por el script local. */
@@ -91,6 +105,8 @@ export interface RenderJob {
   createdAt: string;
   /** Null si Drive no está conectado o la subida falló (los archivos siguen en disco). */
   driveUrls: ArchivoDrive[] | null;
+  /** Sólo en 'musico': el enlace público que se le mandó. */
+  enlacePublico: string | null;
 }
 
 /** Una cosa renderizable: una producción normal, o una canción de un EP/Álbum. */
@@ -124,6 +140,7 @@ function mapJob(r: Record<string, unknown>): RenderJob {
     error: (r.error as string | null) ?? null,
     createdAt: r.created_at as string,
     driveUrls: (r.drive_urls as ArchivoDrive[] | null) ?? null,
+    enlacePublico: (r.enlace_publico as string | null) ?? null,
   };
 }
 
@@ -275,9 +292,26 @@ export async function encolarRender(
       previo_num: previoNum, pedido_por: pedidoPor,
       opciones: opciones && Object.keys(opciones).length ? opciones : null,
       compartir: opciones?.avisar === true,
+      musico_id: opciones?.musicoId ?? null,
     })
     .select("id")
     .single();
   if (error) return { ok: false, error: error.message };
   return { ok: true, id: data.id as string };
+}
+
+/** Los músicos activos, para elegir a quién mandarle un previo. */
+export async function musicosParaPrevio(): Promise<MusicoLite[]> {
+  const sb = supabaseAdmin();
+  const { data } = await sb
+    .from("musicos")
+    .select("id, nombre, email, instrumentos")
+    .eq("activo", true)
+    .order("nombre", { ascending: true });
+  return (data ?? []).map((m) => ({
+    id: m.id as string,
+    nombre: m.nombre as string,
+    email: (m.email as string | null) ?? null,
+    instrumentos: (m.instrumentos as string[] | null) ?? [],
+  }));
 }

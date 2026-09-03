@@ -204,3 +204,35 @@ export async function papeleraCarpeta(folderId: string): Promise<boolean> {
   });
   return res.ok;
 }
+
+/**
+ * Marca un archivo como "cualquiera con el enlace puede verlo" y devuelve su URL.
+ *
+ * Se usa SOLO para los previos que se le mandan a un músico de sesión: no tiene
+ * cuenta en el sitio ni necesariamente una de Google, así que un enlace suelto
+ * es la única forma de que lo abra. El enlace queda vivo hasta que alguien lo
+ * revoque — por eso el id se guarda en `render_jobs.enlace_publico`.
+ */
+export async function hacerPublico(fileId: string): Promise<string | null> {
+  const token = await getAccessToken();
+  if (!token) return null;
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ role: "reader", type: "anyone" }),
+  });
+  // 400 con "duplicate" = ya estaba público; eso no es un fallo.
+  if (!res.ok && res.status !== 400) return null;
+  return `https://drive.google.com/file/d/${fileId}/view`;
+}
+
+/** Quita el enlace público de un archivo. Lo que hace `hacerPublico`, al revés. */
+export async function quitarPublico(fileId: string): Promise<boolean> {
+  const token = await getAccessToken();
+  if (!token) return false;
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions/anyoneWithLink`, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  return res.ok || res.status === 404;
+}

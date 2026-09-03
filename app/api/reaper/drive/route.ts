@@ -62,10 +62,14 @@ export async function POST(req: NextRequest) {
     nombreBase = p ? String(p.titulo) : "Producción";
   }
 
+  // Los previos de músico van aparte: son los únicos que se comparten con un
+  // enlace público, y tenerlos en su propia carpeta hace obvio qué está expuesto.
   const destino =
-    tipo === "previo"
-      ? await buscarOCrearCarpeta("PREVIOS", carpeta)
-      : await entregables(carpeta, tipo, nombreBase);
+    tipo === "musico"
+      ? await buscarOCrearCarpeta("MUSICOS", carpeta)
+      : tipo === "previo"
+        ? await buscarOCrearCarpeta("PREVIOS", carpeta)
+        : await entregables(carpeta, tipo, nombreBase);
   if (!destino) return NextResponse.json({ error: "No se pudo crear la carpeta de destino." }, { status: 502 });
 
   return NextResponse.json({

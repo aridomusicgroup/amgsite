@@ -1,11 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Music4, Package, Layers, Loader2, Cloud } from "lucide-react";
+import { Music4, Package, Layers, Loader2, Cloud, Music2 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { toast } from "@/lib/toast";
 import { RenderOpciones } from "./RenderOpciones";
-import type { Renderizable, TipoRender, RenderJob, OpcionesRender } from "@/lib/render-jobs";
+import type { Renderizable, TipoRender, RenderJob, OpcionesRender, MusicoLite } from "@/lib/render-jobs";
 
 interface LogRow {
   id: string;
@@ -30,14 +30,14 @@ const EN_VUELO = ["pendiente", "renderizando", "subiendo"];
  * cadena de plugins completa. Se muestra en pantalla porque sin esto un
  * "en cola" de 12 minutos se ve idéntico a que algo se trabó.
  */
-const MINUTOS: Record<TipoRender, number> = { previo: 4, entregables: 10, stems: 6 };
+const MINUTOS: Record<TipoRender, number> = { previo: 4, entregables: 10, stems: 6, musico: 4 };
 
-const TIPO_TXT: Record<string, string> = { previo: "Previo", entregables: "Entregables", stems: "Stems" };
+const TIPO_TXT: Record<string, string> = { previo: "Previo", entregables: "Entregables", stems: "Stems", musico: "Previo músico" };
 
 const hora = (iso: string) =>
   new Date(iso).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-export function DevLogsPanel({ logs, proyectos }: { logs: LogRow[]; proyectos: Renderizable[] }) {
+export function DevLogsPanel({ logs, proyectos, musicos }: { logs: LogRow[]; proyectos: Renderizable[]; musicos: MusicoLite[] }) {
   const router = useRouter();
   const [tab, setTab] = useState<"renders" | "logs">("renders");
   const [enviando, setEnviando] = useState(false);
@@ -91,6 +91,7 @@ export function DevLogsPanel({ logs, proyectos }: { logs: LogRow[]; proyectos: R
         <RenderOpciones
           p={abierto.p}
           tipo={abierto.tipo}
+          musicos={musicos}
           enviando={enviando}
           onCerrar={() => !enviando && setAbierto(null)}
           onConfirmar={(op) => enviar(abierto.p, abierto.tipo, op)}
@@ -121,8 +122,11 @@ function RenderList({ proyectos, onAbrir }: {
 
         return (
           <div key={p.key} className="bg-lgb-surface border border-white/5 rounded-2xl p-3 sm:p-4">
-            <div className="flex items-start gap-3 flex-wrap">
-              <div className="min-w-0 flex-1">
+            {/* En vertical el título va en su propio renglón: compartir la fila
+                con cuatro botones lo dejaba en una columna de ~90px y el nombre
+                se partía letra por letra. */}
+            <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
+              <div className="min-w-0 sm:flex-1">
                 <p className="text-sm font-medium break-words">
                   {p.album && <span className="text-white/40">{p.album} · </span>}
                   {p.titulo}
@@ -134,7 +138,7 @@ function RenderList({ proyectos, onAbrir }: {
                 </p>
               </div>
 
-              <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
                 <BotonRender
                   icono={<Music4 size={14} />}
                   texto={p.ultimoPrevio > 0 ? `Previo ${p.ultimoPrevio + 1}` : "Previo"}
@@ -155,6 +159,13 @@ function RenderList({ proyectos, onAbrir }: {
                   titulo={`WAV 24-bit por grupo, con mezcla y máster · tarda ~${MINUTOS.stems} min`}
                   deshabilitado={!!enVuelo}
                   onClick={() => onAbrir(p, "stems")}
+                />
+                <BotonRender
+                  icono={<Music2 size={14} />}
+                  texto="Músico"
+                  titulo={`Previo para quien graba: MP3 con BPM y tonalidad en el nombre · tarda ~${MINUTOS.musico} min`}
+                  deshabilitado={!!enVuelo}
+                  onClick={() => onAbrir(p, "musico")}
                 />
               </div>
             </div>
