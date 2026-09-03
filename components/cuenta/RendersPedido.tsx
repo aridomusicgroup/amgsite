@@ -9,6 +9,11 @@ import type { RenderDelPedido } from "@/lib/cuenta-cliente";
  * El audio se reproduce con el <audio> nativo apuntando al proxy del sitio, no
  * a Drive: el archivo nunca sale de su sesión y el navegador se encarga solo de
  * la barra de progreso y el volumen.
+ *
+ * Reproducir embebido es SÓLO para el previo en MP3 (~3 MB). Los entregables en
+ * WAV y los stems se descargan: cada reproducción pasa por una función
+ * serverless, y mover decenas de MB por ahí cada vez que alguien arrastra la
+ * barra no tiene sentido. Quién puede oírse lo decide el servidor, no esto.
  */
 
 const ICONO = {
@@ -50,7 +55,8 @@ export function RendersPedido({ pedidoId, renders }: { pedidoId: string; renders
               <div className="flex flex-col gap-3">
                 {r.archivos.map((a) => {
                   const src = `/api/cuenta/pedido/${pedidoId}/archivo?job=${r.jobId}&i=${a.idx}`;
-                  return (
+                  // Sólo el previo se oye aquí; los archivos pesados se bajan.
+                  return a.audio ? (
                     <div key={a.idx}>
                       <div className="flex items-center gap-2 mb-1.5">
                         <span className="text-xs text-white/60 truncate min-w-0">{a.nombre}</span>
@@ -64,12 +70,21 @@ export function RendersPedido({ pedidoId, renders }: { pedidoId: string; renders
                           <Download size={14} />
                         </a>
                       </div>
-                      {a.audio && (
-                        <audio controls preload="none" src={src} className="w-full h-9">
-                          Tu navegador no puede reproducir este audio.
-                        </audio>
-                      )}
+                      <audio controls preload="none" src={src} className="w-full h-9">
+                        Tu navegador no puede reproducir este audio.
+                      </audio>
                     </div>
+                  ) : (
+                    <a
+                      key={a.idx}
+                      href={`${src}&d=1`}
+                      download={a.nombre}
+                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors group"
+                    >
+                      <Download size={14} className="text-white/40 group-hover:text-lgb-red shrink-0 transition-colors" />
+                      <span className="text-xs text-white/70 truncate min-w-0">{a.nombre}</span>
+                      <span className="ml-auto shrink-0 text-[11px] text-white/30">Descargar</span>
+                    </a>
                   );
                 })}
               </div>

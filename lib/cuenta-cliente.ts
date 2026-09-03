@@ -337,9 +337,20 @@ export interface ArchivoRender {
   /** Índice dentro del trabajo — así el navegador nunca ve el id de Drive. */
   idx: number;
   nombre: string;
-  /** Se puede reproducir en el navegador (MP3); si no, sólo se descarga. */
+  /** Si se reproduce embebido en la página. Ver `sePuedeOir`. */
   audio: boolean;
 }
+
+/**
+ * Sólo el PREVIO en MP3 se reproduce dentro del panel.
+ *
+ * El reproductor va contra un proxy del sitio, así que cada segundo escuchado
+ * pasa por Vercel. Un previo son ~3 MB y se aguanta de sobra; un WAV de
+ * entregables ronda los 85 MB y los stems son varios de esos — reproducirlos
+ * embebidos sería mover cientos de MB por una función serverless cada vez que
+ * alguien mueve la barra de progreso. Esos se descargan y ya.
+ */
+const sePuedeOir = (tipo: string, nombre: string) => tipo === "previo" && /\.mp3$/i.test(nombre);
 
 export interface RenderDelPedido {
   jobId: string;
@@ -382,7 +393,7 @@ export async function rendersDelPedido(email: string, orderId: string): Promise<
           archivos: urls.map((a, idx) => ({
             idx,
             nombre: a.archivo,
-            audio: /\.mp3$/i.test(a.archivo),
+            audio: sePuedeOir(j.tipo as string, a.archivo),
           })),
         };
       })

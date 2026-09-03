@@ -347,18 +347,21 @@ export function renderListoEmail(d: {
       texto: "para que lo escuches y nos digas qué te parece",
       subject: `🎧 Nuevo previo de ${d.concepto}`,
       boton: "Escuchar el previo",
+      nota: "Se escucha desde tu cuenta, sin descargar nada.",
     },
     entregables: {
       titulo: "Tus archivos finales están listos 🎉",
       texto: "ya con la mezcla y el máster finales",
       subject: `🎉 ${d.concepto} — archivos finales listos`,
-      boton: "Ver mis archivos",
+      boton: "Descargar mis archivos",
+      nota: "Entra a tu cuenta y descárgalos desde ahí. Son archivos grandes, mejor desde una computadora.",
     },
     stems: {
       titulo: "Tus stems están listos 🎛️",
       texto: `son ${d.archivos} pistas por separado, ya con mezcla y máster`,
       subject: `🎛️ Stems de ${d.concepto}`,
-      boton: "Ver mis stems",
+      boton: "Descargar mis stems",
+      nota: "Entra a tu cuenta y descárgalos desde ahí. Son archivos grandes, mejor desde una computadora.",
     },
   }[d.tipo];
 
@@ -367,7 +370,7 @@ export function renderListoEmail(d: {
       <h1 style="color:#fff;font-size:24px;margin:0 0 6px;">${copy.titulo}</h1>
       <p style="color:#999;font-size:14px;margin:0 0 14px;">${d.customerName ? `${d.customerName}, subimos` : "Subimos"} material nuevo de <b style="color:#fff;">${escHtml(d.concepto)}</b> ${copy.texto}.</p>
       <a href="${d.url}" style="display:block;background:#c42f42;color:#fff;text-decoration:none;text-align:center;padding:14px;border-radius:30px;font-size:15px;font-weight:bold;">${copy.boton}</a>
-      <p style="color:#666;font-size:12px;margin:14px 0 0;">Se escucha desde tu cuenta, sin descargar nada.</p>
+      <p style="color:#666;font-size:12px;margin:14px 0 0;">${copy.nota}</p>
     </td></tr>`;
   return { subject: copy.subject, html: wrap(content) };
 }
