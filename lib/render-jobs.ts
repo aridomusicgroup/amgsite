@@ -49,6 +49,9 @@ export interface ArchivoRpp {
   archivo: string;
   mtime: number;
   bytes: number;
+  /** Items de audio. Cero = el proyecto sigue siendo la plantilla sin tocar y
+   *  no hay nada que renderizar. `undefined` en filas de antes de este dato. */
+  items?: number;
   marcadores: MarcadorRpp[];
   seleccion: SeleccionRpp | null;
   pistas: PistaRpp[];

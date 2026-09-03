@@ -99,6 +99,9 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
         ? { inicio: marcadores[desde].seg, fin: marcadores[hasta].seg }
         : null;
 
+  // Proyecto que sigue siendo la plantilla sin tocar: REAPER no produce nada y
+  // el render falla diez minutos después. Mejor no dejar encolarlo.
+  const vacio = actual?.items === 0;
   const rangoMalo = modo === "marcadores" && (!rango || rango.fin - rango.inicio < 1);
   const sinPistas = tipo === "stems" && marcadas.size === 0;
   // BPM y tonalidad son obligatorios: van en el nombre del archivo y son lo que
@@ -106,7 +109,7 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
   const bpmNum = Number(bpm);
   const musicoIncompleto =
     esMusico && (!musicoId || !bpm || !Number.isFinite(bpmNum) || bpmNum < 20 || bpmNum > 400 || !tonalidad.trim());
-  const listo = !!actual && !rangoMalo && !sinPistas && !musicoIncompleto && !enviando;
+  const listo = !!actual && !vacio && !rangoMalo && !sinPistas && !musicoIncompleto && !enviando;
 
   const confirmar = () => {
     if (!listo || !actual) return;
@@ -175,6 +178,15 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
                   ))}
                 </div>
                 {actual?.error && <p className="text-[11px] text-amber-300 mt-2">⚠ {actual.error}</p>}
+                {vacio && (
+                  <div className="mt-2">
+                    <Aviso>
+                      Este proyecto no tiene ni un audio adentro — sigue siendo la plantilla tal
+                      como se creó. Ábrelo en REAPER, mete las pistas y guarda; en cuanto lo hagas
+                      el botón se habilita solo.
+                    </Aviso>
+                  </div>
+                )}
               </Seccion>
 
               <Seccion titulo="Rango">
