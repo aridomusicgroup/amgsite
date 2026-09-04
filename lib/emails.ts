@@ -390,6 +390,36 @@ export function renderListoEmail(d: {
  * siempre abre el correo el mismo día, y un enlace vencido lo deja fuera sin
  * forma de entrar por su cuenta.
  */
+/**
+ * "Tu portal está listo" — el enlace sin una tarea de por medio.
+ *
+ * Hace falta porque el portal del músico NO tiene contraseña: el enlace es la
+ * única puerta. Sin este correo, prenderle el portal a alguien no le servía de
+ * nada hasta que se le asignara una canción — y mientras tanto acababa
+ * intentando entrar por el panel de clientes, donde nunca le va a llegar nada
+ * (ahí se exige tener una compra o un contrato).
+ */
+export function accesoMusicoEmail(d: {
+  nombre: string;
+  enlace: string;
+  conTrabajo: boolean;
+}): { subject: string; html: string } {
+  const content = `
+    <tr><td>
+      <h1 style="color:#fff;font-size:24px;margin:0 0 6px;">Tu portal está listo 🎺</h1>
+      <p style="color:#999;font-size:14px;margin:0 0 16px;">
+        ${escHtml(d.nombre.split(" ")[0])}, aquí entras a ver qué te toca grabar y a mandarnos tus pistas.
+        ${d.conTrabajo ? "Ya tienes trabajo asignado esperándote." : "Todavía no tienes nada asignado; en cuanto te toquemos algo, aparece ahí."}
+      </p>
+      <a href="${d.enlace}" style="display:block;background:#c42f42;color:#fff;text-decoration:none;text-align:center;padding:14px;border-radius:30px;font-size:15px;font-weight:bold;">Abrir mi portal</a>
+      <p style="color:#666;font-size:12px;margin:14px 0 0;">
+        No necesitas contraseña ni crear cuenta: con este enlace entras directo. Dura una semana —
+        si se vence, pídenos otro. Guárdalo en tus favoritos.
+      </p>
+    </td></tr>`;
+  return { subject: "🎺 Tu portal de ARIDO", html: wrap(content) };
+}
+
 export function asignacionMusicoEmail(d: {
   nombre: string;
   cancion: string;

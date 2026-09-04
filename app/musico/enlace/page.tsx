@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { Mail } from "lucide-react";
 import { SOCIALS } from "@/lib/site";
+import { PedirEnlace } from "@/components/musico/PedirEnlace";
 import { WhatsappIcon } from "@/components/shared/BrandIcons";
 
 export const metadata: Metadata = {
@@ -40,8 +41,10 @@ export default async function EnlaceMusicoPage({ searchParams }: {
           <Mail size={22} className="text-lgb-red mx-auto mb-3" />
           <p className="text-sm text-white/70 leading-relaxed">{motivo}</p>
           <p className="text-xs text-white/35 mt-3 leading-relaxed">
-            Pídele al estudio que te mande uno nuevo y entras al instante — no hay contraseña que recordar.
+            Entras con un enlace, no con contraseña. Este portal es aparte del de clientes:
+            si intentaste entrar ahí con tu correo, por eso no te llegó nada.
           </p>
+          <PedirEnlace />
         </div>
 
         <a
@@ -50,7 +53,7 @@ export default async function EnlaceMusicoPage({ searchParams }: {
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 mt-5 text-sm text-white/50 hover:text-white transition-colors"
         >
-          <WhatsappIcon className="w-4 h-4" /> Escribirle al estudio
+          <WhatsappIcon className="w-4 h-4" /> ¿Sigue sin llegar? Escríbenos
         </a>
       </div>
     </main>

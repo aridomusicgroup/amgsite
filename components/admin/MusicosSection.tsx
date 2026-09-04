@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2, Pencil, Check, X, KeyRound } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, Check, X, KeyRound, Send } from "lucide-react";
 import { toast } from "@/lib/toast";
 
 interface Musico {
@@ -97,6 +97,27 @@ export function MusicosSection() {
     } catch { toast("Error de red"); } finally { setBusy(false); }
   };
 
+  /**
+   * Mandarle su enlace de entrada.
+   *
+   * El portal del músico NO tiene contraseña: el enlace es la única puerta. Sin
+   * este botón, prenderle el portal a alguien no le servía de nada hasta
+   * asignarle una canción — y mientras tanto acababa intentando entrar por el
+   * panel de clientes, donde nunca le va a llegar nada porque ahí se exige
+   * tener una compra o un contrato.
+   */
+  const mandarEnlace = async (m: Musico) => {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/admin/musicos/enlace", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: m.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      toast(r.ok ? `✓ Enlace enviado a ${d.enviado}` : `⚠️ ${d.error || "No se pudo mandar"}`);
+    } catch { toast("Error de red"); } finally { setBusy(false); }
+  };
+
   const borrar = async (id: string) => {
     try {
       const r = await fetch("/api/admin/musicos", {
@@ -114,7 +135,8 @@ export function MusicosSection() {
         Quién toca qué instrumento. Se usa para sugerir a quién pagar según los instrumentos de cada venta,
         y el correo es a donde le llega el previo cuando le mandas uno desde REAPER.
         <b className="text-white/60"> El portal</b> se lo prendes solo a quien graba a distancia: le deja ver
-        qué le toca y subir su pista, sin ver clientes ni montos.
+        qué le toca y subir su pista, sin ver clientes ni montos. No lleva contraseña — se entra con el enlace
+        que le mandas con el botón <b className="text-white/60">✈</b>, y NO con el login de clientes.
       </p>
 
       {musicos === null ? (
@@ -159,6 +181,11 @@ export function MusicosSection() {
                     >
                       <KeyRound size={10} /> {m.portal_activo ? "Con portal" : "Sin portal"}
                     </button>
+                    {m.portal_activo && (
+                      <button onClick={() => mandarEnlace(m)} disabled={busy}
+                        title="Mandarle por correo el enlace para entrar a su portal (dura una semana)"
+                        className="text-white/30 hover:text-lgb-red p-1 cursor-pointer disabled:opacity-40"><Send size={13} /></button>
+                    )}
                     <button onClick={() => abrirEdit(m)} className="text-white/30 hover:text-white p-1" title="Editar"><Pencil size={13} /></button>
                     <button onClick={() => borrar(m.id)} className="text-white/25 hover:text-red-300 p-1" title="Eliminar"><Trash2 size={13} /></button>
                   </div>
