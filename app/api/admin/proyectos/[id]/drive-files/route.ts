@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProduccionEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { carpetaDelProyecto } from "@/lib/proyecto-carpeta";
-import { archivosDeCarpetaPaginado, tokenParaNavegador, driveOAuthConfigured } from "@/lib/drive-oauth";
+import { contenidoDeCarpeta, carpetaCuelgaDe, tokenParaNavegador, driveOAuthConfigured } from "@/lib/drive-oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -20,18 +20,35 @@ export async function GET(req: NextRequest, { params }: Props) {
 
   const { id } = await params;
   const pageToken = req.nextUrl.searchParams.get("pageToken") ?? undefined;
+  const pedida = req.nextUrl.searchParams.get("carpeta");
 
   const sb = supabaseAdmin();
   const folderId = await carpetaDelProyecto(sb, id);
   if (!folderId) return NextResponse.json({ error: "No se pudo resolver la carpeta de Drive.", files: [], nextPageToken: null, folderId: null });
 
+  // Se puede entrar a una subcarpeta (PREVIOS, ENTREGABLES, MUSICOS…), pero
+  // SOLO si de verdad cuelga de la del proyecto. Sin esta comprobación, cambiar
+  // el parámetro a mano listaría cualquier carpeta creada por la app —
+  // incluida la de otro cliente.
+  let verId = folderId;
+  if (pedida && pedida !== folderId) {
+    if (!(await carpetaCuelgaDe(pedida, folderId))) {
+      return NextResponse.json({ error: "Esa carpeta no es de este proyecto." }, { status: 403 });
+    }
+    verId = pedida;
+  }
+
   const [{ files, nextPageToken }, token] = await Promise.all([
-    archivosDeCarpetaPaginado(folderId, pageToken),
+    contenidoDeCarpeta(verId, pageToken),
     tokenParaNavegador(),
   ]);
 
   return NextResponse.json({
-    files, nextPageToken, folderId,
+    files, nextPageToken,
+    // `folderId` sigue siendo el del PROYECTO: es a donde sube el navegador,
+    // pase lo que pase con la navegación.
+    folderId,
+    carpetaActual: verId,
     upload: token ? { accessToken: token.accessToken, expiresAt: token.expiresAt } : null,
   });
 }

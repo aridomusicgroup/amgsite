@@ -1126,6 +1126,8 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
   );
   // Instrumentos inferidos del paquete cotizado (editables antes de crear el proyecto).
   const [extras, setExtras] = useState(() => inferirInstrumentos(c.items.map((i) => i.label)).join(", "));
+  /** Quién toca cada instrumento. Lo llena el propio picker. */
+  const [musicosElegidos, setMusicosElegidos] = useState<{ instrumento: string; musico_id: string }[]>([]);
   // Si la cotización llevaba la comisión de PayPal, el medio de pago ya se sabe.
   const [medioPago, setMedioPago] = useState(c.comision_pct > 0 ? "PAYPAL" : "");
   const [quienCerro, setQuienCerro] = useState("");
@@ -1166,6 +1168,7 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
         extras: modo === "plantilla" ? extras || null : null,
         // Plantilla → tareas "Grabar {instrumento}". Libre → una tarea por concepto.
         instrumentos: modo === "plantilla" ? extras : "",
+      musicos_elegidos: modo === "plantilla" ? musicosElegidos : [],
         tareas_libres: modo === "libre" ? tareasLibres : "",
         crear_proyecto: crearProyecto,
         responsables,
@@ -1242,7 +1245,7 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
               <span className="text-white/60 text-xs">
                 Instrumentos <span className="text-white/30">(inferidos del paquete · ajústalos)</span>
               </span>
-              <div className="mt-1"><InstrumentosPicker value={extras} onChange={setExtras} /></div>
+              <div className="mt-1"><InstrumentosPicker value={extras} onChange={setExtras} onMusicos={setMusicosElegidos} /></div>
             </>
           ) : (
             <>

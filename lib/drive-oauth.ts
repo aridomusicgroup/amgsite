@@ -153,6 +153,66 @@ export async function archivosDeCarpeta(folderId: string): Promise<ArchivoDrive[
 }
 
 /** Misma lista, paginada — para el explorador embebido de una carpeta con muchos archivos (stems, previos). */
+/**
+ * Lo que hay en una carpeta, INCLUYENDO las subcarpetas.
+ *
+ * `archivosDeCarpetaPaginado` las excluye a propósito porque la pestaña de
+ * Archivos nació para "lo que subió el cliente", que va suelto en la raíz del
+ * proyecto. Pero los renders y lo que mandan los músicos viven en subcarpetas
+ * (PREVIOS, ENTREGABLES, MUSICOS), así que no se veían por ningún lado.
+ *
+ * Las carpetas salen primero, que es como se navega.
+ */
+export async function contenidoDeCarpeta(
+  folderId: string,
+  pageToken?: string,
+): Promise<{ files: ArchivoDrive[]; nextPageToken: string | null }> {
+  const token = await getAccessToken();
+  if (!token) return { files: [], nextPageToken: null };
+  const params: Record<string, string> = {
+    q: `'${folderId}' in parents and trashed = false`,
+    fields: `nextPageToken, files(${ARCHIVO_FIELDS})`,
+    // Carpetas primero y, dentro de cada grupo, lo más nuevo arriba.
+    orderBy: "folder,createdTime desc",
+    pageSize: "60",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  };
+  if (pageToken) params.pageToken = pageToken;
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams(params)}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const j = await res.json().catch(() => null);
+  return { files: (j?.files ?? []) as ArchivoDrive[], nextPageToken: (j?.nextPageToken as string | undefined) ?? null };
+}
+
+/**
+ * ¿Esta carpeta cuelga de aquella? (mirando hacia arriba, con un tope)
+ *
+ * Es el candado del parámetro `?carpeta=` de la pestaña de Archivos: sin esto,
+ * cambiando ese id a mano se podría listar CUALQUIER carpeta creada por la app,
+ * incluida la de otro cliente.
+ */
+export async function carpetaCuelgaDe(hijaId: string, raizId: string, saltosMax = 6): Promise<boolean> {
+  if (hijaId === raizId) return true;
+  const token = await getAccessToken();
+  if (!token) return false;
+  let actual = hijaId;
+  for (let i = 0; i < saltosMax; i++) {
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(actual)}?fields=parents&supportsAllDrives=true`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) return false;
+    const j = await res.json().catch(() => null);
+    const padres: string[] = j?.parents ?? [];
+    if (!padres.length) return false;
+    if (padres.includes(raizId)) return true;
+    actual = padres[0];
+  }
+  return false;
+}
+
 export async function archivosDeCarpetaPaginado(
   folderId: string,
   pageToken?: string,

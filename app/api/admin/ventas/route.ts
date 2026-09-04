@@ -107,8 +107,17 @@ export async function POST(req: NextRequest) {
   }).select("id").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Quién toca cada instrumento, elegido en el formulario. Sin esto, un
+  // instrumento con dos candidatos (tololoche, trombón) generaba un pago
+  // pendiente para CADA uno e inflaba `costo_extra`, que alimenta el reparto.
+  const elegidos = Array.isArray(b.musicos_elegidos)
+    ? (b.musicos_elegidos as { instrumento?: unknown; musico_id?: unknown }[])
+        .map((e) => ({ instrumento: String(e?.instrumento ?? "").trim(), musico_id: String(e?.musico_id ?? "").trim() }))
+        .filter((e) => e.musico_id)
+    : [];
+
   // Pagos a músicos EN PENDIENTE según los instrumentos de la venta + el catálogo.
-  if (ventaRow?.id) await crearPagosMusicoPendientes(sb, ventaRow.id as string, b.extras);
+  if (ventaRow?.id) await crearPagosMusicoPendientes(sb, ventaRow.id as string, b.extras, elegidos);
 
   // Bitácora: venta registrada
   try {
@@ -234,6 +243,11 @@ export async function POST(req: NextRequest) {
           // `instrumentos` viene del selector; `extras` queda como respaldo histórico.
           await crearTareasDeProyecto(sb, proy.id, tproy, parseInstrumentos(b.instrumentos || b.extras));
         }
+        // A quien tenga portal, se le habilita el proyecto en /musico. Va aquí,
+        // después de las tareas, para poder colgar cada asignación de su tarea
+        // "Grabar {instrumento}" y que el músico vea la fecha límite.
+        if (elegidos.length) await habilitarPortal(sb, proy.id as string, elegidos);
+
         // Dispara el pedido del sitio ligado → el cliente ve el avance en su panel.
         try { await crearPedidoDeProyecto(sb, proy.id); } catch (e) { console.error("pedido-sync:", e); }
       }
@@ -340,4 +354,62 @@ export async function DELETE(req: NextRequest) {
 
   await recalcContacto(sb, (venta.contacto_id as string) ?? null);
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * Le deja el proyecto en el portal a los músicos elegidos que lo tengan prendido.
+ *
+ * NO se les manda correo aquí: el aviso sale cuando se les manda su previo
+ * desde REAPER, que es cuando ya tienen sobre qué grabar. Avisarles al crear la
+ * venta los mandaría a un portal sin pista de referencia.
+ *
+ * Best-effort: si algo falla, la venta y el proyecto ya quedaron, y la
+ * asignación se puede hacer a mano desde la tarea.
+ */
+async function habilitarPortal(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: any,
+  proyectoId: string,
+  elegidos: { instrumento: string; musico_id: string }[],
+): Promise<void> {
+  try {
+    const { data: musicos } = await sb.from("musicos")
+      .select("id, portal_activo")
+      .in("id", elegidos.map((e) => e.musico_id));
+    const conPortal = new Set(
+      (musicos ?? []).filter((m: { portal_activo?: boolean }) => m.portal_activo)
+        .map((m: { id: string }) => m.id),
+    );
+    if (!conPortal.size) return;
+
+    // Las tareas que acaba de crear `crearTareasDeProyecto`, para colgar cada
+    // asignación de su "Grabar {instrumento}".
+    const { data: tareas } = await sb.from("proyecto_tareas")
+      .select("id, titulo").eq("proyecto_id", proyectoId);
+    const clave = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
+    const tareaDe = (inst: string) =>
+      (tareas ?? []).find((t: { titulo: string }) => clave(t.titulo) === clave(`Grabar ${inst}`))?.id ?? null;
+
+    for (const e of elegidos) {
+      if (!conPortal.has(e.musico_id)) continue;
+      const tareaId = tareaDe(e.instrumento);
+      // El índice único es (musico_id, tarea_id) y Postgres trata cada NULL como
+      // distinto, así que sin esta consulta un proyecto sin tarea admitiría
+      // asignaciones repetidas.
+      const q = sb.from("musico_asignaciones").select("id")
+        .eq("musico_id", e.musico_id).eq("proyecto_id", proyectoId);
+      const { data: ya } = await (tareaId ? q.eq("tarea_id", tareaId) : q.is("tarea_id", null)).maybeSingle();
+      if (ya) continue;
+
+      await sb.from("musico_asignaciones").insert({
+        musico_id: e.musico_id,
+        proyecto_id: proyectoId,
+        tarea_id: tareaId,
+        instrumento: e.instrumento,
+        creado_por: "venta",
+      });
+    }
+  } catch {
+    /* best-effort */
+  }
 }

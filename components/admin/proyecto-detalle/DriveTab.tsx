@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, ExternalLink, Loader2, File as FileIconLucide } from "lucide-react";
+import { Upload, ExternalLink, Loader2, File as FileIconLucide, Folder, ChevronRight } from "lucide-react";
 import { toast } from "@/lib/toast";
 
 interface DriveFile {
@@ -18,10 +18,20 @@ interface DriveFile {
  * porque `thumbnailLink` exige el mismo Authorization que el resto de esta
  * integración; un <img> directo del navegador recibiría 403.
  */
+const CARPETA = "application/vnd.google-apps.folder";
+
 export function DriveTab({ proyectoId }: { proyectoId: string }) {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [folderId, setFolderId] = useState<string | null>(null);
+  /**
+   * Por dónde va la navegación. Empieza vacío = la raíz del proyecto.
+   *
+   * Hace falta porque los renders y lo que mandan los músicos NO viven sueltos:
+   * están en PREVIOS, ENTREGABLES y MUSICOS, y esta pestaña solo enseñaba el
+   * nivel de arriba. La subida sigue yendo siempre a la raíz.
+   */
+  const [ruta, setRuta] = useState<{ id: string; nombre: string }[]>([]);
   const [uploadToken, setUploadToken] = useState<{ accessToken: string; expiresAt: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -43,17 +53,22 @@ export function DriveTab({ proyectoId }: { proyectoId: string }) {
   // pueden llamar setState libremente porque parten de un click, no de un efecto.
   useEffect(() => {
     let cancelado = false;
-    fetch(`/api/admin/proyectos/${proyectoId}/drive-files`)
+    const dentro = ruta.length ? `?carpeta=${encodeURIComponent(ruta[ruta.length - 1].id)}` : "";
+    setLoading(true);
+    fetch(`/api/admin/proyectos/${proyectoId}/drive-files${dentro}`)
       .then((r) => r.json())
       .then((d) => { if (!cancelado) aplicar(d, false); })
       .catch(() => { if (!cancelado) setError("No se pudo conectar con Drive."); })
       .finally(() => { if (!cancelado) setLoading(false); });
     return () => { cancelado = true; };
-  }, [proyectoId, aplicar]);
+  }, [proyectoId, aplicar, ruta]);
 
   const cargar = useCallback(async (pageToken?: string) => {
     try {
-      const r = await fetch(`/api/admin/proyectos/${proyectoId}/drive-files${pageToken ? `?pageToken=${pageToken}` : ""}`);
+      const qs = new URLSearchParams();
+      if (pageToken) qs.set("pageToken", pageToken);
+      if (ruta.length) qs.set("carpeta", ruta[ruta.length - 1].id);
+      const r = await fetch(`/api/admin/proyectos/${proyectoId}/drive-files${qs.toString() ? `?${qs}` : ""}`);
       aplicar(await r.json(), !!pageToken);
     } catch {
       setError("No se pudo conectar con Drive.");
@@ -97,12 +112,33 @@ export function DriveTab({ proyectoId }: { proyectoId: string }) {
         </label>
       </div>
 
+      {ruta.length > 0 && (
+        <div className="flex items-center gap-1 text-xs text-white/40 flex-wrap">
+          <button onClick={() => setRuta([])} className="hover:text-white transition-colors cursor-pointer">
+            Carpeta del proyecto
+          </button>
+          {ruta.map((c, i) => (
+            <span key={c.id} className="flex items-center gap-1">
+              <ChevronRight size={11} className="text-white/20" />
+              <button
+                onClick={() => setRuta((r) => r.slice(0, i + 1))}
+                className={i === ruta.length - 1 ? "text-white" : "hover:text-white transition-colors cursor-pointer"}
+              >
+                {c.nombre}
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       {error && <p className="text-sm text-amber-300/80">{error}</p>}
 
       {loading && !files.length ? (
         <div className="flex items-center gap-2 text-white/40 text-sm py-8 justify-center"><Loader2 size={16} className="animate-spin" /> Cargando archivos…</div>
       ) : !files.length ? (
-        <p className="text-sm text-white/30">Todavía no hay archivos en esta carpeta.</p>
+        <p className="text-sm text-white/30">
+          {ruta.length ? "Esta carpeta está vacía." : "Todavía no hay archivos sueltos aquí — los renders y lo de los músicos están en sus carpetas."}
+        </p>
       ) : (
         <motion.div
           className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"
@@ -110,7 +146,11 @@ export function DriveTab({ proyectoId }: { proyectoId: string }) {
           variants={{ hidden: {}, show: { transition: { staggerChildren: 0.03 } } }}
         >
           <AnimatePresence>
-            {files.map((f) => <ArchivoCard key={f.id} f={f} proyectoId={proyectoId} />)}
+            {files.map((f) =>
+              f.mimeType === CARPETA
+                ? <CarpetaCard key={f.id} f={f} onEntrar={() => setRuta((r) => [...r, { id: f.id, nombre: f.name }])} />
+                : <ArchivoCard key={f.id} f={f} proyectoId={proyectoId} />,
+            )}
           </AnimatePresence>
         </motion.div>
       )}
@@ -121,6 +161,25 @@ export function DriveTab({ proyectoId }: { proyectoId: string }) {
         </button>
       )}
     </div>
+  );
+}
+
+/** Una subcarpeta: se entra, no se abre en Drive. */
+function CarpetaCard({ f, onEntrar }: { f: DriveFile; onEntrar: () => void }) {
+  return (
+    <motion.button
+      onClick={onEntrar}
+      variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }} exit={{ opacity: 0 }}
+      className="group rounded-xl border border-white/8 bg-white/[0.03] overflow-hidden hover:border-white/20 transition-colors text-left cursor-pointer"
+    >
+      <div className="aspect-square bg-white/[0.02] flex items-center justify-center">
+        <Folder size={30} className="text-lgb-red/60" />
+      </div>
+      <div className="p-2">
+        <p className="text-[11px] text-white/70 truncate">{f.name}</p>
+        <p className="text-[10px] text-white/30">carpeta</p>
+      </div>
+    </motion.button>
   );
 }
 

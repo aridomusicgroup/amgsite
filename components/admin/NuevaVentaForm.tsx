@@ -39,6 +39,8 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ ...EMPTY });
+  /** Quién toca cada instrumento. Lo llena el propio InstrumentosPicker. */
+  const [musicosElegidos, setMusicosElegidos] = useState<{ instrumento: string; musico_id: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -132,6 +134,9 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
           inventario_beat_id: beatMatch?.id ?? null,
           anticipo: f.estado_pago === "anticipo" ? f.anticipo : "",
           instrumentos: f.extras, // el selector alimenta las tareas "Grabar {instrumento}"
+          // Quién toca cada uno: sin esto, un instrumento con dos candidatos
+          // (tololoche, trombón) generaba un pago pendiente para cada uno.
+          musicos_elegidos: musicosElegidos,
         }),
       });
       const d = await r.json();
@@ -280,7 +285,7 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
               Instrumentos / músicos{" "}
               <span className="text-white/25">(se infieren del paquete; ajusta lo que necesites)</span>
             </label>
-            <InstrumentosPicker value={f.extras} onChange={(v) => setF((p) => ({ ...p, extras: v }))} />
+            <InstrumentosPicker value={f.extras} onChange={(v) => setF((p) => ({ ...p, extras: v }))} onMusicos={setMusicosElegidos} />
           </div>
         )}
         {/\bep\b|álbum|album/i.test(f.tipo) && (

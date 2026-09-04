@@ -41,22 +41,35 @@ export async function GET(req: NextRequest) {
   // Sin venta no hay a quién buscar: es un proyecto interno o de catálogo.
   if (!p?.venta_id) return NextResponse.json({ musicos: [] });
 
+  // `musico_id` e `instrumento` son columnas nuevas: si la migración todavía no
+  // corre, pedirlas haría fallar la consulta entera y el selector se quedaría
+  // sin los contratados. Se reintenta con las viejas.
+  const conLlave = () => sb.from("pagos_musico").select("musico, nota, musico_id, instrumento").eq("venta_id", p.venta_id!);
+  const sinLlave = () => sb.from("pagos_musico").select("musico, nota").eq("venta_id", p.venta_id!);
   const [pagosRes, catRes] = await Promise.all([
-    sb.from("pagos_musico").select("musico, nota").eq("venta_id", p.venta_id),
+    conLlave().then((r) => (r.error ? sinLlave() : r)),
     sb.from("musicos").select("id, nombre, email, instrumentos, activo, portal_activo"),
   ]);
 
   const catalogo = catRes.data ?? [];
   const salida = [];
   for (const pg of pagosRes.data ?? []) {
-    const m = catalogo.find((c) => norm(String(c.nombre)) === norm(String(pg.musico ?? "")));
+    const fila = pg as Record<string, unknown>;
+    // La llave manda; el nombre en texto es el respaldo de los pagos viejos.
+    const m = fila.musico_id
+      ? catalogo.find((c) => c.id === fila.musico_id)
+      : catalogo.find((c) => norm(String(c.nombre)) === norm(String(fila.musico ?? "")));
     if (!m || !m.activo) continue;
     salida.push({
       id: m.id as string,
       nombre: m.nombre as string,
-      // Lo que se contrató para ESTE proyecto; si el pago no lo dice, su primer
-      // instrumento del catálogo como sugerencia.
-      instrumento: instrumentoDe(pg.nota as string | null) ?? ((m.instrumentos as string[] | null) ?? [])[0] ?? "",
+      // Lo que se contrató para ESTE proyecto. La columna primero; si no está,
+      // se saca de la nota vieja; y de último, su primer instrumento del catálogo.
+      instrumento:
+        (fila.instrumento as string | null)?.trim()
+        || instrumentoDe(fila.nota as string | null)
+        || ((m.instrumentos as string[] | null) ?? [])[0]
+        || "",
       tienePortal: Boolean(m.portal_activo),
       tieneCorreo: Boolean(String(m.email || "").trim()),
     });
