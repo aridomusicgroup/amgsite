@@ -382,6 +382,40 @@ export function renderListoEmail(d: {
  * preparar su parte — el nombre del archivo también los trae, pero en el correo
  * se ven sin abrir nada.
  */
+/**
+ * "Te toca grabar esto" — la invitación al portal del músico.
+ *
+ * El enlace ES la llave: no hay contraseña. Por eso dura una semana (no 30
+ * minutos como el de restablecer contraseña de un cliente): un músico no
+ * siempre abre el correo el mismo día, y un enlace vencido lo deja fuera sin
+ * forma de entrar por su cuenta.
+ */
+export function asignacionMusicoEmail(d: {
+  nombre: string;
+  cancion: string;
+  instrumento: string;
+  nota: string | null;
+  enlace: string;
+}): { subject: string; html: string } {
+  const indicaciones = d.nota
+    ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#141414;border:1px solid #222;border-radius:14px;margin-bottom:16px;">
+        <tr><td style="padding:14px 16px;">
+          <p style="color:#c42f42;font-size:11px;font-weight:bold;letter-spacing:2px;margin:0 0 6px;">INDICACIONES</p>
+          <p style="color:#ddd;font-size:14px;margin:0;line-height:1.5;">${escHtml(d.nota)}</p>
+        </td></tr>
+      </table>`
+    : "";
+  const content = `
+    <tr><td>
+      <h1 style="color:#fff;font-size:24px;margin:0 0 6px;">Te toca grabar 🎺</h1>
+      <p style="color:#999;font-size:14px;margin:0 0 16px;">${escHtml(d.nombre.split(" ")[0])}, te asignamos <b style="color:#fff;">${escHtml(d.instrumento)}</b> en <b style="color:#fff;">${escHtml(d.cancion)}</b>.</p>
+      ${indicaciones}
+      <a href="${d.enlace}" style="display:block;background:#c42f42;color:#fff;text-decoration:none;text-align:center;padding:14px;border-radius:30px;font-size:15px;font-weight:bold;">Abrir mi portal</a>
+      <p style="color:#666;font-size:12px;margin:14px 0 0;">Ahí escuchas la referencia y subes tu grabación. No necesitas contraseña — con este enlace entras directo. Dura una semana.</p>
+    </td></tr>`;
+  return { subject: `🎺 Te toca ${d.instrumento} en ${d.cancion}`, html: wrap(content) };
+}
+
 export function previoMusicoEmail(d: {
   musico: string | null;
   proyecto: string;

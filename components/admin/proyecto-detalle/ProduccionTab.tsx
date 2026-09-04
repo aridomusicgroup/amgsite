@@ -1,6 +1,7 @@
 "use client";
 import { ExternalLink, FileAudio } from "lucide-react";
 import type { ProyectoDetalle } from "@/lib/erp-data";
+import { MusicosProyecto } from "./MusicosProyecto";
 
 const TIPO_LABEL: Record<string, string> = { previo: "Previo", entregables: "Entregables", stems: "Stems" };
 const ESTADO_COLOR: Record<string, string> = {
@@ -10,11 +11,15 @@ const ESTADO_COLOR: Record<string, string> = {
 
 /** Solo lectura: pedir un render nuevo sigue siendo cosa de REAPER (reaper-sync) — esta pestaña es visibilidad, no control. */
 export function ProduccionTab({ proyecto }: { proyecto: ProyectoDetalle }) {
-  if (!proyecto.renderJobs.length && !proyecto.renderInventario.length) {
-    return <p className="text-sm text-white/30">Sin renders todavía — se generan desde REAPER (reaper-sync).</p>;
-  }
+  const sinRenders = !proyecto.renderJobs.length && !proyecto.renderInventario.length;
   return (
     <div className="space-y-4">
+      {sinRenders && (
+        <p className="text-sm text-white/30">Sin renders todavía — se generan desde REAPER (reaper-sync).</p>
+      )}
+
+      <MusicosProyecto proyectoId={proyecto.id} />
+
       {proyecto.renderJobs.length > 0 && (
         <div>
           <p className="text-[11px] text-white/35 uppercase tracking-wider mb-2">Renders</p>

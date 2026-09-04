@@ -192,3 +192,34 @@ export async function asignacionDeMusico(
     return null;
   }
 }
+
+/**
+ * Los músicos a los que SÍ se les puede asignar trabajo hoy.
+ *
+ * Filtra por `portal_activo` porque asignarle a alguien sin portal es escribir
+ * una fila que nadie va a ver nunca.
+ *
+ * Si la consulta falla —lo más probable, antes de correr la migración, es que
+ * `portal_activo` no exista— devuelve lista vacía en vez de lanzar: el bloque
+ * de "Músico externo" se queda sin opciones, pero la ventana de la tarea abre
+ * igual y nadie pierde acceso a lo demás.
+ */
+export async function musicosConPortal(): Promise<{ id: string; nombre: string; instrumentos: string[] }[]> {
+  try {
+    const sb = supabaseAdmin();
+    const { data, error } = await sb
+      .from("musicos")
+      .select("id, nombre, instrumentos, portal_activo")
+      .eq("activo", true)
+      .eq("portal_activo", true)
+      .order("nombre");
+    if (error) return [];
+    return (data ?? []).map((m) => ({
+      id: m.id as string,
+      nombre: (m.nombre as string) ?? "",
+      instrumentos: (m.instrumentos as string[] | null) ?? [],
+    }));
+  } catch {
+    return [];
+  }
+}

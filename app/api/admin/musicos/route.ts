@@ -16,13 +16,18 @@ function parseInstrumentos(v: unknown): string[] {
   return out;
 }
 
-const SEL = "id, nombre, instrumentos, tarifa, telefono, email, activo, nota";
+// `portal_activo` es columna nueva: si la migración del portal aún no corre,
+// pedirla haría fallar la consulta entera y dejaría la sección vacía.
+const SEL = "id, nombre, instrumentos, tarifa, telefono, email, activo, nota, portal_activo";
+const SEL_VIEJO = "id, nombre, instrumentos, tarifa, telefono, email, activo, nota";
 
 // ── GET: catálogo de músicos (todos; el cliente filtra activos si quiere) ──
 export async function GET() {
   if (!(await getFullAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   const sb = supabaseAdmin();
-  const { data, error } = await sb.from("musicos").select(SEL).order("nombre", { ascending: true });
+  const consulta = (cols: string) => sb.from("musicos").select(cols).order("nombre", { ascending: true });
+  let { data, error } = await consulta(SEL);
+  if (error) ({ data, error } = await consulta(SEL_VIEJO));
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ musicos: data ?? [] });
 }
@@ -63,9 +68,12 @@ export async function PATCH(req: NextRequest) {
   if ("email" in b) patch.email = b.email ? String(b.email).trim().toLowerCase() : null;
   if ("nota" in b) patch.nota = b.nota ? String(b.nota).trim() : null;
   if ("activo" in b) patch.activo = Boolean(b.activo);
+  if ("portal_activo" in b) patch.portal_activo = Boolean(b.portal_activo);
 
   const sb = supabaseAdmin();
-  const { data, error } = await sb.from("musicos").update(patch).eq("id", id).select(SEL).single();
+  const guardar = (cols: string) => sb.from("musicos").update(patch).eq("id", id).select(cols).single();
+  let { data, error } = await guardar(SEL);
+  if (error && !("portal_activo" in patch)) ({ data, error } = await guardar(SEL_VIEJO));
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, musico: data });
 }

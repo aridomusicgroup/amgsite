@@ -10,6 +10,7 @@ import { esContenido, esContenidoPub } from "@/components/admin/ProduccionBoard"
 import { SortableTarea } from "@/components/admin/tareas/SortableTarea";
 import { TareaModal } from "@/components/admin/tareas/TareaModal";
 import type { Equipo } from "@/components/admin/tareas/estilos";
+import type { MusicoLite } from "@/components/admin/tareas/AsignarMusico";
 import { soloHora, estaVencido, fechaLarga, type MiRecordatorio } from "@/lib/recordatorios";
 import type { ProyectoDetalle, ProyectoTarea } from "@/lib/erp-data";
 
@@ -26,11 +27,12 @@ const fechaCorta = (s: string | null) =>
  * detalle es a donde uno entra "a trabajar la tarea", faltaba justo lo de
  * adentro: las subtareas se contaban (3/6) pero no se podían abrir.
  */
-export function TareasTab({ proyecto, equipo, recordatorios, miId }: {
+export function TareasTab({ proyecto, equipo, recordatorios, miId, musicos }: {
   proyecto: ProyectoDetalle;
   equipo: Equipo[];
   recordatorios: Record<string, MiRecordatorio>;
   miId: string | null;
+  musicos: MusicoLite[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -216,6 +218,8 @@ export function TareasTab({ proyecto, equipo, recordatorios, miId }: {
           contenido={esContenidoPub(proyecto.tipo)}
           recordatorio={recordatorios[tareaAbierta.id] ?? null}
           miId={miId}
+          proyectoId={proyecto.id}
+          musicos={musicos}
           onClose={() => setModalTareaId(null)}
           onAction={api}
         />

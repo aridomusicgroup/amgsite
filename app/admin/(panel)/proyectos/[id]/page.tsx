@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireModule } from "@/lib/supabase/auth-server";
 import { misRecordatorios } from "@/lib/recordatorios-server";
+import { musicosConPortal } from "@/lib/musico-data";
 import { getProyectoDetalle, getEquipoActivo, getVentas } from "@/lib/erp-data";
 import { ProyectoDetalle } from "@/components/admin/ProyectoDetalle";
 
@@ -21,8 +22,8 @@ export default async function ProyectoDetallePage({ params }: Props) {
 
   const { id } = await params;
   // Los recordatorios dependen de QUIÉN abre la página: cada quien ve los suyos.
-  const [proyecto, equipo, ventas, recordatorios] = await Promise.all([
-    getProyectoDetalle(id, session.role === "admin"), getEquipoActivo(), getVentas(), misRecordatorios(session.email),
+  const [proyecto, equipo, ventas, recordatorios, musicos] = await Promise.all([
+    getProyectoDetalle(id, session.role === "admin"), getEquipoActivo(), getVentas(), misRecordatorios(session.email), musicosConPortal(),
   ]);
   if (!proyecto) notFound();
 
@@ -42,6 +43,7 @@ export default async function ProyectoDetallePage({ params }: Props) {
         proyecto={proyecto} equipo={equipo} ventas={ventasLite}
         isAdmin={session.role === "admin"}
         recordatorios={recordatorios}
+        musicos={musicos}
         miId={equipo.find((e) => e.email && e.email.toLowerCase() === session.email.toLowerCase())?.id ?? null}
       />
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2, Pencil, Check, X } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, Check, X, KeyRound } from "lucide-react";
 import { toast } from "@/lib/toast";
 
 interface Musico {
@@ -13,6 +13,7 @@ interface Musico {
   email: string | null;
   activo: boolean;
   nota: string | null;
+  portal_activo?: boolean;
 }
 
 const peso = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
@@ -72,6 +73,30 @@ export function MusicosSection() {
     } catch { toast("Error de red"); } finally { setBusy(false); }
   };
 
+  /**
+   * Prende o apaga el portal de un músico.
+   *
+   * Es un interruptor aparte de `activo` a propósito: `activo` quiere decir "le
+   * seguimos llamando" (lo están los 9), y esto quiere decir "tiene cuenta".
+   * Hoy solo hace falta para quien graba a distancia.
+   */
+  const togglePortal = async (m: Musico) => {
+    if (!m.portal_activo && !String(m.email || "").trim()) {
+      toast("⚠️ Primero ponle correo: el portal se abre con un enlace que le llega ahí.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await fetch("/api/admin/musicos", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: m.id, portal_activo: !m.portal_activo }),
+      });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); toast(d.error || "No se pudo guardar"); return; }
+      await cargar();
+      toast(m.portal_activo ? "✓ Portal apagado" : "✓ Portal prendido");
+    } catch { toast("Error de red"); } finally { setBusy(false); }
+  };
+
   const borrar = async (id: string) => {
     try {
       const r = await fetch("/api/admin/musicos", {
@@ -88,6 +113,8 @@ export function MusicosSection() {
       <p className="text-white/40 text-xs mt-0.5 mb-3">
         Quién toca qué instrumento. Se usa para sugerir a quién pagar según los instrumentos de cada venta,
         y el correo es a donde le llega el previo cuando le mandas uno desde REAPER.
+        <b className="text-white/60"> El portal</b> se lo prendes solo a quien graba a distancia: le deja ver
+        qué le toca y subir su pista, sin ver clientes ni montos.
       </p>
 
       {musicos === null ? (
@@ -120,6 +147,18 @@ export function MusicosSection() {
                   {m.email && <span className="text-white/40 text-xs truncate">· {m.email}</span>}
                   {m.telefono && <span className="text-white/40 text-xs">· {m.telefono}</span>}
                   <div className="ml-auto flex items-center gap-1">
+                    <button
+                      onClick={() => togglePortal(m)}
+                      disabled={busy}
+                      title={m.portal_activo
+                        ? "Tiene portal: puede entrar a ver sus grabaciones y subir su pista"
+                        : "Sin portal: no puede entrar. Prendérselo solo a quien graba a distancia."}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] transition-colors cursor-pointer disabled:opacity-40 ${
+                        m.portal_activo ? "bg-lgb-red/15 text-lgb-red hover:bg-lgb-red/25" : "bg-white/5 text-white/35 hover:text-white/60"
+                      }`}
+                    >
+                      <KeyRound size={10} /> {m.portal_activo ? "Con portal" : "Sin portal"}
+                    </button>
                     <button onClick={() => abrirEdit(m)} className="text-white/30 hover:text-white p-1" title="Editar"><Pencil size={13} /></button>
                     <button onClick={() => borrar(m.id)} className="text-white/25 hover:text-red-300 p-1" title="Eliminar"><Trash2 size={13} /></button>
                   </div>

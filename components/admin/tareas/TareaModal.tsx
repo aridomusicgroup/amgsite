@@ -9,10 +9,14 @@ import { toast } from "@/lib/toast";
 import { fechaLarga, paraInput, sugerenciaInicial, estaVencido, type MiRecordatorio } from "@/lib/recordatorios";
 import { SortableTarea } from "./SortableTarea";
 import { inp, lblS, type Equipo } from "./estilos";
+import { AsignarMusico, type MusicoLite } from "./AsignarMusico";
 
 // ── Ventana grande: detalle de una tarea (notas, responsable, subtareas) ──────
-export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId, onClose, onAction }: {
+export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId, proyectoId, musicos, onClose, onAction }: {
   tarea: ProyectoTarea; equipo: Equipo[]; busy: boolean; contenido: boolean;
+  /** Para asignarle la tarea a un músico externo. Sin los dos, el bloque no sale. */
+  proyectoId?: string;
+  musicos?: MusicoLite[];
   /** MI recordatorio en esta tarea (el de los demás no se ve ni se toca). */
   recordatorio: MiRecordatorio | null;
   miId: string | null;
@@ -137,6 +141,10 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
               </div>
             )}
           </>
+        )}
+
+        {proyectoId && musicos && (
+          <AsignarMusico proyectoId={proyectoId} tareaId={tarea.id} tituloTarea={tarea.titulo} musicos={musicos} />
         )}
 
         <div className="mt-4">
