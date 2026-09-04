@@ -26,6 +26,7 @@ export function EditarProyectoModal({ open, proyecto, equipo, ventas, isAdmin, o
     responsables: proyecto.responsables ?? [],
     prioridad: proyecto.prioridad, fecha_entrega: proyecto.fecha_entrega ?? "", brief: proyecto.brief ?? "",
     entregable_url: proyecto.entregable_url ?? "", notas: proyecto.notas ?? "", venta_id: proyecto.venta_id ?? "",
+    tonalidad: proyecto.tonalidad ?? "", bpm: proyecto.bpm != null ? String(proyecto.bpm) : "",
     plataforma: proyecto.plataforma ?? "", fecha_publicacion: proyecto.fecha_publicacion ?? "", link_post: proyecto.link_post ?? "",
   });
   const [ventaInput, setVentaInput] = useState(ventas.find((v) => v.id === proyecto.venta_id)?.label ?? "");
@@ -90,6 +91,15 @@ export function EditarProyectoModal({ open, proyecto, equipo, ventas, isAdmin, o
           <div className="col-span-2 min-w-0">
             <label className={lblS}>Link entregables</label>
             <input value={ef.entregable_url} onChange={(e) => setEf((p) => ({ ...p, entregable_url: e.target.value }))} placeholder="Drive…" className={inp} />
+          </div>
+          {/* Los usa el previo para músico. */}
+          <div>
+            <label className={lblS}>Tonalidad</label>
+            <input value={ef.tonalidad} onChange={(e) => setEf((p) => ({ ...p, tonalidad: e.target.value }))} maxLength={12} placeholder="Am" className={inp} />
+          </div>
+          <div>
+            <label className={lblS}>BPM</label>
+            <input type="number" min={20} max={400} value={ef.bpm} onChange={(e) => setEf((p) => ({ ...p, bpm: e.target.value }))} placeholder="154" className={inp} />
           </div>
         </div>
         {isAdmin && (

@@ -212,6 +212,9 @@ export async function POST(req: NextRequest) {
         titulo: b.beat_nombre || tv || "Producción", tipo: tproy, estado: "cola", prioridad: "media",
         contacto_id: contactoId, venta_id: ventaRow.id, cotizacion_id: b.cotizacion_id || null,
         responsable_id: responsableId, responsables: responsables.length ? responsables : null,
+        // Los toma el previo para músico; si no vinieron se capturan luego.
+        tonalidad: (b.tonalidad || "").trim() || null,
+        bpm: Number(b.bpm) || null,
         creado_por: "ventas",
       }).select("id").single();
       // Tareas del proyecto, en orden de prioridad:

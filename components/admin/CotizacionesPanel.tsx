@@ -1075,6 +1075,10 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
   const [fecha, setFecha] = useState(hoy);
   const [titulo, setTitulo] = useState(c.items[0]?.label ?? "Producción");
   const [tipo, setTipo] = useState("Beat personalizado");
+  // Se guardan en el proyecto: el previo para músico los toma de aquí en vez de
+  // pedirlos cada vez. Opcionales — si no se saben todavía, se capturan después.
+  const [tonalidad, setTonalidad] = useState("");
+  const [bpm, setBpm] = useState("");
 
   // Conceptos "libres" = los que NO salieron del catálogo (botón "+ Libre").
   // Si la cotización no trae ningún paquete, no aplica la plantilla estándar:
@@ -1135,6 +1139,8 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
         tareas_libres: modo === "libre" ? tareasLibres : "",
         crear_proyecto: crearProyecto,
         responsables,
+        tonalidad: tonalidad.trim() || null,
+        bpm: Number(bpm) || null,
       });
       router.refresh();
       onClose();
@@ -1168,6 +1174,19 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
         </Field>
       </div>
       <Field label="Título de la producción"><input value={titulo} onChange={(e) => setTitulo(e.target.value)} className="input" /></Field>
+
+      {/* Quedan guardados en el proyecto: el previo para músico los toma de aquí
+          y ya no hay que escribirlos al renderizar. */}
+      {crearProyecto && (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Tonalidad (opcional)">
+            <input value={tonalidad} onChange={(e) => setTonalidad(e.target.value)} maxLength={12} placeholder="Am" className="input" />
+          </Field>
+          <Field label="BPM (opcional)">
+            <input type="number" min={20} max={400} value={bpm} onChange={(e) => setBpm(e.target.value)} placeholder="154" className="input" />
+          </Field>
+        </div>
+      )}
       {crearProyecto && (
         <div className="mt-3">
           <div className="flex items-center gap-2 flex-wrap mb-2">
