@@ -30,6 +30,14 @@ interface Props {
   rastro: Record<string, RastroCot>;
   isAdmin: boolean;
   plantillas: PlantillaItem[];
+  equipo: MiembroEquipo[];
+}
+
+/** Miembro del equipo, para elegir responsables al convertir en venta. */
+export interface MiembroEquipo {
+  id: string;
+  nombre: string;
+  rol: string | null;
 }
 
 // ── Catálogo de servicios para el selector rápido (desde services.json) ──
@@ -76,7 +84,7 @@ async function api(url: string, method: string, body?: unknown) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-export function CotizacionesPanel({ cotizaciones, contratos, clientes, tipos, rastro, isAdmin, plantillas, tcSugerido }: Props) {
+export function CotizacionesPanel({ cotizaciones, contratos, clientes, tipos, rastro, isAdmin, plantillas, tcSugerido, equipo }: Props) {
   const [tab, setTab] = useState<"cotizaciones" | "contratos" | "plantillas">("cotizaciones");
   const [cotOpen, setCotOpen] = useState<Cotizacion | "new" | null>(null);
   const [conOpen, setConOpen] = useState<Contrato | "new" | Partial<Contrato> | null>(null);
@@ -165,7 +173,7 @@ export function CotizacionesPanel({ cotizaciones, contratos, clientes, tipos, ra
         />
       )}
       {ventaOpen && (
-        <ConvertirVentaModal tcSugerido={tcSugerido} cotizacion={ventaOpen} onClose={() => setVentaOpen(null)} />
+        <ConvertirVentaModal tcSugerido={tcSugerido} equipo={equipo} cotizacion={ventaOpen} onClose={() => setVentaOpen(null)} />
       )}
     </div>
   );
@@ -1059,7 +1067,9 @@ function RastroLinea({ c, r }: { c: Cotizacion; r: RastroCot }) {
 const VENTA_TIPOS = ["Beat personalizado", "BP + Letra", "Grabación", "Mezcla / Master", "Exclusividad", "EP", "Álbum"];
 
 // Convierte una cotización en venta (folio I####) + proyecto con tareas (reusa /api/admin/ventas).
-function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido }: { cotizacion: Cotizacion; onClose: () => void; tcSugerido: number }) {
+function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
+  cotizacion: Cotizacion; onClose: () => void; tcSugerido: number; equipo: MiembroEquipo[];
+}) {
   const router = useRouter();
   const hoy = new Date().toISOString().slice(0, 10);
   const [fecha, setFecha] = useState(hoy);
@@ -1085,6 +1095,12 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido }: { cotizacio
   // Si la cotización llevaba la comisión de PayPal, el medio de pago ya se sabe.
   const [medioPago, setMedioPago] = useState(c.comision_pct > 0 ? "PAYPAL" : "");
   const [quienCerro, setQuienCerro] = useState("");
+  // Por defecto los socios (Luis y Eliud): son los responsables de toda
+  // producción salvo que se cambie aquí. Se lee del rol y no de dos ids fijos,
+  // así sigue siendo correcto si el equipo cambia.
+  const [responsables, setResponsables] = useState<string[]>(
+    () => equipo.filter((e) => e.rol === "socio").map((e) => e.id),
+  );
   const [anticipo, setAnticipo] = useState(0);
   const [crearProyecto, setCrearProyecto] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1118,6 +1134,7 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido }: { cotizacio
         instrumentos: modo === "plantilla" ? extras : "",
         tareas_libres: modo === "libre" ? tareasLibres : "",
         crear_proyecto: crearProyecto,
+        responsables,
       });
       router.refresh();
       onClose();
@@ -1203,6 +1220,37 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido }: { cotizacio
         <input type="checkbox" checked={crearProyecto} onChange={(e) => setCrearProyecto(e.target.checked)} className="accent-lgb-red w-4 h-4" />
         Crear también el proyecto de producción y sus tareas
       </label>
+
+      {/* Quién se hace cargo. Sólo tiene sentido si se está creando el proyecto. */}
+      {crearProyecto && equipo.length > 0 && (
+        <div className="mt-3">
+          <p className="text-white/50 text-xs mb-1.5">Responsables del proyecto</p>
+          <div className="flex flex-wrap gap-1.5">
+            {equipo.map((e) => {
+              const puesto = responsables.includes(e.id);
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  onClick={() =>
+                    setResponsables((prev) => (puesto ? prev.filter((x) => x !== e.id) : [...prev, e.id]))
+                  }
+                  className={`px-3 py-1.5 rounded-full text-xs transition-colors cursor-pointer ${
+                    puesto ? "bg-lgb-red text-white" : "bg-white/5 text-white/50 hover:text-white"
+                  }`}
+                >
+                  {e.nombre}
+                </button>
+              );
+            })}
+          </div>
+          {responsables.length === 0 && (
+            <p className="text-amber-300/70 text-[11px] mt-1.5">
+              Sin responsables el proyecto no le aparece a nadie en su filtro.
+            </p>
+          )}
+        </div>
+      )}
       {err && <p className="text-red-400 text-xs mt-2">{err}</p>}
       <SaveBar saving={saving} onSave={save} onClose={onClose} />
     </Modal>

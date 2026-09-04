@@ -183,9 +183,14 @@ export async function POST(req: NextRequest) {
   let proyectoFolio: string | null = null;
   if (b.crear_proyecto && ventaRow?.id) {
     try {
-      // Responsable: intenta casar "quién cerró" con un miembro del equipo
-      let responsableId: string | null = null;
-      if (b.quien_cerro && String(b.quien_cerro).trim()) {
+      // Responsables: los que se eligieron al convertir la cotización. Si no
+      // vino ninguno se cae al comportamiento viejo (casar "quién cerró" con un
+      // miembro del equipo por nombre).
+      const responsables: string[] = Array.isArray(b.responsables)
+        ? b.responsables.filter((x: unknown): x is string => typeof x === "string" && x.length > 0)
+        : [];
+      let responsableId: string | null = responsables[0] ?? null;
+      if (!responsableId && b.quien_cerro && String(b.quien_cerro).trim()) {
         const { data: eq } = await sb.from("equipo").select("id").ilike("nombre", `%${String(b.quien_cerro).trim()}%`).limit(1);
         responsableId = (eq?.[0]?.id as string | undefined) ?? null;
       }
@@ -206,7 +211,8 @@ export async function POST(req: NextRequest) {
         folio: proyectoFolio, clase: "produccion",
         titulo: b.beat_nombre || tv || "Producción", tipo: tproy, estado: "cola", prioridad: "media",
         contacto_id: contactoId, venta_id: ventaRow.id, cotizacion_id: b.cotizacion_id || null,
-        responsable_id: responsableId, creado_por: "ventas",
+        responsable_id: responsableId, responsables: responsables.length ? responsables : null,
+        creado_por: "ventas",
       }).select("id").single();
       // Tareas del proyecto, en orden de prioridad:
       //  1. EP/Álbum → una tarea por canción.

@@ -1,7 +1,7 @@
 import { requireModule } from "@/lib/supabase/auth-server";
 import { getCotizaciones, getContratos, getRastroCotizaciones } from "@/lib/cotizaciones-data";
 import { tipoCambioSugerido } from "@/lib/tipo-cambio-server";
-import { getContactos } from "@/lib/erp-data";
+import { getContactos, getEquipoActivo } from "@/lib/erp-data";
 import { CONTRACT_TIPOS } from "@/lib/pdf/contracts";
 import { getPlantillasEditor } from "@/lib/plantillas-data";
 import { CotizacionesPanel } from "@/components/admin/CotizacionesPanel";
@@ -11,13 +11,14 @@ export const dynamic = "force-dynamic";
 export default async function CotizacionesAdminPage() {
   const session = await requireModule("/admin/cotizaciones");
 
-  const [cotizaciones, contratos, contactos, rastro, tcSugerido] = await Promise.all([
+  const [cotizaciones, contratos, contactos, rastro, tcSugerido, equipo] = await Promise.all([
     getCotizaciones(),
     getContratos(),
     getContactos(),
     getRastroCotizaciones(),
     // Promedio de las últimas ventas en dólares: se propone al cotizar en USD.
     tipoCambioSugerido(),
+    getEquipoActivo(),
   ]);
 
   const clientes = contactos
@@ -36,6 +37,7 @@ export default async function CotizacionesAdminPage() {
         </p>
       </div>
       <CotizacionesPanel
+        equipo={equipo.map((e) => ({ id: e.id, nombre: e.nombre, rol: e.rol }))}
         cotizaciones={cotizaciones}
         contratos={contratos}
         clientes={clientes}

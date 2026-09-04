@@ -548,6 +548,32 @@ export const ESTADO_PROY_LABEL: Record<string, string> = {
   cola: "Cola", produccion: "Producción", revision: "Revisión", entregado: "Entregado",
   cerrado: "Cerrado", pausado: "Pausado", cancelado: "Cancelado",
 };
+/**
+ * Color de cada estado. Vive aquí y no en el tablero porque lo usan varias
+ * pantallas (Producción y REAPER) y dos paletas distintas para lo mismo se
+ * vuelven ruido: el ámbar tiene que significar "en producción" en todas.
+ */
+export const ESTADO_PROY_COLOR: Record<string, string> = {
+  cola: "bg-white/10 text-white/60",
+  produccion: "bg-amber-500/15 text-amber-300",
+  revision: "bg-purple-500/15 text-purple-300",
+  entregado: "bg-blue-500/15 text-blue-300",
+  cerrado: "bg-green-500/15 text-green-300",
+  pausado: "bg-white/5 text-white/40",
+  cancelado: "bg-white/5 text-white/35",
+};
+
+/** El mismo estado como borde/acento, para resaltar una tarjeta completa. */
+export const ESTADO_PROY_BORDE: Record<string, string> = {
+  cola: "border-l-white/25",
+  produccion: "border-l-amber-400",
+  revision: "border-l-purple-400",
+  entregado: "border-l-blue-400",
+  cerrado: "border-l-green-400",
+  pausado: "border-l-white/15",
+  cancelado: "border-l-white/10",
+};
+
 export const TIPO_PROY_LABEL: Record<string, string> = {
   beat_personalizado: "Beat personalizado", bp_letra: "BP + Letra", grabacion: "Grabación",
   mezcla_master: "Mezcla / Master", exclusividad: "Exclusividad",
@@ -599,12 +625,17 @@ export interface Proyecto {
   tareas: ProyectoTarea[];
 }
 
-export async function getEquipoActivo(): Promise<{ id: string; nombre: string; email: string | null }[]> {
+export async function getEquipoActivo(): Promise<{ id: string; nombre: string; email: string | null; rol: string | null }[]> {
   const sb = supabaseAdmin();
-  const { data } = await sb.from("equipo").select("id, nombre, email, activo").order("nombre");
+  const { data } = await sb.from("equipo").select("id, nombre, email, rol, activo").order("nombre");
   return (data ?? [])
     .filter((e) => e.activo !== false)
-    .map((e) => ({ id: e.id as string, nombre: e.nombre as string, email: (e.email as string | null) ?? null }));
+    .map((e) => ({
+      id: e.id as string,
+      nombre: e.nombre as string,
+      email: (e.email as string | null) ?? null,
+      rol: (e.rol as string | null) ?? null,
+    }));
 }
 
 export async function getProyectos(): Promise<Proyecto[]> {

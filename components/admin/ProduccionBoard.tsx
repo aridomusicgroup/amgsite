@@ -7,7 +7,7 @@ import { DndContext, closestCenter, MouseSensor, TouchSensor, useSensor, useSens
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  ESTADOS_PROY, ESTADO_PROY_LABEL, TIPO_PROY_LABEL, PRIORIDAD_LABEL,
+  ESTADOS_PROY, ESTADO_PROY_LABEL, ESTADO_PROY_COLOR as ESTADO_COLOR, TIPO_PROY_LABEL, PRIORIDAD_LABEL,
   type Proyecto, type ProyectoTarea,
 } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
@@ -22,15 +22,6 @@ const hoy = () => new Date().toISOString().slice(0, 10);
 const fechaCorta = (s: string | null) =>
   s ? new Date(s + "T12:00:00").toLocaleDateString("es-MX", { day: "2-digit", month: "short" }) : null;
 
-const ESTADO_COLOR: Record<string, string> = {
-  cola: "bg-white/10 text-white/60",
-  produccion: "bg-amber-500/15 text-amber-300",
-  revision: "bg-purple-500/15 text-purple-300",
-  entregado: "bg-blue-500/15 text-blue-300",
-  cerrado: "bg-green-500/15 text-green-300",
-  pausado: "bg-white/5 text-white/40",
-  cancelado: "bg-white/5 text-white/35",
-};
 const PRIOR_DOT: Record<string, string> = { alta: "bg-red-400", media: "bg-amber-400", baja: "bg-white/30" };
 const PRIOR_ORDER: Record<string, number> = { alta: 0, media: 1, baja: 2 };
 

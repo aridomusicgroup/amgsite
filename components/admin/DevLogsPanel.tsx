@@ -5,6 +5,7 @@ import { Music4, Package, Layers, Loader2, Cloud, Music2 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { toast } from "@/lib/toast";
 import { RenderOpciones } from "./RenderOpciones";
+import { ESTADO_PROY_LABEL, ESTADO_PROY_COLOR, ESTADO_PROY_BORDE } from "@/lib/erp-data";
 import type { Renderizable, TipoRender, RenderJob, OpcionesRender, MusicoLite } from "@/lib/render-jobs";
 
 interface LogRow {
@@ -121,7 +122,12 @@ function RenderList({ proyectos, onAbrir }: {
         const enDrive = p.jobs.find((j) => j.estado === "listo" && j.driveUrls?.length);
 
         return (
-          <div key={p.key} className="bg-lgb-surface border border-white/5 rounded-2xl p-3 sm:p-4">
+          <div
+            key={p.key}
+            className={`bg-lgb-surface border border-white/5 border-l-4 rounded-2xl p-3 sm:p-4 ${
+              ESTADO_PROY_BORDE[p.estado] ?? "border-l-white/10"
+            }`}
+          >
             {/* En vertical el título va en su propio renglón: compartir la fila
                 con cuatro botones lo dejaba en una columna de ~90px y el nombre
                 se partía letra por letra. */}
@@ -131,14 +137,26 @@ function RenderList({ proyectos, onAbrir }: {
                   {p.album && <span className="text-white/40">{p.album} · </span>}
                   {p.titulo}
                 </p>
-                <p className="text-white/40 text-xs mt-0.5">
-                  {p.cliente}
-                  {p.folio && ` · ${p.folio}`}
-                  {p.ultimoPrevio > 0 && ` · último previo: ${p.ultimoPrevio}`}
+                <p className="text-white/40 text-xs mt-1 flex items-center gap-1.5 flex-wrap">
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${ESTADO_PROY_COLOR[p.estado] ?? "bg-white/10 text-white/50"}`}>
+                    {ESTADO_PROY_LABEL[p.estado] ?? p.estado}
+                  </span>
+                  <span>
+                    {p.cliente}
+                    {p.folio && ` · ${p.folio}`}
+                    {p.ultimoPrevio > 0 && ` · último previo: ${p.ultimoPrevio}`}
+                  </span>
                 </p>
               </div>
 
               <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
+                <BotonRender
+                  icono={<Music2 size={14} />}
+                  texto="Músico"
+                  titulo={`Previo para quien graba: MP3 con BPM y tonalidad en el nombre · tarda ~${MINUTOS.musico} min`}
+                  deshabilitado={!!enVuelo}
+                  onClick={() => onAbrir(p, "musico")}
+                />
                 <BotonRender
                   icono={<Music4 size={14} />}
                   texto={p.ultimoPrevio > 0 ? `Previo ${p.ultimoPrevio + 1}` : "Previo"}
@@ -159,13 +177,6 @@ function RenderList({ proyectos, onAbrir }: {
                   titulo={`WAV 24-bit por grupo, con mezcla y máster · tarda ~${MINUTOS.stems} min`}
                   deshabilitado={!!enVuelo}
                   onClick={() => onAbrir(p, "stems")}
-                />
-                <BotonRender
-                  icono={<Music2 size={14} />}
-                  texto="Músico"
-                  titulo={`Previo para quien graba: MP3 con BPM y tonalidad en el nombre · tarda ~${MINUTOS.musico} min`}
-                  deshabilitado={!!enVuelo}
-                  onClick={() => onAbrir(p, "musico")}
                 />
               </div>
             </div>
