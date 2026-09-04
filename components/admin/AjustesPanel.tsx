@@ -5,6 +5,7 @@ import { ArrowUp, ArrowDown, Loader2, Lock, X, Radio, Plus, ChevronDown, Chevron
 import { ROLE_MODULES, MODULES, GRUPOS, GRUPO_LABEL, moduleLabel, moduleDef, type Grupo } from "@/lib/modules";
 import { toast } from "@/lib/toast";
 import { MusicosSection } from "./MusicosSection";
+import { InstrumentoPistasSection } from "./InstrumentoPistasSection";
 import { PerfilSection } from "./PerfilSection";
 
 const FONTS = [{ k: "sm", label: "Chico" }, { k: "md", label: "Mediano" }, { k: "lg", label: "Grande" }];
@@ -155,6 +156,8 @@ export function AjustesPanel({ fontSize, theme, moduleOrder, modules, isAdmin, u
       {isAdmin && <EquipoSection usuarios={usuarios} selfEmail={selfEmail} />}
 
       {isAdmin && <MusicosSection />}
+
+      {isAdmin && <InstrumentoPistasSection />}
     </div>
   );
 }
