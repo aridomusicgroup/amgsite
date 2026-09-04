@@ -189,21 +189,33 @@ function FilaUsuario({ u, esYo, busy, abierta, onAbrir, onRol, onActivo, onElimi
     <div className="bg-white/[0.02] border border-white/8 rounded-lg overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2">
         <Radio size={14} className={u.activo ? "text-lgb-red" : "text-white/15"} />
-        <button
-          onClick={onAbrir}
-          className="flex items-center gap-1.5 min-w-0 flex-1 text-left cursor-pointer group"
-          title="Ver y repartir sus accesos"
-        >
-          {abierta ? <ChevronDown size={13} className="text-white/40 shrink-0" /> : <ChevronRight size={13} className="text-white/25 shrink-0 group-hover:text-white/50" />}
-          <span className="text-sm truncate">
-            {u.email}
-            {esYo && <span className="text-white/30"> · tú</span>}
-            {!u.activo && <span className="text-amber-300/70"> · inactivo</span>}
-          </span>
-          <span className="text-[11px] text-white/30 shrink-0 ml-1">
-            {esAdmin ? "ve todo" : `${activos}/${total}`}
-          </span>
-        </button>
+        {esAdmin ? (
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <span className="w-[13px] shrink-0" />
+            <span className="text-sm truncate">
+              {u.email}
+              {esYo && <span className="text-white/30"> · tú</span>}
+              {!u.activo && <span className="text-amber-300/70"> · inactivo</span>}
+            </span>
+            <span className="text-[11px] text-white/30 shrink-0 ml-1" title="El rol de administrador incluye todo el panel">
+              ve todo el panel
+            </span>
+          </div>
+        ) : (
+          <button
+            onClick={onAbrir}
+            className="flex items-center gap-1.5 min-w-0 flex-1 text-left cursor-pointer group"
+            title="Ver y repartir sus accesos"
+          >
+            {abierta ? <ChevronDown size={13} className="text-white/40 shrink-0" /> : <ChevronRight size={13} className="text-white/25 shrink-0 group-hover:text-white/50" />}
+            <span className="text-sm truncate">
+              {u.email}
+              {esYo && <span className="text-white/30"> · tú</span>}
+              {!u.activo && <span className="text-amber-300/70"> · inactivo</span>}
+            </span>
+            <span className="text-[11px] text-white/30 shrink-0 ml-1">{activos}/{total}</span>
+          </button>
+        )}
         <select value={u.role} onChange={(e) => onRol(e.target.value)} disabled={busy || esYo}
           className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-lgb-red disabled:opacity-50">
           {ROLES.map((r) => <option key={r} value={r} className="bg-lgb-dark">{ROL_LABEL[r]}</option>)}
@@ -215,11 +227,9 @@ function FilaUsuario({ u, esYo, busy, abierta, onAbrir, onRol, onActivo, onElimi
         <button onClick={onEliminar} disabled={busy || esYo} className="text-white/25 hover:text-red-300 disabled:opacity-20 cursor-pointer"><X size={15} /></button>
       </div>
 
-      {abierta && (
+      {abierta && !esAdmin && (
         <div className="border-t border-white/8 px-3 py-3">
-          {esAdmin
-            ? <p className="text-white/40 text-xs">Los administradores ven todo el panel. No hay nada que repartir.</p>
-            : <AccesosDeUsuario u={u} extras={extras} onExtras={setExtras} />}
+          <AccesosDeUsuario u={u} extras={extras} onExtras={setExtras} />
         </div>
       )}
     </div>
