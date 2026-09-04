@@ -35,6 +35,18 @@ export async function POST(req: NextRequest) {
   }
 
   const b = await req.json().catch(() => ({}));
+
+  // Token pelón, sin armar carpetas: lo pide el script cuando va a BAJAR un
+  // archivo (la pista que subió un músico) en vez de subir uno. Un stem son
+  // decenas de MB, así que baja directo de Google y no por aquí.
+  if (b.soloToken) {
+    const solo = await tokenParaNavegador();
+    if (!solo) {
+      return NextResponse.json({ error: (await diagnosticoDrive()) ?? "Drive no está conectado." }, { status: 503 });
+    }
+    return NextResponse.json({ accessToken: solo.accessToken, expiresAt: solo.expiresAt });
+  }
+
   const proyectoId = String(b.proyectoId || "").trim();
   const tareaId = b.tareaId ? String(b.tareaId).trim() : null;
   const tipo = String(b.tipo || "").trim();
