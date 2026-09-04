@@ -20,7 +20,7 @@ export function ContratoTab({ proyecto }: { proyecto: ProyectoDetalle }) {
             <p className="text-[11px] text-white/35 uppercase tracking-wider">Cotización</p>
             <p className="text-white text-sm mt-1">{proyecto.cotizacion.folio ?? "Sin folio"} · {ESTADO_LABEL[proyecto.cotizacion.estado] ?? proyecto.cotizacion.estado}</p>
           </div>
-          <Link href="/admin/cotizaciones" className="text-white/40 hover:text-white text-xs flex items-center gap-1">Ver <ExternalLink size={12} /></Link>
+          <Link href={`/admin/cotizaciones?destacar=${proyecto.cotizacion.id}`} className="text-white/40 hover:text-white text-xs flex items-center gap-1">Ver <ExternalLink size={12} /></Link>
         </div>
       )}
 
@@ -39,7 +39,7 @@ export function ContratoTab({ proyecto }: { proyecto: ProyectoDetalle }) {
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <span className={`text-[11px] px-2 py-0.5 rounded-full ${ESTADO_COLOR[c.estado] ?? "bg-white/8 text-white/50"}`}>{ESTADO_LABEL[c.estado] ?? c.estado}</span>
-                <Link href="/admin/cotizaciones" className="text-white/40 hover:text-white" title="Ver / editar en Cotizaciones"><ExternalLink size={13} /></Link>
+                <Link href={`/admin/cotizaciones?vista=contratos&destacar=${c.id}`} className="text-white/40 hover:text-white" title="Ver / editar en Cotizaciones"><ExternalLink size={13} /></Link>
               </div>
             </div>
           ))}

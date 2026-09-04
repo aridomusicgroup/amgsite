@@ -1,5 +1,6 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { ENTIDADES_SENSIBLES, type ActividadEntidad } from "@/lib/actividad-modulos";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SB = any;
@@ -27,14 +28,9 @@ export type ActividadTipo =
   // Almacenamiento
   | "almacenamiento_tipo_editado" | "almacenamiento_override_editado";
 
-/** Módulo al que pertenece el movimiento (para filtrar la bitácora). */
-export type ActividadEntidad =
-  | "proyecto" | "tarea" | "venta" | "pago" | "cotizacion"
-  | "contrato" | "contacto" | "egreso" | "ingreso" | "gasto_recurrente" | "usuario" | "musico"
-  | "almacenamiento";
-
-/** Entidades de dinero/comercial: solo las ven los admins. */
-export const ENTIDADES_SENSIBLES: ActividadEntidad[] = ["venta", "pago", "egreso", "ingreso", "gasto_recurrente", "cotizacion", "contrato", "usuario", "musico"];
+// Se mudaron al módulo puro (lo importa el navegador); se re-exportan de aquí.
+export { ENTIDADES_SENSIBLES };
+export type { ActividadEntidad };
 
 interface RegistrarInput {
   tipo: ActividadTipo;

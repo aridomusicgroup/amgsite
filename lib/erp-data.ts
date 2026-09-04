@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { extraerShortcode } from "@/lib/shortcode";
 import { esProyectoDeCliente } from "@/lib/pedido-sync";
 import { ESTADOS_NO_ABIERTOS, calcEntregas, type DashProyecto, type EntregasResumen } from "@/lib/entregas";
+import { ENTIDADES_SENSIBLES } from "@/lib/actividad-modulos";
 
 export type { DashProyecto };
 
@@ -806,7 +807,17 @@ export async function getEntregasReferencia(tipo: string | null): Promise<Entreg
 }
 
 /** Vista 360° de un solo proyecto: todo lo que ya calcula getProyectos() más lo que le falta (contratos, cotización, renders, bitácora). */
-export async function getProyectoDetalle(id: string): Promise<ProyectoDetalle | null> {
+/**
+ * Todo lo de un proyecto para su página de detalle.
+ *
+ * `esAdmin` NO es cosmético: filtra la bitácora igual que
+ * `/api/admin/actividad`. Sin él, quien no es admin vería en esta pestaña los
+ * movimientos de dinero y comerciales (pagos, ventas, contratos, cotizaciones)
+ * que el resto del panel le esconde. Hoy no hay ni una fila así ligada a un
+ * proyecto, o sea que no se filtró nada; el candado es para que no empiece a
+ * pasar el día que alguien registre un pago desde la pestaña Cliente y venta.
+ */
+export async function getProyectoDetalle(id: string, esAdmin = false): Promise<ProyectoDetalle | null> {
   const sb = supabaseAdmin();
   const { data: p } = await sb.from("proyectos").select("*, contactos(nombre, email, telefono)").eq("id", id).single();
   if (!p) return null;
@@ -826,7 +837,11 @@ export async function getProyectoDetalle(id: string): Promise<ProyectoDetalle | 
       : Promise.resolve({ data: null as { id: string; folio: string | null; estado: string; created_at: string } | null }),
     sb.from("render_jobs").select("id, tipo, estado, tarea_id, created_at, drive_urls").eq("proyecto_id", id).order("created_at", { ascending: false }),
     sb.from("render_inventario").select("id, tarea_id, clave, datos, updated_at").eq("proyecto_id", id),
-    sb.from("actividad").select("id, tipo, titulo, actor, created_at").eq("proyecto_id", id).order("created_at", { ascending: false }).limit(100),
+    (esAdmin
+      ? sb.from("actividad").select("id, tipo, titulo, actor, created_at, entidad")
+      : sb.from("actividad").select("id, tipo, titulo, actor, created_at, entidad")
+          .or(`entidad.is.null,entidad.not.in.(${ENTIDADES_SENSIBLES.join(",")})`)
+    ).eq("proyecto_id", id).order("created_at", { ascending: false }).limit(100),
     sb.from("social_posts").select("media_id, permalink, likes, comentarios, guardados, compartidos, alcance, reproducciones"),
     getEntregasReferencia(p.tipo as string | null),
   ]);

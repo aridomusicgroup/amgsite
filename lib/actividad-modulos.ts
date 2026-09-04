@@ -9,6 +9,21 @@
 // panel y NO llenan `entidad` — se identifican por `proyecto_id` / `tarea_id`.
 // Por eso la regla no puede ser solo "entidad = tal".
 
+/** Módulo al que pertenece el movimiento (para filtrar la bitácora). */
+export type ActividadEntidad =
+  | "proyecto" | "tarea" | "venta" | "pago" | "cotizacion"
+  | "contrato" | "contacto" | "egreso" | "ingreso" | "gasto_recurrente" | "usuario" | "musico"
+  | "almacenamiento";
+
+/**
+ * Entidades de dinero/comercial: solo las ven los admins.
+ *
+ * Vive aquí, en el módulo puro, y no en `lib/actividad.ts`, porque ese es
+ * `server-only` y esta lista la necesita también quien arma consultas desde
+ * archivos que el navegador termina importando (aunque sea solo por tipos).
+ */
+export const ENTIDADES_SENSIBLES: ActividadEntidad[] = ["venta", "pago", "egreso", "ingreso", "gasto_recurrente", "cotizacion", "contrato", "usuario", "musico"];
+
 export type Modulo = "produccion" | "clientes" | "finanzas";
 
 /** Lo mínimo de un renglón de bitácora para saber a dónde pertenece. */

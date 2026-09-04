@@ -16,10 +16,17 @@ function hace(iso: string): string {
   return new Date(iso).toLocaleDateString("es-MX", { day: "2-digit", month: "short" });
 }
 
-/** Bitácora de este proyecto — mismos datos y colores que la campanita, ya vienen incluidos en getProyectoDetalle (sin fetch aparte). */
-export function ActividadTab({ actividad }: { actividad: ActividadItem[] }) {
+/**
+ * Bitácora de este proyecto — mismos datos y colores que la campanita, ya
+ * vienen incluidos en getProyectoDetalle (sin fetch aparte).
+ *
+ * Lo comercial y de dinero ya viene filtrado DEL SERVIDOR para quien no es
+ * admin; aquí solo se dice, para que la lista no parezca incompleta por un bug.
+ */
+export function ActividadTab({ actividad, isAdmin }: { actividad: ActividadItem[]; isAdmin: boolean }) {
   if (!actividad.length) return <p className="text-sm text-white/30">Sin movimientos registrados todavía.</p>;
   return (
+    <>
     <ul className="space-y-0.5">
       {actividad.map((it) => (
         <li key={it.id} className="flex gap-2.5 px-1 py-2 border-b border-white/5 last:border-0">
@@ -31,5 +38,11 @@ export function ActividadTab({ actividad }: { actividad: ActividadItem[] }) {
         </li>
       ))}
     </ul>
+    {!isAdmin && (
+      <p className="text-[11px] text-white/25 mt-3">
+        Los movimientos de dinero y de contratos solo los ven los administradores.
+      </p>
+    )}
+    </>
   );
 }

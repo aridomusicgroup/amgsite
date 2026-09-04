@@ -5,8 +5,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Pencil, Trash2, Copy } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { toast } from "@/lib/toast";
-import { ESTADO_PROY_LABEL, TIPO_PROY_LABEL, PRIORIDAD_LABEL, type ProyectoDetalle as TProyectoDetalle } from "@/lib/erp-data";
-import { esContenidoPub, type Equipo, type VentaLite } from "@/components/admin/ProduccionBoard";
+import type { MiRecordatorio } from "@/lib/recordatorios";
+import { ESTADOS_PROY, ESTADO_PROY_LABEL, ESTADO_PROY_COLOR, TIPO_PROY_LABEL, PRIORIDAD_LABEL, type ProyectoDetalle as TProyectoDetalle } from "@/lib/erp-data";
+import { esContenido, esContenidoPub, type Equipo, type VentaLite } from "@/components/admin/ProduccionBoard";
 import { ConfirmCascadeDialog } from "@/components/admin/ui/ConfirmCascadeDialog";
 import { EditarProyectoModal } from "@/components/admin/EditarProyectoModal";
 import { ResumenTab } from "@/components/admin/proyecto-detalle/ResumenTab";
@@ -21,8 +22,11 @@ import { RedesTab } from "@/components/admin/proyecto-detalle/RedesTab";
 const MUSICA_TIPOS = ["beat_personalizado", "bp_letra", "grabacion", "mezcla_master", "ep", "album"];
 const PRIOR_DOT: Record<string, string> = { alta: "bg-red-400", media: "bg-amber-400", baja: "bg-white/30" };
 
-export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin }: {
+export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatorios, miId }: {
   proyecto: TProyectoDetalle; equipo: Equipo[]; ventas: VentaLite[]; isAdmin: boolean;
+  /** MIS recordatorios (los de los demás no se ven ni se tocan). */
+  recordatorios: Record<string, MiRecordatorio>;
+  miId: string | null;
 }) {
   const router = useRouter();
   // proyectos/proyecto_tareas/proyecto_subtareas ya se cubren globalmente en AdminNav;
@@ -44,6 +48,33 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin }: {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [duplicando, setDuplicando] = useState(false);
+  const [moviendo, setMoviendo] = useState(false);
+
+  /**
+   * Mover de etapa y abrir ronda de revisión.
+   *
+   * Son las dos acciones centrales del kanban y aquí no existían: se podía
+   * editar, duplicar y borrar el proyecto, pero para pasarlo de "Cola" a
+   * "Producción" había que regresar al tablero.
+   */
+  const patch = async (body: Record<string, unknown>) => {
+    setMoviendo(true);
+    try {
+      const r = await fetch("/api/admin/proyectos", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: proyecto.id, ...body }),
+      });
+      if (r.ok) router.refresh();
+      else toast("⚠️ No se pudo guardar");
+      return r.ok;
+    } finally {
+      setMoviendo(false);
+    }
+  };
+  const nuevaRonda = async () => {
+    if (await patch({ nueva_ronda: true })) toast(`🔄 Ronda de revisión ${proyecto.revisionActual + 1}`);
+  };
+  const puedeRonda = proyecto.clase === "produccion" && !esContenido(proyecto.tipo) && proyecto.estado === "revision";
 
   const duplicar = async () => {
     setDuplicando(true);
@@ -77,7 +108,20 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin }: {
             {proyecto.contacto && <span>· {proyecto.contacto}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {/* Etapa: la acción de todos los días, no escondida en "Editar" */}
+          <select value={proyecto.estado} disabled={moviendo} onChange={(e) => patch({ estado: e.target.value })}
+            title="Mover de etapa"
+            className={`text-xs rounded-lg border-0 px-2.5 py-1.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-lgb-red disabled:opacity-50 ${ESTADO_PROY_COLOR[proyecto.estado] ?? "bg-white/8 text-white/60"}`}>
+            {ESTADOS_PROY.map((e) => <option key={e} value={e} className="bg-lgb-dark text-white">{ESTADO_PROY_LABEL[e]}</option>)}
+          </select>
+          {puedeRonda && (
+            <button onClick={nuevaRonda} disabled={moviendo}
+              title="Marca las tareas para otra vuelta de correcciones"
+              className="flex items-center gap-1.5 text-xs text-amber-300/90 hover:text-amber-200 border border-amber-400/25 hover:border-amber-400/50 rounded-lg px-2.5 py-1.5 disabled:opacity-50">
+              🔄 {proyecto.revisionActual === 0 ? "Abrir ronda" : `Nueva ronda (R${proyecto.revisionActual + 1})`}
+            </button>
+          )}
           <button onClick={() => setEditOpen(true)} className="flex items-center gap-1.5 bg-white/8 hover:bg-white/15 text-white px-3 py-1.5 rounded-lg text-xs">
             <Pencil size={13} /> Editar
           </button>
@@ -105,13 +149,13 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin }: {
       <AnimatePresence mode="wait">
         <motion.div key={tab} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.15 }}>
           {tab === "resumen" && <ResumenTab proyecto={proyecto} />}
-          {tab === "tareas" && <TareasTab proyecto={proyecto} equipo={equipo} />}
+          {tab === "tareas" && <TareasTab proyecto={proyecto} equipo={equipo} recordatorios={recordatorios} miId={miId} />}
           {tab === "cliente" && <ClienteVentaTab proyecto={proyecto} isAdmin={isAdmin} />}
           {tab === "contrato" && <ContratoTab proyecto={proyecto} />}
           {tab === "produccion" && <ProduccionTab proyecto={proyecto} />}
           {tab === "redes" && <RedesTab proyecto={proyecto} />}
           {tab === "drive" && <DriveTab proyectoId={proyecto.id} />}
-          {tab === "actividad" && <ActividadTab actividad={proyecto.actividad} />}
+          {tab === "actividad" && <ActividadTab actividad={proyecto.actividad} isAdmin={isAdmin} />}
         </motion.div>
       </AnimatePresence>
 

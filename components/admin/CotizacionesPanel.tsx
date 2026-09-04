@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FileText, Plus, Trash2, Send, Download, Pencil, FileSignature, X, Receipt, ArrowRight, Loader2, Link2, Copy, Check, CircleDollarSign } from "lucide-react";
 import { toast } from "@/lib/toast";
+import { useDestacar } from "@/lib/useDestacar";
 import { MonedaYCambio } from "@/components/admin/MonedaYCambio";
 import { validarTipoCambio, aMxn, esExtranjera, convertir } from "@/lib/tipo-cambio";
 import { COMISION_PAYPAL, desglose } from "@/lib/comision";
@@ -86,7 +87,12 @@ async function api(url: string, method: string, body?: unknown) {
 
 // ══════════════════════════════════════════════════════════════════════════
 export function CotizacionesPanel({ cotizaciones, contratos, clientes, tipos, rastro, isAdmin, plantillas, tcSugerido, equipo }: Props) {
-  const [tab, setTab] = useState<"cotizaciones" | "contratos" | "plantillas">("cotizaciones");
+  // Llegando de otra pantalla con ?destacar=… y ?vista=contratos, se abre la
+  // pestaña correcta: si no, el resplandor caería en una lista que no se ve.
+  const vistaInicial = useSearchParams().get("vista");
+  const [tab, setTab] = useState<"cotizaciones" | "contratos" | "plantillas">(
+    vistaInicial === "contratos" ? "contratos" : "cotizaciones",
+  );
   const [cotOpen, setCotOpen] = useState<Cotizacion | "new" | null>(null);
   const [conOpen, setConOpen] = useState<Contrato | "new" | Partial<Contrato> | null>(null);
   const [ventaOpen, setVentaOpen] = useState<Cotizacion | null>(null);
@@ -378,6 +384,7 @@ function CotizacionesList({ items, rastro, isAdmin, onEdit, onConvert, onConvert
   items: Cotizacion[]; rastro: Record<string, RastroCot>; isAdmin: boolean; onContratos: () => void;
   onEdit: (c: Cotizacion) => void; onConvert: (c: Cotizacion) => void; onConvertVenta: (c: Cotizacion) => void;
 }) {
+  const destacado = useDestacar();   // llegar al documento exacto desde otra pantalla
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   /** Cotización con el panel de envío abierto (null = ninguno). */
@@ -449,7 +456,8 @@ function CotizacionesList({ items, rastro, isAdmin, onEdit, onConvert, onConvert
         const est = COT_ESTADO[c.estado] ?? COT_ESTADO.borrador;
         const r = rastro[c.id] ?? { venta: null, proyecto: null, contrato: null, acuerdo: null };
         return (
-          <div key={c.id} className="bg-lgb-surface border border-white/5 rounded-2xl p-3 sm:p-4">
+          <div key={c.id} data-destacar-id={c.id}
+            className={`bg-lgb-surface border border-white/5 rounded-2xl p-3 sm:p-4 ${destacado === c.id ? "arido-destacado" : ""}`}>
             <div className="flex items-start gap-3">
               <FileText size={18} className="text-white/30 shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
@@ -495,6 +503,7 @@ function CotizacionesList({ items, rastro, isAdmin, onEdit, onConvert, onConvert
 function ContratosList({ items, tipos, isAdmin, onEdit }: {
   items: Contrato[]; tipos: TipoLite[]; isAdmin: boolean; onEdit: (c: Contrato) => void;
 }) {
+  const destacado = useDestacar();
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   /** Contrato con el panel de envío abierto (null = ninguno). */
@@ -565,7 +574,8 @@ function ContratosList({ items, tipos, isAdmin, onEdit }: {
       {filtered.map((c) => {
         const est = CONTRATO_ESTADO[c.estado] ?? CONTRATO_ESTADO.borrador;
         return (
-          <div key={c.id} className="bg-lgb-surface border border-white/5 rounded-2xl p-3 sm:p-4">
+          <div key={c.id} data-destacar-id={c.id}
+            className={`bg-lgb-surface border border-white/5 rounded-2xl p-3 sm:p-4 ${destacado === c.id ? "arido-destacado" : ""}`}>
             <div className="flex items-start gap-3">
               <FileSignature size={18} className="text-white/30 shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
