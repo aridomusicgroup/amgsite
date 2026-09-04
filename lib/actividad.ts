@@ -101,12 +101,17 @@ export async function nombresPorId(
 /** Nombre legible de quien ejecuta la acción (equipo por correo, o el correo). */
 export async function nombreDeActor(sb: SB, email: string | null): Promise<string> {
   if (!email) return "Alguien";
+  const correo = email.toLowerCase();
+  // `usuarios` es la tabla de quien entra al panel y su nombre lo edita cada
+  // quien desde Ajustes, así que manda sobre `equipo`, que es la nómina.
   try {
-    const { data } = await sb
-      .from("equipo")
-      .select("nombre")
-      .eq("email", email.toLowerCase())
-      .limit(1);
+    const { data } = await sb.from("usuarios").select("nombre").eq("email", correo).limit(1);
+    if (data?.[0]?.nombre) return data[0].nombre as string;
+  } catch {
+    /* sin tabla usuarios */
+  }
+  try {
+    const { data } = await sb.from("equipo").select("nombre").eq("email", correo).limit(1);
     if (data?.[0]?.nombre) return data[0].nombre as string;
   } catch {
     /* sin equipo o sin columna email */

@@ -36,7 +36,16 @@ const PORTADA = "/admin";
 
 const VISTO_KEY = "arido-actividad-visto";
 
-export function AdminNav({ email, modules, order }: { email: string; modules: string[]; order?: string[] | null }) {
+/** Respaldo del avatar cuando la persona todavía no sube foto. */
+function inicialesDe(nombre: string | null | undefined, email: string): string {
+  const base = (nombre || "").trim() || email.split("@")[0];
+  const partes = base.split(/[\s._-]+/).filter(Boolean);
+  return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase() || base[0].toUpperCase();
+}
+
+export function AdminNav({ email, nombre, foto, modules, order }: {
+  email: string; nombre?: string | null; foto?: string | null; modules: string[]; order?: string[] | null;
+}) {
   const pathname = usePathname();
 
   // Tiempo real en TODO el panel: una sola suscripción (la nav está en todas
@@ -188,7 +197,22 @@ export function AdminNav({ email, modules, order }: { email: string; modules: st
         </nav>
 
         <div className="border-t border-white/5 pt-3">
-          <p className="text-white/30 text-xs px-3 mb-2 truncate">{email}</p>
+          {/* Quién está usando el panel. Lleva a Ajustes, que es donde se edita. */}
+          <Link href="/admin/ajustes" className="flex items-center gap-2.5 px-3 mb-2 group" title="Ver mi perfil">
+            {foto ? (
+              // <img> normal: el avatar mide 28px y next/image obligaría a tocar remotePatterns.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={foto} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+            ) : (
+              <span className="w-7 h-7 rounded-full bg-lgb-red/15 text-lgb-red text-[10px] flex items-center justify-center shrink-0">
+                {inicialesDe(nombre, email)}
+              </span>
+            )}
+            <span className="min-w-0">
+              <span className="block text-xs text-white/60 group-hover:text-white truncate transition-colors">{nombre || email}</span>
+              {nombre && <span className="block text-[10px] text-white/25 truncate">{email}</span>}
+            </span>
+          </Link>
           <button
             onClick={logout}
             className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-white/50 hover:text-white hover:bg-white/5 transition-colors w-full cursor-pointer"

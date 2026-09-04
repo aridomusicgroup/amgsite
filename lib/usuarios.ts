@@ -8,7 +8,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export type Rol = "admin" | "crm" | "produccion";
 export interface UsuarioAcceso { rol: Rol; activo: boolean }
-export interface UsuarioRow { email: string; rol: Rol; activo: boolean; nombre: string | null }
+export interface UsuarioRow { email: string; rol: Rol; activo: boolean; nombre: string | null; foto_url: string | null }
+export interface Perfil { nombre: string | null; foto_url: string | null }
 
 const parseEnv = (v?: string) => (v ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
 const ROLES: Rol[] = ["admin", "crm", "produccion"];
@@ -56,12 +57,18 @@ export async function seedUsuariosFromEnv(): Promise<void> {
 export async function listUsuarios(): Promise<UsuarioRow[]> {
   try {
     const sb = supabaseAdmin();
-    const { data } = await sb.from("usuarios").select("email, rol, activo, nombre").order("rol").order("email");
+    // `foto_url` es una columna nueva: si la migración del perfil todavía no se
+    // corrió, pedirla haría fallar la consulta ENTERA y la pantalla de Equipo y
+    // accesos se quedaría vacía. Se reintenta sin ella.
+    const consulta = (cols: string) => sb.from("usuarios").select(cols).order("rol").order("email");
+    let data = (await consulta("email, rol, activo, nombre, foto_url")).data as Record<string, unknown>[] | null;
+    if (!data) data = (await consulta("email, rol, activo, nombre")).data as Record<string, unknown>[] | null;
     return (data ?? []).map((r) => ({
       email: r.email as string,
       rol: (r.rol as Rol) ?? "produccion",
       activo: Boolean(r.activo),
       nombre: (r.nombre as string | null) ?? null,
+      foto_url: (r.foto_url as string | null) ?? null,
     }));
   } catch {
     return [];
@@ -78,3 +85,24 @@ export async function contarAdminsActivos(): Promise<number> {
     return 0;
   }
 }
+
+/**
+ * Nombre y foto de una persona, cacheado por petición.
+ *
+ * Se usa en el layout del panel (pie del menú) y al resolver el autor de la
+ * bitácora. Devuelve nulos si la migración del perfil aún no se corrió — la
+ * consulta pide `foto_url` y esa columna puede no existir todavía.
+ */
+export const getPerfil = cache(async (email: string): Promise<Perfil> => {
+  try {
+    const sb = supabaseAdmin();
+    const { data, error } = await sb.from("usuarios").select("nombre, foto_url").eq("email", email.toLowerCase()).maybeSingle();
+    if (error) {
+      const { data: solo } = await sb.from("usuarios").select("nombre").eq("email", email.toLowerCase()).maybeSingle();
+      return { nombre: (solo?.nombre as string | null) ?? null, foto_url: null };
+    }
+    return { nombre: (data?.nombre as string | null) ?? null, foto_url: (data?.foto_url as string | null) ?? null };
+  } catch {
+    return { nombre: null, foto_url: null };
+  }
+});

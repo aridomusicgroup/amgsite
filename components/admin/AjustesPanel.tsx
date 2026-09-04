@@ -5,11 +5,12 @@ import { ArrowUp, ArrowDown, Loader2, Lock, X, Radio, Plus, ChevronDown, Chevron
 import { ROLE_MODULES, MODULES, GRUPOS, GRUPO_LABEL, moduleLabel, moduleDef, type Grupo } from "@/lib/modules";
 import { toast } from "@/lib/toast";
 import { MusicosSection } from "./MusicosSection";
+import { PerfilSection } from "./PerfilSection";
 
 const FONTS = [{ k: "sm", label: "Chico" }, { k: "md", label: "Mediano" }, { k: "lg", label: "Grande" }];
 const ROL_LABEL: Record<string, string> = { admin: "Admin", crm: "CRM / Marketing", produccion: "Producción" };
 
-type Usuario = { email: string; role: string; activo: boolean; modules_extra: string[] | null };
+type Usuario = { email: string; role: string; activo: boolean; modules_extra: string[] | null; nombre?: string | null; foto_url?: string | null };
 const ROLES = ["admin", "crm", "produccion"] as const;
 
 function Section({ title, desc, children }: { title: string; desc?: string; children: ReactNode }) {
@@ -25,8 +26,9 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
 const chip = (active: boolean) =>
   `px-4 py-1.5 rounded-full text-sm transition-colors ${active ? "bg-lgb-red text-white" : "bg-white/5 text-white/50 hover:text-white"}`;
 
-export function AjustesPanel({ fontSize, theme, moduleOrder, modules, isAdmin, usuarios, selfEmail }: {
-  fontSize: string; theme: string; moduleOrder: string[] | null; modules: string[]; isAdmin: boolean; usuarios: Usuario[]; selfEmail: string;
+export function AjustesPanel({ fontSize, theme, moduleOrder, modules, isAdmin, usuarios, selfEmail, selfNombre, selfFoto }: {
+  fontSize: string; theme: string; moduleOrder: string[] | null; modules: string[]; isAdmin: boolean;
+  usuarios: Usuario[]; selfEmail: string; selfNombre: string | null; selfFoto: string | null;
 }) {
   const router = useRouter();
 
@@ -37,6 +39,7 @@ export function AjustesPanel({ fontSize, theme, moduleOrder, modules, isAdmin, u
     return ord;
   };
   const [orden, setOrden] = useState<string[]>(ordenInicial());
+  const ordenPropio = Boolean(moduleOrder && moduleOrder.length);
   const [busy, setBusy] = useState(false);
 
   const guardarFont = async (k: string) => {
@@ -67,33 +70,63 @@ export function AjustesPanel({ fontSize, theme, moduleOrder, modules, isAdmin, u
     toast("✓ Orden guardado");
   };
 
+  /** Volver al orden por áreas: vaciar el orden propio reactiva el menú agrupado. */
+  const restablecerOrden = async () => {
+    setBusy(true);
+    await fetch("/api/admin/prefs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ module_order: [] }) });
+    setBusy(false);
+    router.refresh();
+    toast("✓ Menú por áreas");
+  };
+
   return (
     <div className="space-y-5 max-w-2xl">
-      <Section title="Tamaño de letra">
-        <div className="flex gap-2">
-          {FONTS.map((f) => (
-            <button key={f.k} onClick={() => guardarFont(f.k)} disabled={busy} className={chip(fontSize === f.k)}>{f.label}</button>
-          ))}
-        </div>
+      <Section title="Mi perfil" desc="Cómo te ve el resto del equipo en el panel.">
+        <PerfilSection email={selfEmail} nombre={selfNombre} fotoUrl={selfFoto} />
       </Section>
 
-      <Section title="Tema" desc="Cambia entre oscuro y claro. Se aplica al instante en todo tu panel.">
-        <div className="flex gap-2">
-          <button onClick={() => guardarTema("dark")} disabled={busy} className={chip(theme !== "light")}>🌙 Oscuro</button>
-          <button onClick={() => guardarTema("light")} disabled={busy} className={chip(theme === "light")}>☀️ Claro</button>
-        </div>
-      </Section>
-
-      <Section title="Orden de tus secciones" desc="Acomoda el menú a tu gusto con las flechas.">
-        <div className="flex flex-col gap-1.5">
-          {orden.map((h, i) => (
-            <div key={h} className="flex items-center gap-2 bg-white/[0.02] border border-white/8 rounded-lg px-3 py-2">
-              <span className="text-white/30 text-xs w-5">{i + 1}</span>
-              <span className="text-sm flex-1">{moduleLabel(h)}</span>
-              <button onClick={() => mover(i, -1)} disabled={i === 0} className="text-white/30 hover:text-white disabled:opacity-20"><ArrowUp size={15} /></button>
-              <button onClick={() => mover(i, 1)} disabled={i === orden.length - 1} className="text-white/30 hover:text-white disabled:opacity-20"><ArrowDown size={15} /></button>
+      <Section title="Mi panel" desc="Estos ajustes son solo tuyos: nadie más los ve.">
+        <div className="flex flex-col gap-5">
+          <div>
+            <p className="text-xs text-white/50 mb-2">Tamaño de letra</p>
+            <div className="flex gap-2">
+              {FONTS.map((f) => (
+                <button key={f.k} onClick={() => guardarFont(f.k)} disabled={busy} className={chip(fontSize === f.k)}>{f.label}</button>
+              ))}
             </div>
-          ))}
+          </div>
+
+          <div>
+            <p className="text-xs text-white/50 mb-2">Tema</p>
+            <div className="flex gap-2">
+              <button onClick={() => guardarTema("dark")} disabled={busy} className={chip(theme !== "light")}>🌙 Oscuro</button>
+              <button onClick={() => guardarTema("light")} disabled={busy} className={chip(theme === "light")}>☀️ Claro</button>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-baseline gap-2 mb-2">
+              <p className="text-xs text-white/50">Orden de tus secciones</p>
+              {ordenPropio && (
+                <button onClick={restablecerOrden} disabled={busy} className="text-[11px] text-white/30 hover:text-white transition-colors cursor-pointer disabled:opacity-40">
+                  volver al orden por áreas
+                </button>
+              )}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {orden.map((h, i) => (
+                <div key={h} className="flex items-center gap-2 bg-white/[0.02] border border-white/8 rounded-lg px-3 py-2">
+                  <span className="text-white/30 text-xs w-5">{i + 1}</span>
+                  <span className="text-sm flex-1">{moduleLabel(h)}</span>
+                  <button onClick={() => mover(i, -1)} disabled={i === 0} className="text-white/30 hover:text-white disabled:opacity-20"><ArrowUp size={15} /></button>
+                  <button onClick={() => mover(i, 1)} disabled={i === orden.length - 1} className="text-white/30 hover:text-white disabled:opacity-20"><ArrowDown size={15} /></button>
+                </div>
+              ))}
+            </div>
+            <p className="text-white/25 text-[11px] mt-2">
+              Con las flechas acomodas el menú a tu gusto. Mientras no lo toques, el menú de escritorio se agrupa solo por áreas.
+            </p>
+          </div>
         </div>
       </Section>
 
@@ -185,6 +218,28 @@ function FilaUsuario({ u, esYo, busy, abierta, onAbrir, onRol, onActivo, onElimi
   const total = esAdmin ? MODULES.length : cfg.base.length + cfg.optional.length;
   const activos = esAdmin ? MODULES.length : cfg.base.length + cfg.optional.filter((h) => extras.includes(h)).length;
 
+  /** Foto (o iniciales) + nombre, con el correo debajo cuando hay nombre. */
+  const identidad = (
+    <>
+      {u.foto_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={u.foto_url} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" />
+      ) : (
+        <span className="w-6 h-6 rounded-full bg-white/5 text-white/40 text-[9px] flex items-center justify-center shrink-0">
+          {(u.nombre || u.email).slice(0, 2).toUpperCase()}
+        </span>
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="text-sm truncate block">
+          {u.nombre || u.email}
+          {esYo && <span className="text-white/30"> · tú</span>}
+          {!u.activo && <span className="text-amber-300/70"> · inactivo</span>}
+        </span>
+        {u.nombre && <span className="text-[10px] text-white/25 truncate block">{u.email}</span>}
+      </span>
+    </>
+  );
+
   return (
     <div className="bg-white/[0.02] border border-white/8 rounded-lg overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2">
@@ -192,11 +247,7 @@ function FilaUsuario({ u, esYo, busy, abierta, onAbrir, onRol, onActivo, onElimi
         {esAdmin ? (
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
             <span className="w-[13px] shrink-0" />
-            <span className="text-sm truncate">
-              {u.email}
-              {esYo && <span className="text-white/30"> · tú</span>}
-              {!u.activo && <span className="text-amber-300/70"> · inactivo</span>}
-            </span>
+            {identidad}
             <span className="text-[11px] text-white/30 shrink-0 ml-1" title="El rol de administrador incluye todo el panel">
               ve todo el panel
             </span>
@@ -208,11 +259,7 @@ function FilaUsuario({ u, esYo, busy, abierta, onAbrir, onRol, onActivo, onElimi
             title="Ver y repartir sus accesos"
           >
             {abierta ? <ChevronDown size={13} className="text-white/40 shrink-0" /> : <ChevronRight size={13} className="text-white/25 shrink-0 group-hover:text-white/50" />}
-            <span className="text-sm truncate">
-              {u.email}
-              {esYo && <span className="text-white/30"> · tú</span>}
-              {!u.activo && <span className="text-amber-300/70"> · inactivo</span>}
-            </span>
+            {identidad}
             <span className="text-[11px] text-white/30 shrink-0 ml-1">{activos}/{total}</span>
           </button>
         )}
