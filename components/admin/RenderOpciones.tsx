@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, Loader2, FolderOpen, AlertTriangle, Send } from "lucide-react";
 import type { ArchivoRpp, Renderizable, TipoRender, OpcionesRender, MusicoLite } from "@/lib/render-jobs";
 
@@ -54,11 +54,41 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
   const [rpp, setRpp] = useState(archivos[0]?.archivo ?? "");
   const actual: ArchivoRpp | undefined = archivos.find((a) => a.archivo === rpp) ?? archivos[0];
 
+  /**
+   * Quién se contrató para ESTE proyecto, según su venta.
+   *
+   * El catálogo no puede responder "¿quién toca el tololoche?" — hay dos
+   * registrados, igual que dos trombones. La venta sí: en EL NECIO son Martín
+   * en charchetas y Adal en tololoche. Se piden aquí y se preseleccionan.
+   */
+  const [deVenta, setDeVenta] = useState<{ id: string; nombre: string; instrumento: string; tienePortal: boolean; tieneCorreo: boolean }[]>([]);
   const [musicoId, setMusicoId] = useState("");
   // Dejarle además el trabajo en su portal. Prendido por default: mandarle el
   // previo sin asignarle nada lo deja con un correo y un portal vacío.
   const [asignar, setAsignar] = useState(true);
   const [instrumento, setInstrumento] = useState("");
+
+  useEffect(() => {
+    if (!esMusico) return;
+    let vivo = true;
+    fetch(`/api/admin/musicos-de-venta?proyecto_id=${p.proyectoId}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { musicos: [] }))
+      .then((d) => {
+        if (!vivo) return;
+        const lista = (d.musicos ?? []).filter((m: { tieneCorreo: boolean }) => m.tieneCorreo);
+        setDeVenta(lista);
+        // Si sólo se contrató a uno, ya está: es ese. Con varios se elige.
+        if (lista.length === 1) { setMusicoId(lista[0].id); setInstrumento(lista[0].instrumento); }
+      })
+      .catch(() => { /* se sigue con el catálogo completo */ });
+    return () => { vivo = false; };
+  }, [esMusico, p.proyectoId]);
+
+  /** Lo que dice la venta manda sobre el catálogo. */
+  const instrumentoSugerido = (id: string) =>
+    deVenta.find((x) => x.id === id)?.instrumento
+    ?? conCorreo.find((x) => x.id === id)?.instrumentos[0]
+    ?? "";
   /**
    * De dónde salen BPM y tonalidad, en orden:
    *  1. Lo capturado al crear la venta/proyecto — es el dato bueno.
@@ -310,20 +340,29 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
                         value={musicoId}
                         onChange={(e) => {
                           setMusicoId(e.target.value);
-                          // El instrumento se precarga de su catálogo, pero se
-                          // puede cambiar: hay dos tololoches y dos trombones
-                          // registrados, así que el catálogo es una sugerencia.
-                          const m = conCorreo.find((x) => x.id === e.target.value);
-                          setInstrumento(m?.instrumentos[0] ?? "");
+                          setInstrumento(instrumentoSugerido(e.target.value));
                         }}
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-lgb-red cursor-pointer"
                       >
                         <option value="" className="bg-lgb-dark">Elige al músico…</option>
-                        {conCorreo.map((m) => (
-                          <option key={m.id} value={m.id} className="bg-lgb-dark">
-                            {m.nombre}{m.instrumentos.length ? ` — ${m.instrumentos.join(", ")}` : ""}
-                          </option>
-                        ))}
+                        {deVenta.length > 0 && (
+                          <optgroup label="Contratados en esta venta" className="bg-lgb-dark">
+                            {deVenta.map((m) => (
+                              <option key={m.id} value={m.id} className="bg-lgb-dark">
+                                {m.nombre}{m.instrumento ? ` — ${m.instrumento}` : ""}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        <optgroup label={deVenta.length ? "Todos los músicos" : ""} className="bg-lgb-dark">
+                          {conCorreo
+                            .filter((m) => !deVenta.some((x) => x.id === m.id))
+                            .map((m) => (
+                              <option key={m.id} value={m.id} className="bg-lgb-dark">
+                                {m.nombre}{m.instrumentos.length ? ` — ${m.instrumentos.join(", ")}` : ""}
+                              </option>
+                            ))}
+                        </optgroup>
                       </select>
 
                       <div className="grid grid-cols-2 gap-2">
@@ -369,7 +408,10 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
                       {asignar && (
                         <label className="block">
                           <span className="block text-[11px] text-white/40 mb-1">
-                            Qué va a grabar <span className="text-white/25">(en esta canción)</span>
+                            Qué va a grabar{" "}
+                            {deVenta.some((x) => x.id === musicoId)
+                              ? <span className="text-green-300/60">· lo que dice la venta</span>
+                              : <span className="text-white/25">(en esta canción)</span>}
                           </span>
                           <input
                             type="text" maxLength={40} value={instrumento} placeholder="Charchetas"

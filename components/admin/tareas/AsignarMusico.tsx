@@ -30,9 +30,12 @@ const ESTADO_LABEL: Record<string, string> = {
  * antes de esto, ningún renglón de la base ligaba un músico con un proyecto
  * (los responsables de tarea apuntan todos a `equipo`, que es el equipo interno).
  *
- * El instrumento se guarda EN LA ASIGNACIÓN y se precarga del título de la
- * tarea ("Grabar Charchetas" → "Charchetas"), no del catálogo del músico: hay
- * dos tololoches y dos trombones registrados, así que heredarlo sería ambiguo.
+ * El instrumento se guarda EN LA ASIGNACIÓN, no se hereda del catálogo del
+ * músico: ahí hay dos tololoches y dos trombones registrados, así que heredarlo
+ * sería ambiguo. Se precarga, en este orden:
+ *   1. Lo que dice la VENTA de este proyecto (`pagos_musico`), que es donde
+ *      quedó a quién se contrató y por qué instrumento.
+ *   2. El título de la tarea ("Grabar Charchetas" → "Charchetas").
  */
 export function AsignarMusico({ proyectoId, tareaId, tituloTarea, musicos }: {
   proyectoId: string;
@@ -42,6 +45,14 @@ export function AsignarMusico({ proyectoId, tareaId, tituloTarea, musicos }: {
 }) {
   const router = useRouter();
   const [asignaciones, setAsignaciones] = useState<Asignacion[]>([]);
+  /**
+   * Quién se contrató para este proyecto, según su venta.
+   *
+   * El catálogo no puede decir quién toca el tololoche —hay dos registrados, y
+   * dos trombones—, pero la venta sí: ahí quedó a quién se le va a pagar y por
+   * qué instrumento. Se preselecciona de ahí en vez de adivinar.
+   */
+  const [deVenta, setDeVenta] = useState<{ id: string; nombre: string; instrumento: string; tienePortal: boolean }[]>([]);
   const [abierto, setAbierto] = useState(false);
   const [busy, setBusy] = useState(false);
   const [musicoId, setMusicoId] = useState("");
@@ -59,6 +70,15 @@ export function AsignarMusico({ proyectoId, tareaId, tituloTarea, musicos }: {
   }, [proyectoId, tareaId]);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  useEffect(() => {
+    let vivo = true;
+    fetch(`/api/admin/musicos-de-venta?proyecto_id=${proyectoId}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { musicos: [] }))
+      .then((d) => { if (vivo) setDeVenta((d.musicos ?? []).filter((m: { tienePortal: boolean }) => m.tienePortal)); })
+      .catch(() => { /* se sigue con el catálogo completo */ });
+    return () => { vivo = false; };
+  }, [proyectoId]);
 
   const asignar = async () => {
     if (!musicoId) { toast("⚠️ Elige a quién"); return; }
@@ -127,13 +147,36 @@ export function AsignarMusico({ proyectoId, tareaId, tituloTarea, musicos }: {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className={lblS}>Quién graba</label>
-              <select value={musicoId} onChange={(e) => setMusicoId(e.target.value)} className={inp}>
+              <select
+                value={musicoId}
+                onChange={(e) => {
+                  setMusicoId(e.target.value);
+                  // Lo que dice la venta manda sobre el catálogo; si no está
+                  // ahí, se deja lo que ya venía del título de la tarea.
+                  const v = deVenta.find((x) => x.id === e.target.value);
+                  if (v?.instrumento) setInstrumento(v.instrumento);
+                }}
+                className={inp}
+              >
                 <option value="" className="bg-lgb-dark">— elige —</option>
-                {musicos.map((m) => (
-                  <option key={m.id} value={m.id} className="bg-lgb-dark">
-                    {m.nombre}{m.instrumentos.length ? ` — ${m.instrumentos.join(", ")}` : ""}
-                  </option>
-                ))}
+                {deVenta.length > 0 && (
+                  <optgroup label="Contratados en esta venta" className="bg-lgb-dark">
+                    {deVenta.map((m) => (
+                      <option key={m.id} value={m.id} className="bg-lgb-dark">
+                        {m.nombre}{m.instrumento ? ` — ${m.instrumento}` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label={deVenta.length ? "Todos los que tienen portal" : ""} className="bg-lgb-dark">
+                  {musicos
+                    .filter((m) => !deVenta.some((x) => x.id === m.id))
+                    .map((m) => (
+                      <option key={m.id} value={m.id} className="bg-lgb-dark">
+                        {m.nombre}{m.instrumentos.length ? ` — ${m.instrumentos.join(", ")}` : ""}
+                      </option>
+                    ))}
+                </optgroup>
               </select>
             </div>
             <div>
