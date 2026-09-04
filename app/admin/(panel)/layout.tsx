@@ -34,7 +34,7 @@ export default async function PanelLayout({
       <PrefsApplier fontSize={prefs?.font_size ?? "md"} />
       <NotificacionRouter />
       <DiagnosticoScroll />
-      <AdminNav email={session.email} nombre={perfil.nombre} foto={perfil.foto_url} modules={modules} order={prefs?.module_order ?? null} />
+      <AdminNav email={session.email} nombre={perfil.nombre} foto={perfil.foto_url} modules={modules} order={prefs?.module_order ?? null} colapsado={prefs?.nav_colapsado ?? null} />
       <main className="flex-1 min-w-0 md:ml-60 p-5 sm:p-8 pb-32 md:pb-8">{children}</main>
       <Toaster />
     </div>

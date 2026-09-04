@@ -59,8 +59,18 @@ export function AjustesPanel({ fontSize, theme, moduleOrder, modules, isAdmin, u
     toast(t === "light" ? "☀️ Modo claro" : "🌙 Modo oscuro");
   };
 
-  const mover = async (i: number, dir: -1 | 1) => {
-    const j = i + dir;
+  /**
+   * Sube o baja una sección DENTRO de su área.
+   *
+   * El menú de escritorio agrupa por área, así que intercambiar con el vecino
+   * de la lista plana movería la sección de área sin avisar. Se busca al vecino
+   * más cercano de la misma área y se cambia con ese.
+   */
+  const mover = async (href: string, dir: -1 | 1) => {
+    const i = orden.indexOf(href);
+    const g = moduleDef(href)?.grupo;
+    let j = i + dir;
+    while (j >= 0 && j < orden.length && moduleDef(orden[j])?.grupo !== g) j += dir;
     if (j < 0 || j >= orden.length) return;
     const next = [...orden];
     [next[i], next[j]] = [next[j], next[i]];
@@ -70,13 +80,13 @@ export function AjustesPanel({ fontSize, theme, moduleOrder, modules, isAdmin, u
     toast("✓ Orden guardado");
   };
 
-  /** Volver al orden por áreas: vaciar el orden propio reactiva el menú agrupado. */
+  /** Vaciar el orden propio devuelve el acomodo de fábrica dentro de cada área. */
   const restablecerOrden = async () => {
     setBusy(true);
     await fetch("/api/admin/prefs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ module_order: [] }) });
     setBusy(false);
     router.refresh();
-    toast("✓ Menú por áreas");
+    toast("✓ Orden de fábrica");
   };
 
   return (
@@ -109,22 +119,34 @@ export function AjustesPanel({ fontSize, theme, moduleOrder, modules, isAdmin, u
               <p className="text-xs text-white/50">Orden de tus secciones</p>
               {ordenPropio && (
                 <button onClick={restablecerOrden} disabled={busy} className="text-[11px] text-white/30 hover:text-white transition-colors cursor-pointer disabled:opacity-40">
-                  volver al orden por áreas
+                  restablecer
                 </button>
               )}
             </div>
-            <div className="flex flex-col gap-1.5">
-              {orden.map((h, i) => (
-                <div key={h} className="flex items-center gap-2 bg-white/[0.02] border border-white/8 rounded-lg px-3 py-2">
-                  <span className="text-white/30 text-xs w-5">{i + 1}</span>
-                  <span className="text-sm flex-1">{moduleLabel(h)}</span>
-                  <button onClick={() => mover(i, -1)} disabled={i === 0} className="text-white/30 hover:text-white disabled:opacity-20"><ArrowUp size={15} /></button>
-                  <button onClick={() => mover(i, 1)} disabled={i === orden.length - 1} className="text-white/30 hover:text-white disabled:opacity-20"><ArrowDown size={15} /></button>
-                </div>
-              ))}
+            <div className="flex flex-col gap-3">
+              {GRUPOS.map((g) => {
+                // Mismo reparto que el menú lateral, para que esta lista no
+                // prometa un acomodo distinto al que se ve.
+                const items = orden.filter((h) => h !== "/admin" && moduleDef(h)?.grupo === g);
+                if (!items.length) return null;
+                return (
+                  <div key={g}>
+                    <p className="text-[10px] uppercase tracking-wider text-white/25 mb-1">{GRUPO_LABEL[g]}</p>
+                    <div className="flex flex-col gap-1.5">
+                      {items.map((h, i) => (
+                        <div key={h} className="flex items-center gap-2 bg-white/[0.02] border border-white/8 rounded-lg px-3 py-2">
+                          <span className="text-sm flex-1">{moduleLabel(h)}</span>
+                          <button onClick={() => mover(h, -1)} disabled={i === 0} className="text-white/30 hover:text-white disabled:opacity-20 cursor-pointer"><ArrowUp size={15} /></button>
+                          <button onClick={() => mover(h, 1)} disabled={i === items.length - 1} className="text-white/30 hover:text-white disabled:opacity-20 cursor-pointer"><ArrowDown size={15} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             <p className="text-white/25 text-[11px] mt-2">
-              Con las flechas acomodas el menú a tu gusto. Mientras no lo toques, el menú de escritorio se agrupa solo por áreas.
+              En escritorio el menú va agrupado por áreas y cada una se abre y cierra con un clic en su título. Las flechas acomodan las secciones dentro de su área; Inicio siempre va hasta arriba.
             </p>
           </div>
         </div>

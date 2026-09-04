@@ -141,17 +141,22 @@ export async function requireStaff(): Promise<AdminSession> {
 export interface UserPrefs {
   font_size: string; theme: string;
   module_order: string[] | null; modules_extra: string[] | null;
+  /** Áreas del menú lateral que dejó cerradas. */
+  nav_colapsado: string[] | null;
 }
 
 /** Lee las preferencias de un usuario (o null si no existen / tabla ausente). */
 export async function getUserPrefs(email: string): Promise<UserPrefs | null> {
   try {
     const sb = supabaseAdmin();
-    const { data } = await sb
-      .from("user_prefs")
-      .select("font_size, theme, module_order, modules_extra")
-      .eq("email", email.toLowerCase())
-      .limit(1);
+    // `nav_colapsado` es una columna nueva. Esta función alimenta a
+    // `requireModule()`, o sea el camino crítico del login: pedir una columna
+    // que todavía no existe haría fallar la consulta ENTERA y dejaría a todos
+    // sin panel hasta que corra la migración. Por eso el reintento sin ella.
+    const consulta = (cols: string) =>
+      sb.from("user_prefs").select(cols).eq("email", email.toLowerCase()).limit(1);
+    let data = (await consulta("font_size, theme, module_order, modules_extra, nav_colapsado")).data as Record<string, unknown>[] | null;
+    if (!data) data = (await consulta("font_size, theme, module_order, modules_extra")).data as Record<string, unknown>[] | null;
     const row = data?.[0];
     if (!row) return null;
     return {
@@ -159,6 +164,7 @@ export async function getUserPrefs(email: string): Promise<UserPrefs | null> {
       theme: (row.theme as string) ?? "dark",
       module_order: (row.module_order as string[] | null) ?? null,
       modules_extra: (row.modules_extra as string[] | null) ?? null,
+      nav_colapsado: (row.nav_colapsado as string[] | null) ?? null,
     };
   } catch {
     return null;

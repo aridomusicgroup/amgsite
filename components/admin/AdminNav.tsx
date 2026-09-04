@@ -3,12 +3,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { LogOut, Bot, ExternalLink } from "lucide-react";
+import { LogOut, Bot, ExternalLink, ChevronRight } from "lucide-react";
 import { MODULES, GRUPOS, GRUPO_LABEL, type Grupo } from "@/lib/modules";
 import { moduleIcon } from "./module-icons";
 import { createAuthClient } from "@/lib/supabase/auth-client";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { VersionWatcher } from "./VersionWatcher";
+import { toast } from "@/lib/toast";
 
 // Dashboard del chatbot (proyecto aparte en Vercel, con su propio login).
 const CHATBOT_URL = "https://arido-chat-dashboard.vercel.app";
@@ -43,8 +44,9 @@ function inicialesDe(nombre: string | null | undefined, email: string): string {
   return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase() || base[0].toUpperCase();
 }
 
-export function AdminNav({ email, nombre, foto, modules, order }: {
-  email: string; nombre?: string | null; foto?: string | null; modules: string[]; order?: string[] | null;
+export function AdminNav({ email, nombre, foto, modules, order, colapsado }: {
+  email: string; nombre?: string | null; foto?: string | null;
+  modules: string[]; order?: string[] | null; colapsado?: string[] | null;
 }) {
   const pathname = usePathname();
 
@@ -84,8 +86,7 @@ export function AdminNav({ email, nombre, foto, modules, order }: {
   const hayNovedades = novedades > 0;
 
   let links = allLinks.filter((l) => modules.includes(l.href));
-  const ordenPropio = Boolean(order && order.length);
-  if (order && ordenPropio) {
+  if (order && order.length) {
     links = [...links].sort((a, b) => {
       const ia = order.indexOf(a.href), ib = order.indexOf(b.href);
       return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
@@ -96,19 +97,37 @@ export function AdminNav({ email, nombre, foto, modules, order }: {
    * Los mismos links, repartidos por área — SOLO para el menú de escritorio.
    * `links` (plano) sigue siendo lo único que alimenta la barra móvil.
    *
-   * Se agrupa nada más si se cumplen las dos condiciones: que la persona no
-   * haya acomodado su menú a mano (su orden manda; la pantalla "Orden de tus
-   * secciones" muestra una lista numerada y reagrupar por encima la volvería
-   * mentira) y que tenga suficientes secciones para que valga la pena.
+   * El orden que la persona acomodó a mano NO apaga el agrupado: manda dentro
+   * de cada área (los items ya vienen ordenados de arriba). Antes lo apagaba,
+   * y el resultado era que los dos que más usan el panel —justo los que habían
+   * acomodado su menú— eran los únicos que nunca veían las áreas.
    */
   const portada = links.find((l) => l.href === PORTADA) ?? null;
   const agrupado =
-    !ordenPropio && links.length >= MINIMO_PARA_AGRUPAR
+    links.length >= MINIMO_PARA_AGRUPAR
       ? GRUPOS.map((g) => ({
           grupo: g as Grupo,
           items: links.filter((l) => l.grupo === g && l.href !== PORTADA),
         })).filter((s) => s.items.length > 0)
       : null;
+
+  /**
+   * Áreas cerradas. Optimista: se pinta al instante y se guarda de fondo, para
+   * que abrir y cerrar no dependa de la red. Si el guardado falla se avisa y se
+   * revierte — si no, la próxima recarga desharía el cambio sin explicación.
+   */
+  const [cerradas, setCerradas] = useState<string[]>(colapsado ?? []);
+  const alternarArea = (g: Grupo) => {
+    const antes = cerradas;
+    const next = antes.includes(g) ? antes.filter((x) => x !== g) : [...antes, g];
+    setCerradas(next);
+    fetch("/api/admin/prefs", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nav_colapsado: next }),
+    })
+      .then((r) => { if (!r.ok) throw new Error(); })
+      .catch(() => { setCerradas(antes); toast("⚠️ No se pudo guardar el menú"); });
+  };
 
   const logout = async () => {
     const supabase = createAuthClient();
@@ -118,6 +137,11 @@ export function AdminNav({ email, nombre, foto, modules, order }: {
 
   const isActive = (href: string) =>
     href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+
+  // El área que contiene la página abierta se muestra aunque esté cerrada: dejar
+  // de ver dónde estás parado por un colapso guardado hace semanas es peor que
+  // el ahorro de espacio. No se toca lo guardado; al navegar fuera vuelve a cerrarse.
+  const grupoActivo = links.find((l) => l.href !== PORTADA && isActive(l.href))?.grupo;
 
   /** Un link del menú de escritorio. Se usa igual agrupado o plano. */
   const linkEscritorio = (l: (typeof allLinks)[number]) => {
@@ -170,14 +194,42 @@ export function AdminNav({ email, nombre, foto, modules, order }: {
           {agrupado ? (
             <>
               {portada && linkEscritorio(portada)}
-              {agrupado.map((s) => (
-                <div key={s.grupo} className="mt-3 first:mt-0">
-                  <p className="px-3 pb-1 text-[10px] uppercase tracking-wider text-white/25">
-                    {GRUPO_LABEL[s.grupo]}
-                  </p>
-                  <div className="flex flex-col gap-1">{s.items.map(linkEscritorio)}</div>
-                </div>
-              ))}
+              {agrupado.map((s) => {
+                const abierta = !cerradas.includes(s.grupo) || s.grupo === grupoActivo;
+                // Si Producción quedó escondida, su puntito sube al encabezado:
+                // un aviso que no se ve es un aviso perdido.
+                const avisa = !abierta && hayNovedades && s.items.some((l) => l.href === "/admin/produccion");
+                return (
+                  <div key={s.grupo} className="mt-3 first:mt-0">
+                    <button
+                      onClick={() => alternarArea(s.grupo)}
+                      aria-expanded={abierta}
+                      title={abierta ? "Cerrar esta área" : "Abrir esta área"}
+                      className="w-full flex items-center gap-1 px-3 pb-1 text-left cursor-pointer group/area"
+                    >
+                      <ChevronRight
+                        size={10}
+                        className={`shrink-0 text-white/25 transition-transform duration-200 motion-reduce:transition-none ${abierta ? "rotate-90" : ""}`}
+                      />
+                      <span className="text-[10px] uppercase tracking-wider text-white/25 group-hover/area:text-white/50 transition-colors">
+                        {GRUPO_LABEL[s.grupo]}
+                      </span>
+                      {avisa && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-lgb-red" title="Hay novedades adentro" />}
+                    </button>
+
+                    {/* 0fr → 1fr: se desliza sin tener que saber de antemano cuánto mide. */}
+                    <div
+                      className={`grid transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ${
+                        abierta ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                      }`}
+                    >
+                      <div className="overflow-hidden min-h-0">
+                        <div className="flex flex-col gap-1">{s.items.map(linkEscritorio)}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </>
           ) : (
             links.map(linkEscritorio)
