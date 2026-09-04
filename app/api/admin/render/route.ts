@@ -103,5 +103,18 @@ export async function POST(req: NextRequest) {
 
   const r = await encolarRender(proyectoId, tareaId, tipo, email, op.op);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 409 });
+
+  // Se guardan en el proyecto para no volver a pedirlos: la próxima vez llegan
+  // puestos. En un EP van en la canción, no en el álbum — cada tema tiene su
+  // propia tonalidad. Best-effort: si falla, el render igual ya está encolado.
+  if (tipo === "musico" && op.op?.tonalidad) {
+    const sb = supabaseAdmin();
+    const patch = { tonalidad: op.op.tonalidad, bpm: op.op.bpm ?? null };
+    const q = tareaId
+      ? sb.from("proyecto_tareas").update(patch).eq("id", tareaId)
+      : sb.from("proyectos").update(patch).eq("id", proyectoId);
+    await q;
+  }
+
   return NextResponse.json({ ok: true, id: r.id });
 }

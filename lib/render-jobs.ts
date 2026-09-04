@@ -132,6 +132,10 @@ export interface Renderizable {
   /** Si tiene pedido ligado y correo: sin esto el aviso al cliente no puede salir. */
   puedeAvisar: boolean;
   ultimoPrevio: number;
+  /** Tonalidad y BPM guardados al crear la venta/proyecto. En un EP son los de
+   *  la canción, no los del álbum. Null = nunca se capturaron. */
+  tonalidad: string | null;
+  bpm: number | null;
   jobs: RenderJob[];
   /** Null mientras el script local no haya escaneado la carpeta todavía. */
   inventario: Inventario | null;
@@ -162,7 +166,7 @@ export async function renderizables(): Promise<Renderizable[]> {
 
   const { data: proyectos } = await sb
     .from("proyectos")
-    .select("id, folio, titulo, tipo, estado, order_id, contactos(nombre, email)")
+    .select("id, folio, titulo, tipo, estado, order_id, tonalidad, bpm, contactos(nombre, email)")
     .eq("clase", "produccion")
     .in("estado", ESTADOS_ACTIVOS)
     .not("venta_id", "is", null)
@@ -176,7 +180,7 @@ export async function renderizables(): Promise<Renderizable[]> {
   const { data: canciones } = idsAlbum.length
     ? await sb
         .from("proyecto_tareas")
-        .select("id, proyecto_id, titulo, orden")
+        .select("id, proyecto_id, titulo, orden, tonalidad, bpm")
         .in("proyecto_id", idsAlbum)
         .eq("es_cancion", true)
         .order("orden", { ascending: true })
@@ -227,6 +231,8 @@ export async function renderizables(): Promise<Renderizable[]> {
           folio: (p.folio as string | null) ?? null,
           estado: p.estado as string,
           puedeAvisar,
+          tonalidad: (c.tonalidad as string | null) ?? null,
+          bpm: c.bpm == null ? null : Number(c.bpm),
           ultimoPrevio: Math.max(0, ...js.filter((j) => j.tipo === "previo" && j.previoNum).map((j) => j.previoNum!)),
           jobs: js,
           inventario: inventarios.get(c.id as string) ?? null,
@@ -246,6 +252,8 @@ export async function renderizables(): Promise<Renderizable[]> {
       folio: (p.folio as string | null) ?? null,
       estado: p.estado as string,
       puedeAvisar,
+      tonalidad: (p.tonalidad as string | null) ?? null,
+      bpm: p.bpm == null ? null : Number(p.bpm),
       ultimoPrevio: Math.max(0, ...js.filter((j) => j.tipo === "previo" && j.previoNum).map((j) => j.previoNum!)),
       jobs: js,
       inventario: inventarios.get(p.id as string) ?? null,

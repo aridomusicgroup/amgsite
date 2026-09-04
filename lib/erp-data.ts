@@ -586,6 +586,7 @@ export interface Proyecto {
   /** created_at en YYYY-MM-DD (respaldo cuando el proyecto no tiene venta). */
   creado: string;
   brief: string | null; entregable_url: string | null; notas: string | null;
+  tonalidad: string | null; bpm: number | null;
   /** Carpeta de Drive donde el cliente sube sus archivos (null si aún no se crea o Drive no está configurado). */
   drive_folder_id: string | null;
   plataforma: string | null; fecha_publicacion: string | null; link_post: string | null;
@@ -710,6 +711,7 @@ export async function getProyectos(): Promise<Proyecto[]> {
       fechaVenta: ventaId ? ventaFechaMap.get(ventaId) ?? null : null,
       creado: ((p.created_at as string | null) ?? "").slice(0, 10),
       brief: p.brief as string | null, entregable_url: p.entregable_url as string | null, notas: p.notas as string | null,
+      tonalidad: (p.tonalidad as string | null) ?? null, bpm: p.bpm == null ? null : Number(p.bpm),
       drive_folder_id: (p.drive_folder_id as string | null) ?? null,
       plataforma: (p.plataforma as string | null) ?? null,
       fecha_publicacion: (p.fecha_publicacion as string | null) ?? null,
@@ -905,6 +907,7 @@ export async function getProyectoDetalle(id: string): Promise<ProyectoDetalle | 
     fechaVenta: venta?.fecha ?? null,
     creado: ((p.created_at as string | null) ?? "").slice(0, 10),
     brief: p.brief as string | null, entregable_url: p.entregable_url as string | null, notas: p.notas as string | null,
+    tonalidad: (p.tonalidad as string | null) ?? null, bpm: p.bpm == null ? null : Number(p.bpm),
     drive_folder_id: (p.drive_folder_id as string | null) ?? null,
     plataforma: (p.plataforma as string | null) ?? null,
     fecha_publicacion: (p.fecha_publicacion as string | null) ?? null,

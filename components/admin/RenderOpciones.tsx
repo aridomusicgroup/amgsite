@@ -55,12 +55,17 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
   const actual: ArchivoRpp | undefined = archivos.find((a) => a.archivo === rpp) ?? archivos[0];
 
   const [musicoId, setMusicoId] = useState("");
-  // El BPM sale del propio proyecto (línea TEMPO), así que llega puesto. La
-  // tonalidad es una SUGERENCIA leída de cómo están nombrados los archivos de
-  // la carpeta — REAPER no la guarda ni sabe detectarla.
-  const [bpm, setBpm] = useState(() => String(archivos[0]?.bpm ?? ""));
-  const [tonalidad, setTonalidad] = useState(() => archivos[0]?.tonalidad ?? "");
-  const tonoSugerido = Boolean(actual?.tonalidad) && tonalidad === actual?.tonalidad;
+  /**
+   * De dónde salen BPM y tonalidad, en orden:
+   *  1. Lo capturado al crear la venta/proyecto — es el dato bueno.
+   *  2. Si no hay: el BPM de la línea TEMPO del .rpp, y la tonalidad adivinada
+   *     de cómo están nombrados los archivos (REAPER no la guarda).
+   * Lo que se confirme aquí se guarda en el proyecto para la próxima vez.
+   */
+  const [bpm, setBpm] = useState(() => String(p.bpm ?? archivos[0]?.bpm ?? ""));
+  const [tonalidad, setTonalidad] = useState(() => p.tonalidad ?? archivos[0]?.tonalidad ?? "");
+  // Sólo se marca como "sugerida" si NO viene del proyecto: ese sí es dato duro.
+  const tonoSugerido = !p.tonalidad && Boolean(actual?.tonalidad) && tonalidad === actual?.tonalidad;
 
   const marcadores = actual?.marcadores ?? [];
   const seleccion = actual?.seleccion?.valida ? actual.seleccion : null;
@@ -87,8 +92,9 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
     setDesde(0);
     setHasta(Math.max(0, (a?.marcadores.length ?? 1) - 1));
     setMarcadas(new Set((a?.pistas ?? []).filter((t) => t.esStem).map((t) => t.nombre)));
-    setBpm(String(a?.bpm ?? ""));
-    setTonalidad(a?.tonalidad ?? "");
+    // Lo del proyecto manda sobre lo que traiga el .rpp.
+    setBpm(String(p.bpm ?? a?.bpm ?? ""));
+    setTonalidad(p.tonalidad ?? a?.tonalidad ?? "");
   };
 
   const alternar = (nombre: string) =>

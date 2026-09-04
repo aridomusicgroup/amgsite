@@ -183,6 +183,7 @@ export async function POST(req: NextRequest) {
     contacto_id: contactoId, venta_id: ventaId, responsable_id: leadResp, responsables: responsables.length ? responsables : null,
     fecha_inicio: b.fecha_inicio || null, fecha_entrega: b.fecha_entrega || null,
     brief: b.brief || null, notas: b.notas || null, entregable_url: b.entregable_url || null,
+    tonalidad: (b.tonalidad || "").trim() || null, bpm: Number(b.bpm) || null,
     plataforma: b.plataforma || null, fecha_publicacion: b.fecha_publicacion || null, link_post: b.link_post || null,
     creado_por: email,
   }).select("id").single();
@@ -276,7 +277,7 @@ export async function PATCH(req: NextRequest) {
   const patch: Record<string, unknown> = {};
   if (b.titulo && String(b.titulo).trim()) patch.titulo = String(b.titulo).trim();
   if (b.clase === "produccion" || b.clase === "interna") patch.clase = b.clase;
-  for (const k of ["tipo", "brief", "notas", "entregable_url", "responsable_id", "venta_id", "fecha_inicio", "fecha_entrega", "fecha_entrega_real", "plataforma", "fecha_publicacion", "link_post"]) {
+  for (const k of ["tipo", "brief", "notas", "entregable_url", "responsable_id", "venta_id", "fecha_inicio", "fecha_entrega", "fecha_entrega_real", "plataforma", "fecha_publicacion", "link_post", "tonalidad", "bpm"]) {
     if (k in b) patch[k] = b[k] ? b[k] : null;
   }
   if (b.estado && ESTADOS.includes(b.estado)) patch.estado = b.estado;

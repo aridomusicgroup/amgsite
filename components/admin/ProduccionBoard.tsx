@@ -485,6 +485,7 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
     titulo: p.titulo, clase: p.clase, tipo: p.tipo ?? "", responsable_id: p.responsable_id ?? "", responsables: p.responsables ?? [],
     prioridad: p.prioridad, fecha_entrega: p.fecha_entrega ?? "", brief: p.brief ?? "",
     entregable_url: p.entregable_url ?? "", notas: p.notas ?? "", venta_id: p.venta_id ?? "",
+    tonalidad: p.tonalidad ?? "", bpm: p.bpm != null ? String(p.bpm) : "",
     plataforma: p.plataforma ?? "", fecha_publicacion: p.fecha_publicacion ?? "", link_post: p.link_post ?? "",
   });
   const [ventaInput, setVentaInput] = useState(ventas.find((v) => v.id === p.venta_id)?.label ?? "");
@@ -861,6 +862,14 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
             <div className="col-span-2 min-w-0">
               <label className={lblS}>Link entregables</label>
               <input value={ef.entregable_url} onChange={(e) => setEf((p) => ({ ...p, entregable_url: e.target.value }))} placeholder="Drive…" className={inp} />
+            </div>
+            <div>
+              <label className={lblS}>Tonalidad</label>
+              <input value={ef.tonalidad} onChange={(e) => setEf((p) => ({ ...p, tonalidad: e.target.value }))} placeholder="Am" maxLength={12} className={inp} />
+            </div>
+            <div>
+              <label className={lblS}>BPM</label>
+              <input type="number" min={20} max={400} value={ef.bpm} onChange={(e) => setEf((p) => ({ ...p, bpm: e.target.value }))} placeholder="154" className={inp} />
             </div>
           </div>
           {isAdmin && (
@@ -1280,7 +1289,7 @@ function NuevoProyecto({ equipo, clientes, onClose }: { equipo: Equipo[]; client
   const [error, setError] = useState<string | null>(null);
   const [f, setF] = useState({
     titulo: "", tipo: "beat_personalizado", responsable_id: "", prioridad: "media",
-    fecha_entrega: "", brief: "", notas: "",
+    fecha_entrega: "", brief: "", notas: "", tonalidad: "", bpm: "",
     cliente: "", email: "", telefono: "", canal: "whatsapp",
     plataforma: "", fecha_publicacion: "", link_post: "", canciones: "", instrumentos: "",
   });
@@ -1372,6 +1381,21 @@ function NuevoProyecto({ equipo, clientes, onClose }: { equipo: Equipo[]; client
           <label className={lblS}>{clase === "produccion" ? "Brief (lo que pidió)" : "Notas"}</label>
           <input value={clase === "produccion" ? f.brief : f.notas} onChange={(e) => set(clase === "produccion" ? "brief" : "notas", e.target.value)} className={inp} />
         </div>
+
+        {/* Tonalidad y BPM: el previo para músico los toma de aquí. Si se dejan
+            vacíos se guardan solos la primera vez que se escriban en REAPER. */}
+        {clase === "produccion" && (
+          <>
+            <div>
+              <label className={lblS}>Tonalidad <span className="text-white/25">(opcional)</span></label>
+              <input value={f.tonalidad} onChange={(e) => set("tonalidad", e.target.value)} placeholder="Am" maxLength={12} className={inp} />
+            </div>
+            <div>
+              <label className={lblS}>BPM <span className="text-white/25">(opcional)</span></label>
+              <input type="number" min={20} max={400} value={f.bpm} onChange={(e) => set("bpm", e.target.value)} placeholder="154" className={inp} />
+            </div>
+          </>
+        )}
 
         {(f.tipo === "ep" || f.tipo === "album") && (
           <div className="col-span-2 sm:col-span-4">
