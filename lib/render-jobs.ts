@@ -52,6 +52,11 @@ export interface ArchivoRpp {
   /** Items de audio. Cero = el proyecto sigue siendo la plantilla sin tocar y
    *  no hay nada que renderizar. `undefined` en filas de antes de este dato. */
   items?: number;
+  /** Tempo del proyecto (línea TEMPO del .rpp). Dato duro. */
+  bpm?: number | null;
+  /** Tonalidad ADIVINADA de cómo están nombrados los archivos de la carpeta —
+   *  REAPER no la guarda. Es una sugerencia, no un dato. */
+  tonalidad?: string | null;
   marcadores: MarcadorRpp[];
   seleccion: SeleccionRpp | null;
   pistas: PistaRpp[];

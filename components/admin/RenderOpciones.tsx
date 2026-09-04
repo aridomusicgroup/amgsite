@@ -50,12 +50,17 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
   const esMusico = tipo === "musico";
   // Sólo se puede mandar a quien tenga correo registrado.
   const conCorreo = musicos.filter((m) => m.email);
-  const [musicoId, setMusicoId] = useState("");
-  const [bpm, setBpm] = useState("");
-  const [tonalidad, setTonalidad] = useState("");
   const archivos = useMemo(() => p.inventario?.proyectos ?? [], [p.inventario]);
   const [rpp, setRpp] = useState(archivos[0]?.archivo ?? "");
   const actual: ArchivoRpp | undefined = archivos.find((a) => a.archivo === rpp) ?? archivos[0];
+
+  const [musicoId, setMusicoId] = useState("");
+  // El BPM sale del propio proyecto (línea TEMPO), así que llega puesto. La
+  // tonalidad es una SUGERENCIA leída de cómo están nombrados los archivos de
+  // la carpeta — REAPER no la guarda ni sabe detectarla.
+  const [bpm, setBpm] = useState(() => String(archivos[0]?.bpm ?? ""));
+  const [tonalidad, setTonalidad] = useState(() => archivos[0]?.tonalidad ?? "");
+  const tonoSugerido = Boolean(actual?.tonalidad) && tonalidad === actual?.tonalidad;
 
   const marcadores = actual?.marcadores ?? [];
   const seleccion = actual?.seleccion?.valida ? actual.seleccion : null;
@@ -82,6 +87,8 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
     setDesde(0);
     setHasta(Math.max(0, (a?.marcadores.length ?? 1) - 1));
     setMarcadas(new Set((a?.pistas ?? []).filter((t) => t.esStem).map((t) => t.nombre)));
+    setBpm(String(a?.bpm ?? ""));
+    setTonalidad(a?.tonalidad ?? "");
   };
 
   const alternar = (nombre: string) =>
@@ -309,11 +316,16 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
                           />
                         </label>
                         <label className="block">
-                          <span className="block text-[11px] text-white/40 mb-1">Tonalidad</span>
+                          <span className="block text-[11px] text-white/40 mb-1">
+                            Tonalidad
+                            {tonoSugerido && <span className="text-amber-300/70"> · sugerida, confírmala</span>}
+                          </span>
                           <input
                             type="text" maxLength={12} value={tonalidad} placeholder="Am"
                             onChange={(e) => setTonalidad(e.target.value)}
-                            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-white/25 focus:outline-none focus:border-lgb-red"
+                            className={`w-full bg-white/5 border rounded-xl px-3 py-2 text-sm text-white placeholder-white/25 focus:outline-none focus:border-lgb-red ${
+                              tonoSugerido ? "border-amber-400/40" : "border-white/10"
+                            }`}
                           />
                         </label>
                       </div>
