@@ -31,7 +31,10 @@ export default async function MusicoPage() {
   // `estado`, que solo avanza a "aceptado" cuando alguien del estudio lo marca:
   // con eso, una grabación ya entregada seguía contándose como pendiente y el
   // encabezado contradecía a la tarjeta, que ya decía "Entregado".
-  const pendientes = asignaciones.filter((a) => !a.archivos.some((x) => x.clase === "stem"));
+  const pendientes = asignaciones.filter((a) => {
+    const slots = new Set(a.archivos.filter((x) => x.clase === "stem").map((x) => x.slot));
+    return slots.size < Math.max(1, a.canales.length);
+  });
 
   return (
     <main className="min-h-screen bg-lgb-black text-white">
@@ -79,7 +82,10 @@ export default async function MusicoPage() {
 
 function Tarjeta({ a }: { a: AsignacionMusico }) {
   const vencida = a.fechaLimite && !a.hecha && a.fechaLimite < new Date().toISOString().slice(0, 10);
-  const entregados = a.archivos.filter((x) => x.clase === "stem").length;
+  // Con dos canales, una sola pista todavía no es "entregado".
+  const slots = new Set(a.archivos.filter((x) => x.clase === "stem").map((x) => x.slot));
+  const piden = Math.max(1, a.canales.length);
+  const completo = slots.size >= piden;
 
   return (
     <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
@@ -88,9 +94,13 @@ function Tarjeta({ a }: { a: AsignacionMusico }) {
           <p className="font-coolvetica text-lg truncate">{a.cancion}</p>
           <p className="text-lgb-red text-sm mt-0.5">{a.instrumento}</p>
         </div>
-        {entregados > 0 && (
-          <span className="flex items-center gap-1 text-[11px] text-green-300 bg-green-500/10 border border-green-500/25 rounded-full px-2.5 py-1 shrink-0">
-            <Check size={11} /> Entregado
+        {slots.size > 0 && (
+          <span className={`flex items-center gap-1 text-[11px] rounded-full px-2.5 py-1 shrink-0 border ${
+            completo
+              ? "text-green-300 bg-green-500/10 border-green-500/25"
+              : "text-amber-300 bg-amber-500/10 border-amber-500/25"
+          }`}>
+            <Check size={11} /> {completo ? "Entregado" : `${slots.size} de ${piden}`}
           </span>
         )}
       </div>
@@ -116,7 +126,7 @@ function Tarjeta({ a }: { a: AsignacionMusico }) {
         </a>
       )}
 
-      <SubirParte asignacionId={a.id} archivos={a.archivos} />
+      <SubirParte asignacionId={a.id} archivos={a.archivos} canales={a.canales} />
     </section>
   );
 }

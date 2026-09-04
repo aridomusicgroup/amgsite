@@ -25,7 +25,6 @@ const CLASES = {
     accept: "audio/mpeg,.mp3",
     valido: (n: string) => /\.mp3$/i.test(n),
     error: "El previo tiene que ser un MP3 — es el único formato que se puede escuchar desde el panel.",
-    icono: Headphones,
   },
   stem: {
     label: "Mandar mi pista",
@@ -33,23 +32,28 @@ const CLASES = {
     accept: "audio/wav,audio/x-wav,.wav",
     valido: (n: string) => /\.wav$/i.test(n),
     error: "La pista tiene que ser un WAV — un MP3 pierde calidad y ya no sirve para mezclar.",
-    icono: FileMusic,
   },
 } as const;
 
 type Clase = keyof typeof CLASES;
 
-export function SubirParte({ asignacionId, archivos }: {
+export function SubirParte({ asignacionId, archivos, canales }: {
   asignacionId: string;
   archivos: ArchivoMusico[];
+  /** Nombres de los canales que se le piden. 0 o 1 = una sola pista. */
+  canales: string[];
 }) {
   const router = useRouter();
   const refs = { previo: useRef<HTMLInputElement>(null), stem: useRef<HTMLInputElement>(null) };
+  // Cuántas pistas se le piden. Con dos o más, sale un botón por cada una: así
+  // el músico dice cuál es cuál en vez de que lo adivinemos por el orden.
+  const huecos = canales.length > 1 ? canales : [null];
+  const [hueco, setHueco] = useState(0);
   const [subiendo, setSubiendo] = useState<Clase | null>(null);
   const [progreso, setProgreso] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  const subir = async (clase: Clase, file: File) => {
+  const subir = async (clase: Clase, file: File, slot = 0) => {
     setError(null);
     const cfg = CLASES[clase];
     if (!cfg.valido(file.name)) { setError(cfg.error); return; }
@@ -70,7 +74,12 @@ export function SubirParte({ asignacionId, archivos }: {
         },
         // El nombre lo arma el servidor para que en Drive se lea de quién es y
         // de qué instrumento, sin depender de cómo lo haya nombrado el músico.
-        body: JSON.stringify({ name: `${t.prefijo}${file.name.replace(/^.*[\\/]/, "")}`, parents: [t.folderId] }),
+        body: JSON.stringify({
+          // El canal entra en el nombre para que en Drive se distingan las dos
+          // charchetas sin abrirlas — y para que la segunda no pise a la primera.
+          name: `${t.prefijo}${canales[slot] ? canales[slot] + " - " : ""}${file.name.replace(/^.*[\\/]/, "")}`,
+          parents: [t.folderId],
+        }),
       });
       if (!init.ok) throw new Error("google");
       const location = init.headers.get("Location");
@@ -97,7 +106,7 @@ export function SubirParte({ asignacionId, archivos }: {
       const conf = await fetch(`/api/musico/asignacion/${asignacionId}/subida-confirmada`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clase, nombre: file.name, driveId, bytes: file.size }),
+        body: JSON.stringify({ clase, nombre: file.name, driveId, bytes: file.size, slot }),
       });
       if (!conf.ok) throw new Error("registro");
 
@@ -117,32 +126,49 @@ export function SubirParte({ asignacionId, archivos }: {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {(Object.keys(CLASES) as Clase[]).map((clase) => {
-          const cfg = CLASES[clase];
-          const Icono = cfg.icono;
-          const activo = subiendo === clase;
+      <div>
+        <button
+          onClick={() => { setHueco(0); refs.previo.current?.click(); }}
+          disabled={subiendo !== null}
+          className="w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm bg-white/8 text-white hover:bg-white/15 transition-colors disabled:opacity-50 cursor-pointer"
+        >
+          {subiendo === "previo" ? <Loader2 size={15} className="animate-spin" /> : <Headphones size={15} />}
+          {subiendo === "previo" ? `Subiendo… ${progreso}%` : CLASES.previo.label}
+        </button>
+        <p className="text-white/25 text-[11px] mt-1.5 leading-snug">{CLASES.previo.ayuda}</p>
+        <input ref={refs.previo} type="file" accept={CLASES.previo.accept} className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) subir("previo", f, 0); }} />
+      </div>
+
+      {/* Una pista, o una por canal cuando se le piden varias */}
+      <div className={huecos.length > 1 ? "grid grid-cols-1 sm:grid-cols-2 gap-2" : ""}>
+        {huecos.map((canal, i) => {
+          const yaEsta = archivos.some((a) => a.clase === "stem" && a.slot === i);
+          const activo = subiendo === "stem" && hueco === i;
           return (
-            <div key={clase}>
-              <button
-                onClick={() => refs[clase].current?.click()}
-                disabled={subiendo !== null}
-                className={`w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm transition-colors disabled:opacity-50 cursor-pointer ${
-                  clase === "stem"
-                    ? "bg-lgb-red text-white hover:bg-red-700"
-                    : "bg-white/8 text-white hover:bg-white/15"
-                }`}
-              >
-                {activo ? <Loader2 size={15} className="animate-spin" /> : <Icono size={15} />}
-                {activo ? `Subiendo… ${progreso}%` : cfg.label}
-              </button>
-              <p className="text-white/25 text-[11px] mt-1.5 leading-snug">{cfg.ayuda}</p>
-              <input ref={refs[clase]} type="file" accept={cfg.accept} className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(clase, f); }} />
-            </div>
+            <button
+              key={i}
+              onClick={() => { setHueco(i); refs.stem.current?.click(); }}
+              disabled={subiendo !== null}
+              className="w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm bg-lgb-red text-white hover:bg-red-700 transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {activo ? <Loader2 size={15} className="animate-spin" />
+                : yaEsta ? <Check size={15} />
+                : <FileMusic size={15} />}
+              {activo ? `Subiendo… ${progreso}%`
+                : canal ? `${yaEsta ? "Cambiar" : "Mandar"} pista ${i + 1}`
+                : CLASES.stem.label}
+              {canal && <span className="opacity-60 text-xs">· {canal}</span>}
+            </button>
           );
         })}
       </div>
+      <p className="text-white/25 text-[11px] -mt-1 leading-snug">
+        {CLASES.stem.ayuda}
+        {huecos.length > 1 && " Son dos: manda cada una en su botón para que no se crucen."}
+      </p>
+      <input ref={refs.stem} type="file" accept={CLASES.stem.accept} className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) subir("stem", f, hueco); }} />
 
       {subiendo && (
         <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">

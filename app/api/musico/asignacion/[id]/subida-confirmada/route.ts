@@ -44,6 +44,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const nombre = String(b.nombre || "").trim().slice(0, MAX_NOMBRE);
   const driveId = String(b.driveId || "").trim();
   const bytes = Number(b.bytes);
+  // A qué canal va. Lo elige el músico con el botón, no se deduce del orden.
+  const slot = Math.min(Math.max(0, Math.trunc(Number(b.slot) || 0)), 9);
 
   if (!(CLASES as readonly string[]).includes(clase)) {
     return NextResponse.json({ error: "Tipo de archivo desconocido." }, { status: 400 });
@@ -65,6 +67,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     clase,
     nombre,
     drive_id: driveId,
+    slot: clase === "stem" ? slot : 0,
     bytes: Number.isFinite(bytes) && bytes > 0 ? Math.round(bytes) : null,
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

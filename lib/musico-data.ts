@@ -21,6 +21,8 @@ export interface MusicoSesion {
 export interface ArchivoMusico {
   id: string;
   clase: "previo" | "stem";
+  /** A qué canal corresponde, cuando el instrumento lleva más de uno. */
+  slot: number;
   nombre: string;
   subido_at: string;
   /** Solo para previos: si ya se le compartió al cliente. */
@@ -43,6 +45,15 @@ export interface AsignacionMusico {
   hecha: boolean;
   /** Enlace del previo de referencia que ya se le mandó, si hay. */
   referencia: string | null;
+  /**
+   * Cuántas pistas se le piden y cómo se llama cada una.
+   *
+   * Martín manda DOS charchetas —primera y segunda voz— y cada una va a un
+   * canal distinto del proyecto. El portal le muestra un botón por canal, en
+   * vez de adivinar por el orden en que suba: si se equivocara de orden, las
+   * dos voces quedarían cruzadas y nadie se enteraría hasta abrir el proyecto.
+   */
+  canales: string[];
   archivos: ArchivoMusico[];
 }
 
@@ -97,11 +108,19 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
   const tareaIds = vivas.map((a) => a.tarea_id as string | null).filter(Boolean) as string[];
   const proyIds = [...new Set(vivas.map((a) => a.proyecto_id as string))];
 
-  const [archRes, tareasRes, refRes] = await Promise.all([
+  const [archRes, tareasRes, refRes, canalesRes] = await Promise.all([
+    // `slot` es columna nueva; sin el reintento, antes de la migración el
+    // músico vería su tarjeta sin ninguno de los archivos que ya subió.
     sb.from("musico_archivos")
-      .select("id, asignacion_id, clase, nombre, subido_at, aprobado_at, bajado_at, importado_at")
+      .select("id, asignacion_id, clase, nombre, slot, subido_at, aprobado_at, bajado_at, importado_at")
       .in("asignacion_id", ids)
-      .order("subido_at", { ascending: false }),
+      .order("subido_at", { ascending: false })
+      .then((r) => (r.error
+        ? sb.from("musico_archivos")
+            .select("id, asignacion_id, clase, nombre, subido_at, aprobado_at, bajado_at, importado_at")
+            .in("asignacion_id", ids)
+            .order("subido_at", { ascending: false })
+        : r)),
     tareaIds.length
       ? sb.from("proyecto_tareas").select("id, titulo, fecha, hecho").in("id", tareaIds)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
@@ -113,7 +132,16 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
       .eq("estado", "listo")
       .not("enlace_publico", "is", null)
       .order("created_at", { ascending: false }),
+    sb.from("instrumento_pistas").select("instrumento, canales"),
   ]);
+
+  // Sin acentos: el instrumento de la asignación lo escribe una persona y el
+  // del mapa otra, y "Batería" contra "Bateria" no debe perder los canales.
+  const norm = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
+  const canalesDe = (inst: string): string[] => {
+    const fila = (canalesRes.data ?? []).find((m) => norm(String(m.instrumento)) === norm(inst));
+    return String(fila?.canales ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  };
 
   const porAsig = new Map<string, ArchivoMusico[]>();
   for (const a of archRes.data ?? []) {
@@ -122,6 +150,8 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
     arr.push({
       id: a.id as string,
       clase: (a.clase as "previo" | "stem") ?? "stem",
+      // `a` puede venir del reintento SIN la columna: se lee de forma laxa.
+      slot: Number((a as Record<string, unknown>).slot ?? 0) || 0,
       nombre: a.nombre as string,
       subido_at: a.subido_at as string,
       aprobado_at: (a.aprobado_at as string | null) ?? null,
@@ -160,6 +190,7 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
       fechaLimite: t?.fecha ?? null,
       hecha: Boolean(t?.hecho),
       referencia: referencias.get(a.proyecto_id as string) ?? null,
+      canales: canalesDe(a.instrumento as string),
       archivos: porAsig.get(a.id as string) ?? [],
     };
   });

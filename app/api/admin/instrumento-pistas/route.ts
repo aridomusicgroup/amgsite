@@ -26,8 +26,13 @@ export async function GET() {
   if (!(await getFullAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   const sb = supabaseAdmin();
 
+  // `canales` es columna nueva: si la migración aún no corre, pedirla haría
+  // fallar la consulta ENTERA y esta sección se vería vacía como si no hubiera
+  // equivalencias. Se reintenta sin ella.
+  const conCanales = () => sb.from("instrumento_pistas").select("instrumento, pista, canales").order("instrumento");
+  const sinCanales = () => sb.from("instrumento_pistas").select("instrumento, pista").order("instrumento");
   const [mapaRes, invRes] = await Promise.all([
-    sb.from("instrumento_pistas").select("instrumento, pista").order("instrumento"),
+    conCanales().then((r) => (r.error ? sinCanales() : r)),
     sb.from("render_inventario").select("proyectos").limit(120),
   ]);
   if (mapaRes.error) return NextResponse.json({ error: mapaRes.error.message }, { status: 500 });
@@ -50,6 +55,7 @@ export async function GET() {
   const mapa = (mapaRes.data ?? []).map((f) => ({
     instrumento: f.instrumento as string,
     pista: f.pista as string,
+    canales: ((f as Record<string, unknown>).canales as string | null) ?? "",
     existe: String(f.pista).split(",").some((c) => c.trim() && conocidas.has(normaliza(c))),
   }));
 
@@ -66,11 +72,14 @@ export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => ({}));
   const instrumento = String(b.instrumento || "").trim().slice(0, MAX);
   const pista = String(b.pista || "").trim().slice(0, MAX);
+  // Canales: hijas DIRECTAS de la carpeta destino, en el orden en que el músico
+  // las va a ver en su portal. Vacío = una sola pista, nueva.
+  const canales = String(b.canales ?? "").trim().slice(0, MAX) || null;
   if (!instrumento || !pista) return NextResponse.json({ error: "Pon el instrumento y la pista." }, { status: 400 });
 
   const sb = supabaseAdmin();
   const { error } = await sb.from("instrumento_pistas")
-    .upsert({ instrumento, pista, updated_at: new Date().toISOString() }, { onConflict: "instrumento" });
+    .upsert({ instrumento, pista, canales, updated_at: new Date().toISOString() }, { onConflict: "instrumento" });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
