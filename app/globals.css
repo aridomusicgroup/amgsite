@@ -299,3 +299,21 @@ body {
      llega a la lista sin saber cuál era. */
   .arido-destacado { animation: none; box-shadow: 0 0 0 2px rgba(196, 47, 66, 0.7); }
 }
+
+/* ── Entrada de cada sección del panel ────────────────────────────────────────
+   La aplica app/admin/(panel)/template.tsx, que Next remonta en cada
+   navegación. Es CSS y no framer-motion a propósito: un elemento con
+   `transform` se vuelve el marco de referencia de sus descendientes con
+   `position: fixed`, y el panel tiene cinco modales fixed SIN portal
+   (CotizacionesPanel, ProduccionBoard, CursosPanel, RenderOpciones, CrmList)
+   que dejarían de cubrir la pantalla. Aquí el transform termina en `none`, que
+   no crea marco de referencia, así que los modales quedan intactos. */
+@keyframes panel-entra {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.panel-entra { animation: panel-entra 200ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-entra { animation: none; }
+}

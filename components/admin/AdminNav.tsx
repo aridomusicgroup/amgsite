@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, Wallet, Users, Music2, Receipt, DownloadCloud, Megaphone, ClipboardList, BarChart3, TrendingUp, Settings, LogOut, Bot, ExternalLink, FileText, History, GraduationCap, Terminal } from "lucide-react";
+import { LogOut, Bot, ExternalLink } from "lucide-react";
+import { MODULES, GRUPOS, GRUPO_LABEL, type Grupo } from "@/lib/modules";
+import { moduleIcon } from "./module-icons";
 import { createAuthClient } from "@/lib/supabase/auth-client";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { VersionWatcher } from "./VersionWatcher";
@@ -21,24 +23,16 @@ const RT_TABLAS = [
   "expenses", "manual_income",
 ] as const;
 
-const allLinks = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/produccion", label: "Producción", icon: ClipboardList },
-  { href: "/admin/actividad", label: "Actividad", icon: History },
-  { href: "/admin/rendimiento", label: "Rendimiento", icon: BarChart3 },
-  { href: "/admin/analitica", label: "Analítica", icon: TrendingUp },
-  { href: "/admin/marketing", label: "Marketing", icon: Megaphone },
-  { href: "/admin/pedidos", label: "Pedidos", icon: Package },
-  { href: "/admin/cotizaciones", label: "Cotizaciones", icon: FileText },
-  { href: "/admin/ventas", label: "Ventas", icon: Receipt },
-  { href: "/admin/beats", label: "Beats", icon: Music2 },
-  { href: "/admin/cursos", label: "Cursos", icon: GraduationCap },
-  { href: "/admin/finanzas", label: "Finanzas", icon: Wallet },
-  { href: "/admin/clientes", label: "Clientes", icon: Users },
-  { href: "/admin/importar", label: "Importar", icon: DownloadCloud },
-  { href: "/admin/dev-logs", label: "REAPER", icon: Terminal },
-  { href: "/admin/ajustes", label: "Ajustes", icon: Settings },
-];
+/** Los links salen de MODULES (única lista) + su icono. Antes había aquí una
+ *  copia a mano de los 16 hrefs y labels que había que mantener en paralelo. */
+const allLinks = MODULES.map((m) => ({ href: m.href, label: m.label, grupo: m.grupo, icon: moduleIcon(m.href) }));
+
+/** Debajo de esto, encabezados sobre grupos de una o dos secciones estorban más
+ *  de lo que ayudan: quien tiene 3 secciones no necesita índice. */
+const MINIMO_PARA_AGRUPAR = 8;
+
+/** La portada del panel va fija hasta arriba, fuera de los grupos. */
+const PORTADA = "/admin";
 
 const VISTO_KEY = "arido-actividad-visto";
 
@@ -81,14 +75,31 @@ export function AdminNav({ email, modules, order }: { email: string; modules: st
   const hayNovedades = novedades > 0;
 
   let links = allLinks.filter((l) => modules.includes(l.href));
-  // Fuera del sistema de módulos a propósito: no es un módulo de negocio que un
-  // admin pueda prenderle a alguien más, es una herramienta de desarrollo solo mía.
-  if (order && order.length) {
+  const ordenPropio = Boolean(order && order.length);
+  if (order && ordenPropio) {
     links = [...links].sort((a, b) => {
       const ia = order.indexOf(a.href), ib = order.indexOf(b.href);
       return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
     });
   }
+
+  /**
+   * Los mismos links, repartidos por área — SOLO para el menú de escritorio.
+   * `links` (plano) sigue siendo lo único que alimenta la barra móvil.
+   *
+   * Se agrupa nada más si se cumplen las dos condiciones: que la persona no
+   * haya acomodado su menú a mano (su orden manda; la pantalla "Orden de tus
+   * secciones" muestra una lista numerada y reagrupar por encima la volvería
+   * mentira) y que tenga suficientes secciones para que valga la pena.
+   */
+  const portada = links.find((l) => l.href === PORTADA) ?? null;
+  const agrupado =
+    !ordenPropio && links.length >= MINIMO_PARA_AGRUPAR
+      ? GRUPOS.map((g) => ({
+          grupo: g as Grupo,
+          items: links.filter((l) => l.grupo === g && l.href !== PORTADA),
+        })).filter((s) => s.items.length > 0)
+      : null;
 
   const logout = async () => {
     const supabase = createAuthClient();
@@ -98,6 +109,26 @@ export function AdminNav({ email, modules, order }: { email: string; modules: st
 
   const isActive = (href: string) =>
     href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+
+  /** Un link del menú de escritorio. Se usa igual agrupado o plano. */
+  const linkEscritorio = (l: (typeof allLinks)[number]) => {
+    const Icon = l.icon;
+    return (
+      <Link
+        key={l.href}
+        href={l.href}
+        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
+          isActive(l.href) ? "bg-lgb-red text-white" : "text-white/50 hover:text-white hover:bg-white/5"
+        }`}
+      >
+        <Icon size={17} />
+        {l.label}
+        {l.href === "/admin/produccion" && hayNovedades && (
+          <span className="ml-auto w-2 h-2 rounded-full bg-lgb-red" title="Hay novedades" />
+        )}
+      </Link>
+    );
+  };
 
   return (
     <>
@@ -127,27 +158,21 @@ export function AdminNav({ email, modules, order }: { email: string; modules: st
         </div>
 
         <nav className="flex flex-col gap-1 flex-1">
-          {links.map((l) => {
-            const Icon = l.icon;
-            const active = isActive(l.href);
-            return (
-              <Link
-                key={l.href}
-                href={l.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
-                  active
-                    ? "bg-lgb-red text-white"
-                    : "text-white/50 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <Icon size={17} />
-                {l.label}
-                {l.href === "/admin/produccion" && hayNovedades && (
-                  <span className="ml-auto w-2 h-2 rounded-full bg-lgb-red" title="Hay novedades" />
-                )}
-              </Link>
-            );
-          })}
+          {agrupado ? (
+            <>
+              {portada && linkEscritorio(portada)}
+              {agrupado.map((s) => (
+                <div key={s.grupo} className="mt-3 first:mt-0">
+                  <p className="px-3 pb-1 text-[10px] uppercase tracking-wider text-white/25">
+                    {GRUPO_LABEL[s.grupo]}
+                  </p>
+                  <div className="flex flex-col gap-1">{s.items.map(linkEscritorio)}</div>
+                </div>
+              ))}
+            </>
+          ) : (
+            links.map(linkEscritorio)
+          )}
 
           {/* Acceso directo al chatbot (herramienta externa) */}
           <a
