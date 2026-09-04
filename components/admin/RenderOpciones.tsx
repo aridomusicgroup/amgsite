@@ -55,6 +55,10 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
   const actual: ArchivoRpp | undefined = archivos.find((a) => a.archivo === rpp) ?? archivos[0];
 
   const [musicoId, setMusicoId] = useState("");
+  // Dejarle además el trabajo en su portal. Prendido por default: mandarle el
+  // previo sin asignarle nada lo deja con un correo y un portal vacío.
+  const [asignar, setAsignar] = useState(true);
+  const [instrumento, setInstrumento] = useState("");
   /**
    * De dónde salen BPM y tonalidad, en orden:
    *  1. Lo capturado al crear la venta/proyecto — es el dato bueno.
@@ -121,7 +125,8 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
   // el músico necesita para ensayar. Sin eso el botón no se habilita.
   const bpmNum = Number(bpm);
   const musicoIncompleto =
-    esMusico && (!musicoId || !bpm || !Number.isFinite(bpmNum) || bpmNum < 20 || bpmNum > 400 || !tonalidad.trim());
+    esMusico && (!musicoId || !bpm || !Number.isFinite(bpmNum) || bpmNum < 20 || bpmNum > 400 || !tonalidad.trim()
+      || (asignar && !instrumento.trim()));
   const listo = !!actual && !vacio && !rangoMalo && !sinPistas && !musicoIncompleto && !enviando;
 
   const confirmar = () => {
@@ -133,6 +138,8 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
       op.musicoId = musicoId;
       op.bpm = bpmNum;
       op.tonalidad = tonalidad.trim();
+      op.asignar = asignar;
+      if (asignar) op.instrumento = instrumento.trim();
     } else {
       op.avisar = avisar && p.puedeAvisar;
     }
@@ -301,7 +308,14 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
                     <div className="flex flex-col gap-2">
                       <select
                         value={musicoId}
-                        onChange={(e) => setMusicoId(e.target.value)}
+                        onChange={(e) => {
+                          setMusicoId(e.target.value);
+                          // El instrumento se precarga de su catálogo, pero se
+                          // puede cambiar: hay dos tololoches y dos trombones
+                          // registrados, así que el catálogo es una sugerencia.
+                          const m = conCorreo.find((x) => x.id === e.target.value);
+                          setInstrumento(m?.instrumentos[0] ?? "");
+                        }}
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-lgb-red cursor-pointer"
                       >
                         <option value="" className="bg-lgb-dark">Elige al músico…</option>
@@ -335,6 +349,35 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
                           />
                         </label>
                       </div>
+
+                      <label
+                        className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-colors cursor-pointer ${
+                          asignar ? "bg-lgb-red/10 border-lgb-red/40" : "bg-white/5 border-transparent hover:bg-white/10"
+                        }`}
+                      >
+                        <input type="checkbox" checked={asignar} onChange={(e) => setAsignar(e.target.checked)}
+                          className="mt-0.5 accent-lgb-red" />
+                        <span className="min-w-0">
+                          <span className="block text-sm text-white">Habilitárselo en su portal</span>
+                          <span className="block text-[11px] text-white/40 leading-relaxed mt-0.5">
+                            Para que pueda subirte sus pistas desde /musico. Sin esto solo recibe el
+                            previo por correo y su portal se queda vacío.
+                          </span>
+                        </span>
+                      </label>
+
+                      {asignar && (
+                        <label className="block">
+                          <span className="block text-[11px] text-white/40 mb-1">
+                            Qué va a grabar <span className="text-white/25">(en esta canción)</span>
+                          </span>
+                          <input
+                            type="text" maxLength={40} value={instrumento} placeholder="Charchetas"
+                            onChange={(e) => setInstrumento(e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-white/25 focus:outline-none focus:border-lgb-red"
+                          />
+                        </label>
+                      )}
 
                       <p className="text-[11px] text-white/30 leading-relaxed">
                         Van en el nombre del archivo:{" "}

@@ -87,10 +87,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Pon la tonalidad (ej. Am, F#, D)." }, { status: 400 });
     }
     const sb = supabaseAdmin();
-    const { data: m } = await sb.from("musicos").select("email").eq("id", o.musicoId).maybeSingle();
+    const { data: m } = await sb.from("musicos").select("email, portal_activo").eq("id", o.musicoId).maybeSingle();
     if (!m) return NextResponse.json({ error: "Ese músico ya no existe." }, { status: 409 });
     if (!String(m.email || "").trim()) {
       return NextResponse.json({ error: "Ese músico no tiene correo registrado. Agrégaselo en Ajustes." }, { status: 409 });
+    }
+    if (o.asignar) {
+      if (!m.portal_activo) {
+        return NextResponse.json({ error: "Ese músico no tiene el portal prendido. Actívaselo en Ajustes → Músicos o desmarca la casilla." }, { status: 409 });
+      }
+      if (!String(o.instrumento || "").trim()) {
+        return NextResponse.json({ error: "Dile qué va a grabar, o desmarca lo del portal." }, { status: 400 });
+      }
     }
   } else if (op.op?.musicoId || op.op?.bpm || op.op?.tonalidad) {
     return NextResponse.json({ error: "Músico, BPM y tonalidad sólo aplican al previo de músico." }, { status: 400 });
@@ -116,5 +124,45 @@ export async function POST(req: NextRequest) {
     await q;
   }
 
-  return NextResponse.json({ ok: true, id: r.id });
+  // Habilitarle el trabajo en su portal. Va DESPUÉS de encolar y es
+  // best-effort: si esto falla, el previo igual ya salió y la asignación se
+  // puede hacer a mano desde la tarea.
+  let asignado = false;
+  if (tipo === "musico" && op.op?.asignar && op.op.musicoId) {
+    asignado = await asignarEnPortal(proyectoId, tareaId, op.op.musicoId, String(op.op.instrumento || "").trim(), email);
+  }
+
+  return NextResponse.json({ ok: true, id: r.id, asignado });
+}
+
+/**
+ * Le deja el trabajo en /musico, además del correo con el previo.
+ *
+ * No usa `upsert` sobre el índice único porque ese índice es
+ * `(musico_id, tarea_id)` y Postgres trata cada NULL como distinto: en un
+ * proyecto sin canción (tarea_id null) mandar el previo dos veces habría creado
+ * dos asignaciones y el músico vería la misma canción duplicada.
+ */
+async function asignarEnPortal(
+  proyectoId: string,
+  tareaId: string | null,
+  musicoId: string,
+  instrumento: string,
+  actor: string,
+): Promise<boolean> {
+  try {
+    const sb = supabaseAdmin();
+    const q = sb.from("musico_asignaciones").select("id")
+      .eq("musico_id", musicoId).eq("proyecto_id", proyectoId);
+    const { data: ya } = await (tareaId ? q.eq("tarea_id", tareaId) : q.is("tarea_id", null)).maybeSingle();
+    if (ya) return true;   // ya lo tenía: no es error
+
+    const { error } = await sb.from("musico_asignaciones").insert({
+      musico_id: musicoId, proyecto_id: proyectoId, tarea_id: tareaId,
+      instrumento, creado_por: actor,
+    });
+    return !error;
+  } catch {
+    return false;
+  }
 }

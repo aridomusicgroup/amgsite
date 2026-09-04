@@ -85,6 +85,16 @@ export interface OpcionesRender {
   musicoId?: string;
   bpm?: number;
   tonalidad?: string;
+  /**
+   * Además del correo con el previo, dejarle el trabajo en su portal.
+   *
+   * Son dos cosas que parecen una: mandarle el previo NO le habilita nada en
+   * /musico — eso lo hace la asignación. Se juntaron aquí porque en la cabeza
+   * de quien lo usa "ya le compartí el previo" significa "ya puede subirme sus
+   * pistas", y separarlas dejaba al músico mirando un portal vacío.
+   */
+  asignar?: boolean;
+  instrumento?: string;
 }
 
 /** Un músico de sesión al que se le puede mandar un previo. */
