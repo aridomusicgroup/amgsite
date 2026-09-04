@@ -161,30 +161,53 @@ function mapJob(r: Record<string, unknown>): RenderJob {
  * que siguen abiertas. Los beats de catálogo quedan fuera a propósito — no
  * tienen cliente a quien entregarle.
  */
+type Fila = Record<string, unknown>;
+
 export async function renderizables(): Promise<Renderizable[]> {
   const sb = supabaseAdmin();
 
-  const { data: proyectos } = await sb
-    .from("proyectos")
-    .select("id, folio, titulo, tipo, estado, order_id, tonalidad, bpm, contactos(nombre, email)")
-    .eq("clase", "produccion")
-    .in("estado", ESTADOS_ACTIVOS)
-    .not("venta_id", "is", null)
-    .order("created_at", { ascending: false });
+  // `tonalidad` y `bpm` son columnas nuevas: si la migración todavía no se
+  // corrió, pedirlas hace fallar la consulta ENTERA y el panel se queda sin un
+  // solo proyecto. Ya pasó. Por eso se reintenta sin ellas: mejor la lista
+  // completa sin dos datos que una pantalla vacía.
+  const consultaProyectos = (cols: string) =>
+    sb
+      .from("proyectos")
+      .select(cols)
+      .eq("clase", "produccion")
+      .in("estado", ESTADOS_ACTIVOS)
+      .not("venta_id", "is", null)
+      .order("created_at", { ascending: false });
+
+  // El `select` dinámico apaga la inferencia de tipos de supabase-js, así que
+  // las filas se manejan como registros sueltos (igual que ya se hacía abajo).
+  let proyectos = (await consultaProyectos(
+    "id, folio, titulo, tipo, estado, order_id, tonalidad, bpm, contactos(nombre, email)",
+  )).data as Fila[] | null;
+  if (!proyectos) {
+    proyectos = (await consultaProyectos("id, folio, titulo, tipo, estado, order_id, contactos(nombre, email)"))
+      .data as Fila[] | null;
+  }
   if (!proyectos?.length) return [];
 
   const ids = proyectos.map((p) => p.id as string);
 
   // Canciones de los EP/Álbum: cada una es su propio proyecto de REAPER.
   const idsAlbum = proyectos.filter((p) => TIPOS_ALBUM.includes(p.tipo as string)).map((p) => p.id as string);
-  const { data: canciones } = idsAlbum.length
-    ? await sb
-        .from("proyecto_tareas")
-        .select("id, proyecto_id, titulo, orden, tonalidad, bpm")
-        .in("proyecto_id", idsAlbum)
-        .eq("es_cancion", true)
-        .order("orden", { ascending: true })
-    : { data: [] };
+  const consultaCanciones = (cols: string) =>
+    sb
+      .from("proyecto_tareas")
+      .select(cols)
+      .in("proyecto_id", idsAlbum)
+      .eq("es_cancion", true)
+      .order("orden", { ascending: true });
+
+  let canciones: Fila[] | null = [];
+  if (idsAlbum.length) {
+    canciones = (await consultaCanciones("id, proyecto_id, titulo, orden, tonalidad, bpm")).data as Fila[] | null;
+    // Mismo reintento que arriba: sin la migración, un EP perdería sus canciones.
+    if (!canciones) canciones = (await consultaCanciones("id, proyecto_id, titulo, orden")).data as Fila[] | null;
+  }
 
   const { data: jobsRaw } = await sb
     .from("render_jobs")
