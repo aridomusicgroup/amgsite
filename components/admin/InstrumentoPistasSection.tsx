@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Loader2, Plus, X, ArrowRight, Check } from "lucide-react";
+import { Loader2, Plus, X, ArrowRight, Check, Clock } from "lucide-react";
 import { toast } from "@/lib/toast";
 
-type Fila = { instrumento: string; pista: string };
+type Fila = { instrumento: string; pista: string; existe?: boolean };
 
 /**
  * De qué instrumento a qué pista de REAPER.
@@ -65,6 +65,8 @@ export function InstrumentoPistasSection() {
       <p className="text-white/40 text-xs mt-0.5 mb-3">
         Dónde entra la grabación que manda un músico a distancia. Lo que no esté aquí llega en una
         <b className="text-white/60"> pista nueva al final</b> del proyecto, con su nombre — nunca se adivina.
+        Puedes poner <b className="text-white/60">varias pistas separadas por coma</b>: gana la primera que
+        exista en ese proyecto. Sirve cuando renombras una pista y los proyectos viejos conservan la anterior.
       </p>
 
       <datalist id="pistas-vistas">
@@ -80,6 +82,12 @@ export function InstrumentoPistasSection() {
               <span className="text-sm w-32 shrink-0 truncate">{f.instrumento}</span>
               <ArrowRight size={12} className="text-white/25 shrink-0" />
               <span className="text-sm text-lgb-red flex-1 min-w-0 truncate">{f.pista}</span>
+              {f.existe === false && (
+                <span title="Ninguna de esas pistas existe todavía en tus proyectos. Se guarda igual: cuando la crees con ese nombre, empieza a funcionar sola. Mientras tanto, esa grabación llega en pista nueva al final."
+                  className="flex items-center gap-1 text-[10px] text-amber-300/70 shrink-0">
+                  <Clock size={10} /> aún sin pista
+                </span>
+              )}
               <button onClick={() => quitar(f.instrumento)} disabled={busy}
                 className="text-white/25 hover:text-red-300 shrink-0 cursor-pointer disabled:opacity-40"><X size={14} /></button>
             </li>
@@ -94,7 +102,7 @@ export function InstrumentoPistasSection() {
         <ArrowRight size={13} className="text-white/25" />
         <input value={nuevo.pista} onChange={(e) => setNuevo((s) => ({ ...s, pista: e.target.value }))}
           onKeyDown={(e) => { if (e.key === "Enter") guardar(nuevo.instrumento, nuevo.pista); }}
-          list="pistas-vistas" placeholder="Pista destino" className={`${inp} flex-1 min-w-[150px]`} />
+          list="pistas-vistas" placeholder="Pista destino (o varias: CHARCHETAS, SAXOR)" className={`${inp} flex-1 min-w-[190px]`} />
         <button onClick={() => guardar(nuevo.instrumento, nuevo.pista)} disabled={busy}
           className="flex items-center gap-1 bg-lgb-red text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50 cursor-pointer">
           {busy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Guardar

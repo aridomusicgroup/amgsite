@@ -17,7 +17,10 @@ export const dynamic = "force-dynamic";
  * tiene 57 pistas contra las 47 de la plantilla, con nombres inventados).
  */
 
-const MAX = 80;
+const MAX = 200;
+
+/** Igual que `limpiaNombre` de reaper-sync: en el .rpp es "BAJO/TOLO" y el panel lo muestra "BAJO-TOLO". */
+const normaliza = (s: string) => s.replace(/[\\/:*?"<>|]/g, "-").trim().toUpperCase();
 
 export async function GET() {
   if (!(await getFullAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -40,8 +43,18 @@ export async function GET() {
     }
   }
 
+  // Se marca cuáles apuntan a una pista que EXISTE hoy en algún proyecto. Una
+  // equivalencia puede escribirse antes de que la pista exista (para cuando se
+  // grabe ese paquete); saberlo evita creer que algo está mal configurado.
+  const conocidas = new Set([...vistas].map(normaliza));
+  const mapa = (mapaRes.data ?? []).map((f) => ({
+    instrumento: f.instrumento as string,
+    pista: f.pista as string,
+    existe: String(f.pista).split(",").some((c) => c.trim() && conocidas.has(normaliza(c))),
+  }));
+
   return NextResponse.json({
-    mapa: mapaRes.data ?? [],
+    mapa,
     pistasVistas: [...vistas].sort((a, b) => a.localeCompare(b, "es")),
   });
 }
