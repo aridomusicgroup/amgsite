@@ -142,6 +142,8 @@ export interface RastroCot {
   venta: string | null;
   proyecto: string | null;
   contrato: string | null;
+  /** Id del proyecto: el rastro enlaza a su ficha, no sólo al tablero. */
+  proyectoId: string | null;
   /** null = ese tipo de servicio no tiene acuerdo (p. ej. "generico"). */
   acuerdo: "firmado" | "pendiente" | null;
 }
@@ -150,14 +152,19 @@ export async function getRastroCotizaciones(): Promise<Record<string, RastroCot>
   const sb = supabaseAdmin();
   const [ventasRes, proyectosRes, contratosRes, cotRes] = await Promise.all([
     sb.from("ventas").select("folio, cotizacion_id").not("cotizacion_id", "is", null),
-    sb.from("proyectos").select("folio, cotizacion_id").not("cotizacion_id", "is", null),
+    sb.from("proyectos").select("id, folio, cotizacion_id").not("cotizacion_id", "is", null),
     sb.from("contratos").select("folio, cotizacion_id").not("cotizacion_id", "is", null),
     sb.from("cotizaciones").select("id, tipo, cliente_email"),
   ]);
   const out: Record<string, RastroCot> = {};
-  const ensure = (id: string) => (out[id] ??= { venta: null, proyecto: null, contrato: null, acuerdo: null });
+  const ensure = (id: string) => (out[id] ??= { venta: null, proyecto: null, contrato: null, proyectoId: null, acuerdo: null });
   for (const v of ventasRes.data ?? []) if (v.cotizacion_id) ensure(v.cotizacion_id as string).venta = (v.folio as string) ?? null;
-  for (const p of proyectosRes.data ?? []) if (p.cotizacion_id) ensure(p.cotizacion_id as string).proyecto = (p.folio as string) ?? null;
+  for (const p of proyectosRes.data ?? []) {
+    if (!p.cotizacion_id) continue;
+    const e = ensure(p.cotizacion_id as string);
+    e.proyecto = (p.folio as string) ?? null;
+    e.proyectoId = (p.id as string) ?? null;
+  }
   for (const c of contratosRes.data ?? []) if (c.cotizacion_id) ensure(c.cotizacion_id as string).contrato = (c.folio as string) ?? null;
 
   // Acuerdo: solo para las cotizaciones cuyo tipo mapea a una familia (las

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileText, Plus, Trash2, Send, Download, Pencil, FileSignature, X, Receipt, ArrowRight, Loader2, Link2, Copy, Check, CircleDollarSign } from "lucide-react";
 import { toast } from "@/lib/toast";
@@ -135,6 +136,7 @@ export function CotizacionesPanel({ cotizaciones, contratos, clientes, tipos, ra
           isAdmin={isAdmin}
           onEdit={(c) => setCotOpen(c)}
           onConvertVenta={(c) => setVentaOpen(c)}
+          onContratos={() => setTab("contratos")}
           onConvert={(c) =>
             setConOpen({
               tipo: "produccion",
@@ -372,8 +374,8 @@ function LinkPagoPanel({ cotizacion: c, onCerrar }: { cotizacion: Cotizacion; on
 }
 
 // ── Lista de cotizaciones ──
-function CotizacionesList({ items, rastro, isAdmin, onEdit, onConvert, onConvertVenta }: {
-  items: Cotizacion[]; rastro: Record<string, RastroCot>; isAdmin: boolean;
+function CotizacionesList({ items, rastro, isAdmin, onEdit, onConvert, onConvertVenta, onContratos }: {
+  items: Cotizacion[]; rastro: Record<string, RastroCot>; isAdmin: boolean; onContratos: () => void;
   onEdit: (c: Cotizacion) => void; onConvert: (c: Cotizacion) => void; onConvertVenta: (c: Cotizacion) => void;
 }) {
   const router = useRouter();
@@ -481,7 +483,7 @@ function CotizacionesList({ items, rastro, isAdmin, onEdit, onConvert, onConvert
               />
             )}
             {cobrando === c.id && <LinkPagoPanel cotizacion={c} onCerrar={() => setCobrando(null)} />}
-            <RastroLinea c={c} r={r} />
+            <RastroLinea c={c} r={r} onContratos={onContratos} />
           </div>
         );
       })}
@@ -1030,12 +1032,14 @@ function SaveBar({ saving, onSave, onClose }: { saving: boolean; onSave: () => v
   );
 }
 // Línea de vida: el rastro desde la cotización hasta el contrato.
-function RastroLinea({ c, r }: { c: Cotizacion; r: RastroCot }) {
+function RastroLinea({ c, r, onContratos }: { c: Cotizacion; r: RastroCot; onContratos: () => void }) {
   const steps = [
-    { label: c.contacto_id ? "Contacto ✓" : "Sin contacto", on: !!c.contacto_id },
-    { label: r.venta || "Venta", on: !!r.venta },
-    { label: r.proyecto || "Proyecto", on: !!r.proyecto },
-    { label: r.contrato || "Contrato", on: !!r.contrato },
+    { label: c.contacto_id ? "Contacto ✓" : "Sin contacto", on: !!c.contacto_id, href: "/admin/clientes" },
+    { label: r.venta || "Venta", on: !!r.venta, href: "/admin/ventas" },
+    // El proyecto sí enlaza a su ficha exacta; los demás al panel que les toca,
+    // que es lo que hay (Ventas y Clientes no filtran por folio todavía).
+    { label: r.proyecto || "Proyecto", on: !!r.proyecto, href: r.proyectoId ? `/admin/proyectos/${r.proyectoId}` : "/admin/produccion" },
+    { label: r.contrato || "Contrato", on: !!r.contrato, href: null as string | null },
   ];
   // El acuerdo solo aparece cuando el tipo de servicio tiene uno (personalizado,
   // servicio, exclusiva negociada): los "genérico" no tienen texto legal que
@@ -1048,12 +1052,28 @@ function RastroLinea({ c, r }: { c: Cotizacion; r: RastroCot }) {
         : null;
   return (
     <div className="flex items-center gap-1 flex-wrap mt-2.5 pt-2.5 border-t border-white/5">
-      {steps.map((s, i) => (
-        <span key={i} className="flex items-center gap-1">
-          {i > 0 && <ArrowRight size={10} className="text-white/20" />}
-          <span className={`text-[10px] px-2 py-0.5 rounded-full ${s.on ? "bg-lgb-red/15 text-lgb-red" : "bg-white/5 text-white/30"}`}>{s.label}</span>
-        </span>
-      ))}
+      {steps.map((s, i) => {
+        const cls = `text-[10px] px-2 py-0.5 rounded-full ${s.on ? "bg-lgb-red/15 text-lgb-red" : "bg-white/5 text-white/30"}`;
+        // Sólo lleva a algún lado lo que ya existe: un paso apagado no tiene
+        // destino, y ofrecerlo como enlace sería una promesa vacía.
+        const contenido = !s.on ? (
+          <span className={cls}>{s.label}</span>
+        ) : s.href ? (
+          <Link href={s.href} className={`${cls} hover:brightness-125 transition-[filter] cursor-pointer`} title="Abrir">
+            {s.label}
+          </Link>
+        ) : (
+          <button onClick={onContratos} className={`${cls} hover:brightness-125 transition-[filter] cursor-pointer`} title="Ver en Contratos">
+            {s.label}
+          </button>
+        );
+        return (
+          <span key={i} className="flex items-center gap-1">
+            {i > 0 && <ArrowRight size={10} className="text-white/20" />}
+            {contenido}
+          </span>
+        );
+      })}
       {acuerdo && (
         <span className="flex items-center gap-1">
           <ArrowRight size={10} className="text-white/20" />
