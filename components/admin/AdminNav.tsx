@@ -36,12 +36,13 @@ const allLinks = [
   { href: "/admin/finanzas", label: "Finanzas", icon: Wallet },
   { href: "/admin/clientes", label: "Clientes", icon: Users },
   { href: "/admin/importar", label: "Importar", icon: DownloadCloud },
+  { href: "/admin/dev-logs", label: "REAPER", icon: Terminal },
   { href: "/admin/ajustes", label: "Ajustes", icon: Settings },
 ];
 
 const VISTO_KEY = "arido-actividad-visto";
 
-export function AdminNav({ email, modules, order, isDev }: { email: string; modules: string[]; order?: string[] | null; isDev?: boolean }) {
+export function AdminNav({ email, modules, order }: { email: string; modules: string[]; order?: string[] | null }) {
   const pathname = usePathname();
 
   // Tiempo real en TODO el panel: una sola suscripción (la nav está en todas
@@ -82,7 +83,6 @@ export function AdminNav({ email, modules, order, isDev }: { email: string; modu
   let links = allLinks.filter((l) => modules.includes(l.href));
   // Fuera del sistema de módulos a propósito: no es un módulo de negocio que un
   // admin pueda prenderle a alguien más, es una herramienta de desarrollo solo mía.
-  if (isDev) links = [...links, { href: "/admin/dev-logs", label: "REAPER", icon: Terminal }];
   if (order && order.length) {
     links = [...links].sort((a, b) => {
       const ia = order.indexOf(a.href), ib = order.indexOf(b.href);

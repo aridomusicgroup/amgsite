@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { getDevEmail } from "@/lib/supabase/auth-server";
+import { requireModule } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { renderizables, musicosParaPrevio } from "@/lib/render-jobs";
 import { DevLogsPanel } from "@/components/admin/DevLogsPanel";
@@ -7,8 +6,9 @@ import { DevLogsPanel } from "@/components/admin/DevLogsPanel";
 export const dynamic = "force-dynamic";
 
 export default async function DevLogsPage() {
-  const email = await getDevEmail();
-  if (!email) redirect("/admin/produccion");
+  // Antes esto estaba pegado a un solo correo. Ahora es un módulo como los
+  // demás, así que se reparte desde Ajustes sin tocar código.
+  await requireModule("/admin/dev-logs");
 
   const sb = supabaseAdmin();
   const [{ data: logs }, proyectos, musicos] = await Promise.all([

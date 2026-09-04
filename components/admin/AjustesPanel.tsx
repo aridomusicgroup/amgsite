@@ -1,8 +1,8 @@
 "use client";
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUp, ArrowDown, Loader2, Lock, X, Radio, Plus } from "lucide-react";
-import { ROLE_MODULES, moduleLabel } from "@/lib/modules";
+import { ArrowUp, ArrowDown, Loader2, Lock, X, Radio, Plus, ChevronDown, ChevronRight } from "lucide-react";
+import { ROLE_MODULES, MODULES, GRUPOS, GRUPO_LABEL, moduleLabel, moduleDef, type Grupo } from "@/lib/modules";
 import { toast } from "@/lib/toast";
 import { MusicosSection } from "./MusicosSection";
 
@@ -97,17 +97,6 @@ export function AjustesPanel({ fontSize, theme, moduleOrder, modules, isAdmin, u
         </div>
       </Section>
 
-      {isAdmin && (
-        <Section title="Accesos del equipo" desc="Prende o apaga módulos por usuario. Los de base (🔒) vienen con su rol y no se pueden quitar.">
-          <div className="flex flex-col gap-3">
-            {usuarios.filter((u) => u.role !== "admin").map((u) => <UsuarioAccesos key={u.email} u={u} />)}
-            {usuarios.filter((u) => u.role !== "admin").length === 0 && (
-              <p className="text-white/30 text-sm">No hay otros usuarios configurados.</p>
-            )}
-          </div>
-        </Section>
-      )}
-
       {isAdmin && <EquipoSection usuarios={usuarios} selfEmail={selfEmail} />}
 
       {isAdmin && <MusicosSection />}
@@ -121,6 +110,9 @@ function EquipoSection({ usuarios, selfEmail }: { usuarios: Usuario[]; selfEmail
   const [nuevo, setNuevo] = useState("");
   const [rolNuevo, setRolNuevo] = useState<string>("produccion");
   const [busy, setBusy] = useState(false);
+  // Una fila abierta a la vez: doce interruptores por usuario, todos visibles a
+  // la vez, era justo lo que hacía ilegible esta pantalla.
+  const [abierta, setAbierta] = useState<string | null>(null);
   const yo = selfEmail.toLowerCase();
 
   const call = async (method: string, body?: Record<string, unknown>, qs = "") => {
@@ -146,30 +138,21 @@ function EquipoSection({ usuarios, selfEmail }: { usuarios: Usuario[]; selfEmail
   const eliminar = (email: string) => { if (confirm(`¿Quitar el acceso de ${email}?`)) call("DELETE", undefined, `?email=${encodeURIComponent(email)}`); };
 
   return (
-    <Section title="Equipo y accesos" desc="Quién entra al panel, con qué rol. Los usuarios activos reciben también los cambios en tiempo real.">
+    <Section title="Equipo y accesos" desc="Quién entra al panel, con qué rol y a qué secciones. Los cambios llegan en tiempo real a quien esté conectado.">
       <div className="flex flex-col gap-2">
-        {usuarios.map((u) => {
-          const esYo = u.email.toLowerCase() === yo;
-          return (
-            <div key={u.email} className="flex items-center gap-2 bg-white/[0.02] border border-white/8 rounded-lg px-3 py-2">
-              <Radio size={14} className={u.activo ? "text-lgb-red" : "text-white/15"} />
-              <span className="text-sm flex-1 truncate">
-                {u.email}
-                {esYo && <span className="text-white/30"> · tú</span>}
-                {!u.activo && <span className="text-amber-300/70"> · inactivo</span>}
-              </span>
-              <select value={u.role} onChange={(e) => cambiarRol(u.email, e.target.value)} disabled={busy || esYo}
-                className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-lgb-red disabled:opacity-50">
-                {ROLES.map((r) => <option key={r} value={r} className="bg-lgb-dark">{ROL_LABEL[r]}</option>)}
-              </select>
-              <button onClick={() => toggleActivo(u)} disabled={busy || esYo} title={u.activo ? "Desactivar" : "Activar"}
-                className={`px-2.5 py-1 rounded-full text-xs transition-colors disabled:opacity-40 ${u.activo ? "bg-lgb-red/15 text-lgb-red hover:bg-lgb-red/25" : "bg-white/5 text-white/50 hover:text-white"}`}>
-                {u.activo ? "Activo" : "Inactivo"}
-              </button>
-              <button onClick={() => eliminar(u.email)} disabled={busy || esYo} className="text-white/25 hover:text-red-300 disabled:opacity-20"><X size={15} /></button>
-            </div>
-          );
-        })}
+        {usuarios.map((u) => (
+          <FilaUsuario
+            key={u.email}
+            u={u}
+            esYo={u.email.toLowerCase() === yo}
+            busy={busy}
+            abierta={abierta === u.email}
+            onAbrir={() => setAbierta(abierta === u.email ? null : u.email)}
+            onRol={(rol) => cambiarRol(u.email, rol)}
+            onActivo={() => toggleActivo(u)}
+            onEliminar={() => eliminar(u.email)}
+          />
+        ))}
       </div>
 
       <div className="flex flex-wrap gap-2 mt-3">
@@ -191,46 +174,153 @@ function EquipoSection({ usuarios, selfEmail }: { usuarios: Usuario[]; selfEmail
   );
 }
 
-function UsuarioAccesos({ u }: { u: Usuario }) {
-  const router = useRouter();
+/** Una persona: identidad y rol arriba, sus accesos al desplegar. */
+function FilaUsuario({ u, esYo, busy, abierta, onAbrir, onRol, onActivo, onEliminar }: {
+  u: Usuario; esYo: boolean; busy: boolean; abierta: boolean;
+  onAbrir: () => void; onRol: (rol: string) => void; onActivo: () => void; onEliminar: () => void;
+}) {
   const cfg = ROLE_MODULES[u.role] ?? ROLE_MODULES.produccion;
   const [extras, setExtras] = useState<string[]>(u.modules_extra ?? cfg.defaultOn);
+  const esAdmin = u.role === "admin";
+  const total = esAdmin ? MODULES.length : cfg.base.length + cfg.optional.length;
+  const activos = esAdmin ? MODULES.length : cfg.base.length + cfg.optional.filter((h) => extras.includes(h)).length;
+
+  return (
+    <div className="bg-white/[0.02] border border-white/8 rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <Radio size={14} className={u.activo ? "text-lgb-red" : "text-white/15"} />
+        <button
+          onClick={onAbrir}
+          className="flex items-center gap-1.5 min-w-0 flex-1 text-left cursor-pointer group"
+          title="Ver y repartir sus accesos"
+        >
+          {abierta ? <ChevronDown size={13} className="text-white/40 shrink-0" /> : <ChevronRight size={13} className="text-white/25 shrink-0 group-hover:text-white/50" />}
+          <span className="text-sm truncate">
+            {u.email}
+            {esYo && <span className="text-white/30"> · tú</span>}
+            {!u.activo && <span className="text-amber-300/70"> · inactivo</span>}
+          </span>
+          <span className="text-[11px] text-white/30 shrink-0 ml-1">
+            {esAdmin ? "ve todo" : `${activos}/${total}`}
+          </span>
+        </button>
+        <select value={u.role} onChange={(e) => onRol(e.target.value)} disabled={busy || esYo}
+          className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-lgb-red disabled:opacity-50">
+          {ROLES.map((r) => <option key={r} value={r} className="bg-lgb-dark">{ROL_LABEL[r]}</option>)}
+        </select>
+        <button onClick={onActivo} disabled={busy || esYo} title={u.activo ? "Desactivar" : "Activar"}
+          className={`px-2.5 py-1 rounded-full text-xs transition-colors disabled:opacity-40 cursor-pointer ${u.activo ? "bg-lgb-red/15 text-lgb-red hover:bg-lgb-red/25" : "bg-white/5 text-white/50 hover:text-white"}`}>
+          {u.activo ? "Activo" : "Inactivo"}
+        </button>
+        <button onClick={onEliminar} disabled={busy || esYo} className="text-white/25 hover:text-red-300 disabled:opacity-20 cursor-pointer"><X size={15} /></button>
+      </div>
+
+      {abierta && (
+        <div className="border-t border-white/8 px-3 py-3">
+          {esAdmin
+            ? <p className="text-white/40 text-xs">Los administradores ven todo el panel. No hay nada que repartir.</p>
+            : <AccesosDeUsuario u={u} extras={extras} onExtras={setExtras} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Los módulos de una persona, agrupados por área.
+ *
+ * Antes eran doce chips en una sola fila sin decir qué hacía cada uno; había
+ * que saberse el panel de memoria para repartir accesos. Ahora van por área,
+ * con una línea de qué hace cada módulo y un atajo para prender/apagar el
+ * grupo completo.
+ */
+function AccesosDeUsuario({ u, extras, onExtras }: {
+  u: Usuario; extras: string[]; onExtras: (v: string[]) => void;
+}) {
+  const router = useRouter();
+  const cfg = ROLE_MODULES[u.role] ?? ROLE_MODULES.produccion;
   const [busy, setBusy] = useState(false);
 
-  const toggle = async (h: string) => {
-    const next = extras.includes(h) ? extras.filter((x) => x !== h) : [...extras, h];
-    setExtras(next);
+  const guardar = async (next: string[]) => {
+    onExtras(next);
     setBusy(true);
     try {
-      await fetch("/api/admin/user-modules", {
+      const r = await fetch("/api/admin/user-modules", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: u.email, modules_extra: next }),
       });
+      if (!r.ok) { toast("⚠️ No se pudo guardar"); return; }
       toast("✓ Acceso actualizado");
       router.refresh();
     } finally { setBusy(false); }
   };
 
+  const alternar = (h: string) =>
+    guardar(extras.includes(h) ? extras.filter((x) => x !== h) : [...extras, h]);
+
+  /** Prende o apaga de un golpe los opcionales de un área. */
+  const grupoCompleto = (g: Grupo, prender: boolean) => {
+    const delGrupo = cfg.optional.filter((h) => moduleDef(h)?.grupo === g);
+    guardar(prender ? [...new Set([...extras, ...delGrupo])] : extras.filter((x) => !delGrupo.includes(x)));
+  };
+
   return (
-    <div className="bg-white/[0.02] border border-white/8 rounded-xl p-3">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-sm font-medium truncate">{u.email}</span>
-        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-white/40 shrink-0">{ROL_LABEL[u.role] ?? u.role}</span>
-        {busy && <Loader2 size={12} className="animate-spin text-white/30 shrink-0" />}
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {cfg.base.map((h) => (
-          <span key={h} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-green-500/10 text-green-300/70" title="Base del rol (bloqueado)">
-            <Lock size={10} /> {moduleLabel(h)}
-          </span>
-        ))}
-        {cfg.optional.map((h) => (
-          <button key={h} onClick={() => toggle(h)} disabled={busy}
-            className={`text-[11px] px-2 py-1 rounded-full transition-colors ${extras.includes(h) ? "bg-lgb-red text-white" : "bg-white/5 text-white/40 hover:text-white"}`}>
-            {moduleLabel(h)}
-          </button>
-        ))}
-      </div>
+    <div className="flex flex-col gap-3">
+      {GRUPOS.map((g) => {
+        const base = cfg.base.filter((h) => moduleDef(h)?.grupo === g);
+        const opcionales = cfg.optional.filter((h) => moduleDef(h)?.grupo === g);
+        if (!base.length && !opcionales.length) return null;
+        const todos = opcionales.length > 0 && opcionales.every((h) => extras.includes(h));
+
+        return (
+          <div key={g}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <p className="text-[11px] uppercase tracking-wide text-white/35">{GRUPO_LABEL[g]}</p>
+              {opcionales.length > 1 && (
+                <button
+                  onClick={() => grupoCompleto(g, !todos)}
+                  disabled={busy}
+                  className="text-[10px] text-white/30 hover:text-white transition-colors cursor-pointer disabled:opacity-40"
+                >
+                  {todos ? "quitar todo" : "dar todo"}
+                </button>
+              )}
+              {busy && <Loader2 size={11} className="animate-spin text-white/30" />}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+              {base.map((h) => (
+                <div key={h} className="flex items-start gap-2 px-2.5 py-1.5 rounded-lg bg-green-500/[0.07]" title="Viene con su rol, no se puede quitar">
+                  <Lock size={11} className="text-green-300/60 mt-0.5 shrink-0" />
+                  <span className="min-w-0">
+                    <span className="text-xs text-green-300/80 block">{moduleLabel(h)}</span>
+                    <span className="text-[10px] text-white/30 block truncate">{moduleDef(h)?.desc}</span>
+                  </span>
+                </div>
+              ))}
+              {opcionales.map((h) => {
+                const puesto = extras.includes(h);
+                return (
+                  <button
+                    key={h}
+                    onClick={() => alternar(h)}
+                    disabled={busy}
+                    className={`flex items-start gap-2 px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer disabled:opacity-50 ${
+                      puesto ? "bg-lgb-red/15 hover:bg-lgb-red/25" : "bg-white/[0.03] hover:bg-white/[0.07]"
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${puesto ? "bg-lgb-red" : "bg-white/15"}`} />
+                    <span className="min-w-0">
+                      <span className={`text-xs block ${puesto ? "text-white" : "text-white/45"}`}>{moduleLabel(h)}</span>
+                      <span className="text-[10px] text-white/30 block truncate">{moduleDef(h)?.desc}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

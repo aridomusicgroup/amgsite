@@ -111,13 +111,19 @@ export async function getProduccionEmail(): Promise<string | null> {
   return s && (s.role === "admin" || s.role === "crm" || s.role === "produccion") ? s.email : null;
 }
 
-/** Único correo con acceso a herramientas de desarrollo (consola de logs de reaper-sync). */
-const DEV_EMAIL = "djrochaoerre@gmail.com";
-
-/** Correo SOLO si es el desarrollador. No es un rol de negocio — nadie más del equipo lo tiene. */
-export async function getDevEmail(): Promise<string | null> {
+/**
+ * El correo del usuario SÓLO si tiene ese módulo habilitado; si no, null.
+ *
+ * Es la versión para rutas de API de `requireModule` (que redirige, cosa que
+ * una API no debe hacer). Sustituye al viejo `getDevEmail`, que comparaba
+ * contra un correo escrito a mano: eso dejaba REAPER fuera del sistema de
+ * accesos y obligaba a tocar código para dárselo a alguien más.
+ */
+export async function moduloPermitido(href: string): Promise<string | null> {
   const s = await getSession();
-  return s && s.email === DEV_EMAIL ? s.email : null;
+  if (!s) return null;
+  const mods = await userModules(s);
+  return mods.includes(href) ? s.email : null;
 }
 
 /**

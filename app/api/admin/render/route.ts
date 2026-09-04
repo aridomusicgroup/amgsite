@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDevEmail } from "@/lib/supabase/auth-server";
+import { moduloPermitido } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { encolarRender, TIPOS_RENDER, type TipoRender, type OpcionesRender } from "@/lib/render-jobs";
 
@@ -24,7 +24,7 @@ function leerOpciones(raw: unknown): { ok: true; op: OpcionesRender | null } | {
     const rpp = String(b.rpp).trim();
     // Un nombre de archivo suelto, nada de rutas: el script lo va a unir con la
     // carpeta del proyecto y no debe poder salirse de ahí.
-    if (!rpp || rpp.length > 260 || /[\/]/.test(rpp) || rpp.includes("..") || !rpp.toLowerCase().endsWith(".rpp")) {
+    if (!rpp || rpp.length > 260 || /[\\/]/.test(rpp) || rpp.includes("..") || !rpp.toLowerCase().endsWith(".rpp")) {
       return { ok: false, error: "El proyecto base elegido no es válido." };
     }
     op.rpp = rpp;
@@ -60,7 +60,7 @@ function leerOpciones(raw: unknown): { ok: true; op: OpcionesRender | null } | {
 
 /** Encola un render de REAPER. Solo el desarrollador — dispara trabajo en su máquina. */
 export async function POST(req: NextRequest) {
-  const email = await getDevEmail();
+  const email = await moduloPermitido("/admin/dev-logs");
   if (!email) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const b = await req.json().catch(() => ({}));
