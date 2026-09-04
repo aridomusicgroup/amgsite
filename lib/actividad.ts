@@ -9,6 +9,7 @@ export type ActividadTipo =
   // Producción
   | "proyecto_creado" | "proyecto_estado" | "proyecto_responsables"
   | "tarea_creada" | "tarea_asignada" | "tarea_completada" | "tarea_reabierta"
+  | "musico_asignado" | "musico_archivo" | "musico_previo_compartido"
   | "subtarea_asignada" | "contrato_auto"
   // Dinero
   | "venta_creada" | "venta_editada" | "venta_eliminada"
