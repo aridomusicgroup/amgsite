@@ -27,7 +27,11 @@ export default async function MusicoPage() {
   if (!musico) redirect("/musico/enlace?e=sinacceso");
 
   const asignaciones = await asignacionesDeMusico(id);
-  const pendientes = asignaciones.filter((a) => a.estado !== "aceptado");
+  // Pendiente = todavía no mandó su pista. Se mide por lo que subió y no por
+  // `estado`, que solo avanza a "aceptado" cuando alguien del estudio lo marca:
+  // con eso, una grabación ya entregada seguía contándose como pendiente y el
+  // encabezado contradecía a la tarjeta, que ya decía "Entregado".
+  const pendientes = asignaciones.filter((a) => !a.archivos.some((x) => x.clase === "stem"));
 
   return (
     <main className="min-h-screen bg-lgb-black text-white">
