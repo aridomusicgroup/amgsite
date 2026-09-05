@@ -98,6 +98,38 @@ interface ArchivoDrive {
   iconLink?: string;
 }
 
+/**
+ * ¿Ese id de carpeta todavía sirve?
+ *
+ * Los ids se cachean en `contactos.drive_folder_id` y `proyectos.drive_folder_id`
+ * para no rehacer la búsqueda cada vez. El problema es que una carpeta se puede
+ * borrar desde Drive y el id cacheado sigue ahí para siempre: pasó de verdad con
+ * la carpeta del cliente Alfred, y a partir de ahí TODOS los renders de ese
+ * cliente morían con "No se pudo resolver la carpeta del proyecto" — crear algo
+ * dentro de un padre inexistente da 404 y no hay forma de que se recupere solo.
+ *
+ * Cuesta una llamada extra a Drive, pero solo se hace al resolver la carpeta de
+ * un render o de una subida, que son operaciones de segundos, no de milisegundos.
+ */
+export async function carpetaExiste(id: string): Promise<boolean> {
+  const token = await getAccessToken();
+  if (!token) return false;
+  try {
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id,trashed&supportsAllDrives=true`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) return false;
+    const j = (await res.json().catch(() => null)) as { id?: string; trashed?: boolean } | null;
+    return Boolean(j?.id) && j?.trashed !== true;
+  } catch {
+    // Un fallo de red no es prueba de que la carpeta no exista, pero decir
+    // "no existe" solo provoca que se vuelva a buscar por nombre — y eso
+    // encuentra la de siempre. Es el lado seguro.
+    return false;
+  }
+}
+
 /** Busca una subcarpeta por nombre exacto dentro de `parentId`, o la crea si no existe. */
 export async function buscarOCrearCarpeta(nombre: string, parentId: string | null): Promise<string | null> {
   const token = await getAccessToken();
@@ -128,6 +160,11 @@ export async function buscarOCrearCarpeta(nombre: string, parentId: string | nul
     }),
   });
   const nueva = await crear.json().catch(() => null);
+  // Sin esto el fallo era mudo: quien llama solo veía `null` y el panel decía
+  // "No se pudo resolver la carpeta", que no dice nada de por qué.
+  if (!nueva?.id) {
+    console.error(`[drive] no se pudo crear "${nombre}" en ${parentId ?? "root"}:`, crear.status, JSON.stringify(nueva));
+  }
   return nueva?.id ?? null;
 }
 

@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { renderListoEmail, previoMusicoEmail } from "@/lib/emails";
+import { previoMusicoEmail } from "@/lib/emails";
 import { hacerPublico } from "@/lib/drive-oauth";
+import { avisarClienteDeRender } from "@/lib/render-aviso";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-const SITE = "https://aridomusicgroup.com";
 
 /**
  * Avisa al cliente de que un render ya está en su cuenta.
@@ -47,50 +46,10 @@ export async function POST(req: NextRequest) {
   // Previo de músico: va a otra persona, por enlace público, con otro correo.
   if (job.musico_id) return avisarMusico(sb, job, archivosDrive);
 
-  if (!job.compartir) return NextResponse.json({ ok: true, omitido: "no se pidió avisar" });
-  const archivos = archivosDrive;
-
-  const { data: p } = await sb
-    .from("proyectos")
-    .select("titulo, order_id, contactos(nombre, email)")
-    .eq("id", job.proyecto_id)
-    .single();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ct = (p?.contactos as any) ?? null;
-  const correo = String(ct?.email || "").trim().toLowerCase();
-  if (!p?.order_id || !correo) {
-    return NextResponse.json({ ok: true, omitido: "sin pedido ligado o sin correo" });
-  }
-
-  // Se marca ANTES de mandar: si Resend responde tarde o el script reintenta,
-  // vale más que falte un correo a que al cliente le lleguen tres iguales.
-  await sb.from("render_jobs").update({ avisado_en: new Date().toISOString() }).eq("id", jobId);
-
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return NextResponse.json({ ok: true, omitido: "Resend no está configurado" });
-
-  const mail = renderListoEmail({
-    customerName: (ct?.nombre as string | null)?.split(" ")[0] ?? null,
-    concepto: (p.titulo as string) || "tu producción",
-    tipo: job.tipo as "previo" | "entregables" | "stems",
-    archivos: archivos.length,
-    url: `${SITE}/cuenta/pedido/${p.order_id}`,
-  });
-
-  try {
-    const resend = new Resend(key);
-    await resend.emails.send({
-      from: "Latino Gang Beats <acceso@aridomusicgroup.com>",
-      to: correo,
-      subject: mail.subject,
-      html: mail.html,
-    });
-  } catch (e) {
-    // El archivo YA está visible en su cuenta; sólo no le llegó el correo.
-    return NextResponse.json({ ok: true, omitido: `Resend falló: ${e instanceof Error ? e.message : e}` });
-  }
-
-  return NextResponse.json({ ok: true, avisado: correo });
+  // El aviso al cliente vive en lib/render-aviso.ts: el botón "Compartir con el
+  // cliente" del panel manda exactamente el mismo correo, y tenerlo dos veces
+  // era garantizar que un día dejaran de decir lo mismo.
+  return NextResponse.json(await avisarClienteDeRender(sb, jobId));
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

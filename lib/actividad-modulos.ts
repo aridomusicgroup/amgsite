@@ -98,6 +98,7 @@ export const DOT_ACTIVIDAD: Record<string, string> = {
   musico_asignado: "bg-white/50",
   musico_archivo: "bg-blue-400",
   musico_previo_compartido: "bg-green-400",
+  render_compartido: "bg-green-400",
   tarea_reabierta: "bg-white/40",
   subtarea_asignada: "bg-amber-400",
   contacto_creado: "bg-green-400",

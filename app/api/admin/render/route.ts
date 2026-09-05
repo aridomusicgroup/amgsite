@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { moduloPermitido } from "@/lib/supabase/auth-server";
+import { moduloPermitido, getProduccionEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { encolarRender, TIPOS_RENDER, type TipoRender, type OpcionesRender } from "@/lib/render-jobs";
+import { avisarClienteDeRender } from "@/lib/render-aviso";
+import { registrarActividad } from "@/lib/actividad";
 
 export const dynamic = "force-dynamic";
 
@@ -165,4 +167,68 @@ async function asignarEnPortal(
   } catch {
     return false;
   }
+}
+
+/**
+ * PATCH: compartir con el cliente un render que YA terminó.
+ *
+ * Hace falta desde que la casilla "Avisar al cliente" dejó de venir palomeada.
+ * Antes la decisión se tomaba al lanzar el render y ya no había vuelta: un
+ * previo que salía sin marcar se quedaba interno para siempre, y la única
+ * salida era volver a renderizarlo.
+ *
+ * Solo enciende `compartir`; nunca lo apaga. Quitarle al cliente un archivo que
+ * ya escuchó no se arregla con un booleano —le quedó el correo y quizá la
+ * descarga— y merece una conversación, no un botón.
+ *
+ * Permiso: el mismo que aprobar el previo de un músico (`getProduccionEmail`),
+ * no el del desarrollador que dispara renders. Compartir es una decisión de
+ * producción; encender REAPER en una máquina ajena, no.
+ */
+export async function PATCH(req: NextRequest) {
+  const actor = await getProduccionEmail();
+  if (!actor) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
+  const b = await req.json().catch(() => ({}));
+  const id = String(b.id || "").trim();
+  if (!id) return NextResponse.json({ error: "Falta el render." }, { status: 400 });
+
+  const sb = supabaseAdmin();
+  const { data: job } = await sb
+    .from("render_jobs")
+    .select("id, proyecto_id, tarea_id, tipo, estado, compartir, avisado_en, drive_urls, musico_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (!job) return NextResponse.json({ error: "Ese render ya no existe." }, { status: 404 });
+  if (job.estado !== "listo") {
+    return NextResponse.json({ error: "Ese render todavía no termina." }, { status: 409 });
+  }
+  // Sin archivos en Drive el cliente no tendría qué abrir: pasa cuando la subida
+  // falló y el mp3 se quedó solo en el disco de la máquina con REAPER.
+  if (!((job.drive_urls as unknown[] | null) ?? []).length) {
+    return NextResponse.json({ error: "Ese render no llegó a subirse a Drive. Vuelve a lanzarlo." }, { status: 409 });
+  }
+  // Un previo de músico va por enlace público a OTRA persona; compartirlo con el
+  // cliente se hace aprobándolo en la pestaña Músicos, que además deja rastro.
+  if (job.musico_id) {
+    return NextResponse.json({ error: "Ese es un previo de músico: compártelo desde la sección Músicos." }, { status: 400 });
+  }
+  if (job.compartir && job.avisado_en) return NextResponse.json({ ok: true, yaEstaba: true });
+
+  if (!job.compartir) {
+    const { error } = await sb.from("render_jobs").update({ compartir: true }).eq("id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  await registrarActividad(sb, {
+    tipo: "render_compartido",
+    titulo: `Se compartió con el cliente el ${job.tipo} de la producción`,
+    actor,
+    proyecto_id: job.proyecto_id as string,
+    tarea_id: (job.tarea_id as string | null) ?? null,
+    meta: { render_job_id: id, tipo: job.tipo },
+  });
+
+  const r = await avisarClienteDeRender(sb, id);
+  return NextResponse.json({ ok: true, avisado: r.avisado ?? null, omitido: r.omitido ?? null });
 }

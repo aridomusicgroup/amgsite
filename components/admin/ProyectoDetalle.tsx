@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Pencil, Trash2, Copy } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
@@ -47,7 +47,18 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
     { id: "actividad", label: "Actividad", show: true },
   ].filter((t) => t.show);
 
-  const [tab, setTab] = useState(tabs[0].id);
+  /**
+   * La pestaña se puede pedir por URL (?tab=produccion).
+   *
+   * Es lo que permite que una notificación abra EXACTAMENTE donde está la cosa
+   * de la que te habla, en vez de dejarte en Resumen buscándola. Si el valor no
+   * corresponde a una pestaña visible de este proyecto se ignora, porque las
+   * pestañas dependen del tipo: "Redes" no existe en una producción musical.
+   */
+  const pedida = useSearchParams().get("tab");
+  const [tab, setTab] = useState(
+    () => (pedida && tabs.some((t) => t.id === pedida) ? pedida : tabs[0].id),
+  );
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [duplicando, setDuplicando] = useState(false);

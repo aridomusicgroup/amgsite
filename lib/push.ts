@@ -52,6 +52,17 @@ export const destinoProyecto = (proyectoId: string): string =>
 export const destinoTarea = (tareaId: string): string =>
   `${SITE}/admin/produccion?destacar=${tareaId}`;
 
+/**
+ * El detalle del proyecto, abierto en una pestaña concreta.
+ *
+ * `destinoProyecto` deja en el TABLERO con la tarjeta resaltada, que sirve para
+ * "algo se movió aquí". No sirve cuando el aviso pide una acción que vive en una
+ * pestaña —aprobar el previo de un músico, por ejemplo—: ahí hay que abrir la
+ * tarjeta y encontrar la pestaña a mano. Esto lleva directo.
+ */
+export const destinoProyectoTab = (proyectoId: string, tab: string): string =>
+  `${SITE}/admin/proyectos/${proyectoId}?tab=${encodeURIComponent(tab)}`;
+
 export const destinoContacto = (contactoId: string): string =>
   `${SITE}/admin/clientes?destacar=${contactoId}`;
 

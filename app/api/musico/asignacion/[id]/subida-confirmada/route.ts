@@ -3,7 +3,8 @@ import { getMusicoId } from "@/lib/musico-auth";
 import { getMusico, asignacionDeMusico } from "@/lib/musico-data";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad } from "@/lib/actividad";
-import { pushAResponsables, destinoProyecto, conProyecto } from "@/lib/push";
+import { pushAResponsables, pushAEmails, destinoProyecto, destinoProyectoTab, conProyecto } from "@/lib/push";
+import { adminEmails } from "@/lib/supabase/auth-server";
 import { rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -104,11 +105,42 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     ...(((proy?.responsables as string[] | null) ?? []) as string[]),
     (proy?.responsable_id as string | null) ?? null,
   ];
-  await pushAResponsables(sb, responsables, {
+
+  /*
+   * Un previo pide una DECISIÓN; una pista es sólo una noticia.
+   *
+   * El previo se queda parado hasta que alguien le da el visto bueno, así que el
+   * aviso tiene que decir eso y llevar al botón, no al tablero. Y va también a
+   * los admins: el único responsable de EL NECIO era otra persona, y el previo de
+   * Martín se quedó esperando sin que se enterara nadie que pudiera aprobarlo.
+   *
+   * Los correos se juntan en UNA sola lista antes de mandar. Con dos llamadas
+   * separadas, un admin que además sea responsable recibiría la notificación dos
+   * veces: cada llamada deduplica por dentro, pero no entre ellas.
+   */
+  const esPrevio = clase === "previo";
+  const msg = {
     titulo: "ARIDO · Producción",
-    cuerpo: conProyecto((proy?.titulo as string | null) ?? null, texto),
-    url: destinoProyecto(asig.proyectoId),
-  });
+    cuerpo: conProyecto(
+      (proy?.titulo as string | null) ?? null,
+      esPrevio ? `${texto} — falta tu visto bueno para que lo oiga el cliente` : texto,
+    ),
+    url: esPrevio ? destinoProyectoTab(asig.proyectoId, "produccion") : destinoProyecto(asig.proyectoId),
+  };
+
+  if (!esPrevio) {
+    await pushAResponsables(sb, responsables, msg);
+  } else {
+    const ids = [...new Set(responsables.filter((x): x is string => Boolean(x)))];
+    const { data: eq } = ids.length
+      ? await sb.from("equipo").select("email").in("id", ids)
+      : { data: [] as { email: string | null }[] };
+    const correos = [
+      ...(eq ?? []).map((r: { email: string | null }) => r.email),
+      ...adminEmails(),
+    ];
+    await pushAEmails(sb, correos, msg);
+  }
 
   return NextResponse.json({ ok: true });
 }

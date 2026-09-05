@@ -105,9 +105,14 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
   const seleccion = actual?.seleccion?.valida ? actual.seleccion : null;
   const pistas = actual?.pistas ?? [];
 
-  // Marcado por defecto: lo normal al sacar un render es que el cliente lo vea.
-  // Desmarcarlo lo deja sólo para uso interno — ni correo ni aparece en /cuenta.
-  const [avisar, setAvisar] = useState(p.puedeAvisar);
+  // DESMARCADO por defecto, a propósito.
+  //
+  // Antes venía palomeado, y con eso la decisión de mandarle el render al
+  // cliente se tomaba de pasada al lanzarlo: cuando REAPER terminaba, subía y
+  // mandaba el correo sin volver a preguntar. Un previo que no acabó de
+  // convencerte se iba solo. Mandarlo tiene que ser un acto, no un descuido;
+  // olvidar marcarlo solo deja el archivo listo para compartirlo después.
+  const [avisar, setAvisar] = useState(false);
   const [modo, setModo] = useState<ModoRango>("todo");
   const [desde, setDesde] = useState(0);
   const [hasta, setHasta] = useState(Math.max(0, marcadores.length - 1));

@@ -759,7 +759,20 @@ export async function getProyectos(): Promise<Proyecto[]> {
 export interface PagoProyecto { id: string; fecha: string; monto_mxn: number; medio_pago: string | null; tipo: string | null }
 export interface ContratoResumen { id: string; folio: string | null; estado: string; monto: number; moneda: string | null; created_at: string }
 export interface CotizacionResumen { id: string; folio: string | null; estado: string; created_at: string }
-export interface RenderJobResumen { id: string; tipo: string; estado: string; tarea_id: string | null; created_at: string; drive_urls: string[] | null }
+/** Un archivo ya subido a Drive. Ojo: NO es una lista de strings — el script
+ *  guarda `{id, url, archivo}` por archivo, y tratarlo como texto pintaba
+ *  "[object Object]" en el enlace de la pestaña Producción. */
+export interface RenderArchivoDrive { id: string; url: string; archivo: string }
+export interface RenderJobResumen {
+  id: string; tipo: string; estado: string; tarea_id: string | null; created_at: string;
+  drive_urls: RenderArchivoDrive[] | null;
+  /** Si el cliente puede verlo en su cuenta. Es la única puerta hacia él. */
+  compartir: boolean;
+  /** Cuándo se le mandó el correo, o null si nunca. */
+  avisado_en: string | null;
+  /** Puesto = el render va para un MÚSICO, no para el cliente. No se comparte desde aquí. */
+  musico_id: string | null;
+}
 export interface RenderInventarioItem { id: string; tarea_id: string | null; clave: string; datos: unknown; updated_at: string }
 export interface ActividadItem { id: string; tipo: string; titulo: string; actor: string | null; created_at: string }
 /** a_tiempo/en_riesgo comparan contra la mediana histórica del mismo tipo (ver getEntregasReferencia). */
@@ -835,7 +848,7 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
     cotizacionId
       ? sb.from("cotizaciones").select("id, folio, estado, created_at").eq("id", cotizacionId).single()
       : Promise.resolve({ data: null as { id: string; folio: string | null; estado: string; created_at: string } | null }),
-    sb.from("render_jobs").select("id, tipo, estado, tarea_id, created_at, drive_urls").eq("proyecto_id", id).order("created_at", { ascending: false }),
+    sb.from("render_jobs").select("id, tipo, estado, tarea_id, created_at, drive_urls, compartir, avisado_en, musico_id").eq("proyecto_id", id).order("created_at", { ascending: false }),
     sb.from("render_inventario").select("id, tarea_id, clave, datos, updated_at").eq("proyecto_id", id),
     (esAdmin
       ? sb.from("actividad").select("id, tipo, titulo, actor, created_at, entidad")
@@ -974,7 +987,10 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
     renderJobs: (renderJobsRes.data ?? []).map((r) => ({
       id: r.id as string, tipo: r.tipo as string, estado: r.estado as string,
       tarea_id: (r.tarea_id as string | null) ?? null, created_at: r.created_at as string,
-      drive_urls: (r.drive_urls as string[] | null) ?? null,
+      drive_urls: (r.drive_urls as RenderArchivoDrive[] | null) ?? null,
+      compartir: r.compartir === true,
+      avisado_en: (r.avisado_en as string | null) ?? null,
+      musico_id: (r.musico_id as string | null) ?? null,
     })),
     renderInventario: (renderInvRes.data ?? []) as RenderInventarioItem[],
     actividad: (actividadRes.data ?? []) as ActividadItem[],
