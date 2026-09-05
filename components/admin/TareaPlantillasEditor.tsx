@@ -1,0 +1,221 @@
+"use client";
+import { useEffect, useState } from "react";
+import { Loader2, Plus, X, ChevronUp, ChevronDown, Save, Music, AlertTriangle } from "lucide-react";
+import { toast } from "@/lib/toast";
+import { TIPO_PROY_LABEL } from "@/lib/erp-data";
+
+type Item = {
+  clase: "tarea" | "instrumentos";
+  titulo: string;
+  resp: string | null;
+  responsable_id: string | null;
+  subs: string[];
+};
+type Equipo = { id: string; nombre: string };
+
+const vacio = (): Item => ({ clase: "tarea", titulo: "", resp: null, responsable_id: null, subs: [] });
+
+/**
+ * Qué tareas nacen con cada tipo de proyecto.
+ *
+ * Antes vivían en el código con sólo 4 tipos cubiertos, así que 8 de los 12
+ * tipos de proyecto nacían sin ninguna tarea y eso sólo se descubría proyecto
+ * por proyecto. Aquí se ven los 12 de un golpe.
+ *
+ * La fila morada de instrumentos es el HUECO donde se expanden las tareas
+ * "Grabar X" de lo que traiga la venta. Es una fila y no una casilla porque no
+ * siempre van al final: en un beat personalizado van entre la maqueta y la
+ * edición, que es el orden real del trabajo.
+ */
+export function TareaPlantillasEditor() {
+  const [plantillas, setPlantillas] = useState<Record<string, Item[]> | null>(null);
+  const [equipo, setEquipo] = useState<Equipo[]>([]);
+  const [sinTabla, setSinTabla] = useState(false);
+  const [sel, setSel] = useState<string | null>(null);
+  const [items, setItems] = useState<Item[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const inp = "bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-lgb-red";
+  const tipos = Object.entries(TIPO_PROY_LABEL) as [string, string][];
+
+  const cargar = async () => {
+    try {
+      const r = await fetch("/api/admin/tarea-plantillas", { cache: "no-store" });
+      if (!r.ok) { setPlantillas({}); return; }
+      const d = await r.json();
+      setPlantillas(d.plantillas ?? {});
+      setEquipo(d.equipo ?? []);
+      setSinTabla(Boolean(d.sinTabla));
+    } catch { setPlantillas({}); }
+  };
+  useEffect(() => { cargar(); }, []);
+
+  const abrir = (tipo: string) => {
+    setSel(tipo);
+    setItems((plantillas?.[tipo] ?? []).map((i) => ({ ...i, subs: [...(i.subs ?? [])] })));
+  };
+
+  const guardar = async () => {
+    if (!sel) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/admin/tarea-plantillas", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo: sel, nombre: TIPO_PROY_LABEL[sel] ?? sel, items }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { toast(`⚠️ ${d.error || "No se pudo guardar"}`); return; }
+      await cargar();
+      toast("✓ Guardado — los proyectos NUEVOS de ese tipo ya nacen así");
+    } catch { toast("Error de red"); } finally { setBusy(false); }
+  };
+
+  const restaurar = async () => {
+    if (!sel) return;
+    if (!confirm("¿Borrar esta plantilla? Ese tipo vuelve a la de fábrica, o a nacer sin tareas si no tenía una.")) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/admin/tarea-plantillas?tipo=${encodeURIComponent(sel)}`, { method: "DELETE" });
+      if (r.ok) { await cargar(); setItems([]); toast("✓ Borrada"); }
+    } catch { toast("Error de red"); } finally { setBusy(false); }
+  };
+
+  const mover = (i: number, d: number) => {
+    const j = i + d;
+    if (j < 0 || j >= items.length) return;
+    const copia = [...items];
+    [copia[i], copia[j]] = [copia[j], copia[i]];
+    setItems(copia);
+  };
+  const cambiar = (i: number, patch: Partial<Item>) =>
+    setItems(items.map((it, k) => (k === i ? { ...it, ...patch } : it)));
+
+  const hayHueco = items.some((i) => i.clase === "instrumentos");
+
+  return (
+    <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
+      <h2 className="font-coolvetica text-lg">Tareas que nacen con cada proyecto</h2>
+      <p className="text-white/40 text-xs mt-0.5 mb-3">
+        Cambiarlas afecta a los proyectos <b className="text-white/60">nuevos</b>; los que ya existen no se tocan.
+        Un tipo sin plantilla nace <b className="text-white/60">sin ninguna tarea</b>.
+      </p>
+
+      {sinTabla && (
+        <p className="text-amber-300/70 text-xs mb-3">
+          Falta correr <code className="text-amber-300">supabase-tarea-plantillas.sql</code>. Mientras tanto se usan
+          las plantillas de fábrica que viven en el código.
+        </p>
+      )}
+
+      {plantillas === null ? (
+        <p className="text-white/30 text-xs flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Cargando…</p>
+      ) : (
+        <div className="grid md:grid-cols-[190px_1fr] gap-4">
+          {/* Los 12 tipos, para que se vea de un golpe cuáles nacen vacíos */}
+          <ul className="space-y-1">
+            {tipos.map(([id, label]) => {
+              const n = plantillas[id]?.length ?? 0;
+              return (
+                <li key={id}>
+                  <button onClick={() => abrir(id)}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-sm transition-colors cursor-pointer ${
+                      sel === id ? "bg-lgb-red/15 text-white" : "text-white/55 hover:bg-white/5"}`}>
+                    <span className="block truncate">{label}</span>
+                    <span className={`text-[10px] ${n ? "text-white/30" : "text-amber-300/60"}`}>
+                      {n ? `${n} tarea${n === 1 ? "" : "s"}` : "sin tareas — nace vacío"}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="min-w-0">
+            {!sel ? (
+              <p className="text-white/25 text-xs">Elige un tipo de la izquierda.</p>
+            ) : (
+              <>
+                <ul className="space-y-1.5 mb-2">
+                  {items.map((it, i) => (
+                    <li key={i} className={`rounded-lg border px-2.5 py-2 ${
+                      it.clase === "instrumentos" ? "border-purple-400/30 bg-purple-400/[0.06]" : "border-white/8 bg-white/[0.02]"}`}>
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex flex-col shrink-0">
+                          <button onClick={() => mover(i, -1)} className="text-white/25 hover:text-white cursor-pointer"><ChevronUp size={12} /></button>
+                          <button onClick={() => mover(i, 1)} className="text-white/25 hover:text-white cursor-pointer"><ChevronDown size={12} /></button>
+                        </div>
+                        {it.clase === "instrumentos" && <Music size={13} className="text-purple-300 shrink-0" />}
+                        <input value={it.titulo} onChange={(e) => cambiar(i, { titulo: e.target.value })}
+                          placeholder={it.clase === "instrumentos" ? "Grabar {instrumento}" : "Título de la tarea"}
+                          className={`${inp} flex-1 min-w-0`} />
+                        <select value={it.responsable_id ?? ""} onChange={(e) => cambiar(i, { responsable_id: e.target.value || null })}
+                          className={`${inp} w-32 cursor-pointer`}>
+                          <option value="" className="bg-lgb-dark">{it.resp ? `(${it.resp})` : "— nadie —"}</option>
+                          {equipo.map((e) => <option key={e.id} value={e.id} className="bg-lgb-dark">{e.nombre}</option>)}
+                        </select>
+                        <button onClick={() => setItems(items.filter((_, k) => k !== i))}
+                          className="text-white/25 hover:text-red-300 shrink-0 cursor-pointer"><X size={14} /></button>
+                      </div>
+                      {it.clase === "tarea" && (
+                        <textarea value={it.subs.join("\n")}
+                          onChange={(e) => cambiar(i, { subs: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
+                          rows={it.subs.length ? it.subs.length + 1 : 1}
+                          placeholder="Subtareas, una por línea (opcional)"
+                          className={`${inp} w-full mt-1.5 text-xs resize-y`} />
+                      )}
+                      {it.clase === "instrumentos" && (
+                        <p className="text-[10px] text-purple-300/60 mt-1 ml-6">
+                          Aquí se expande una tarea por cada instrumento de la venta. <code>{"{instrumento}"}</code> se
+                          sustituye por su nombre.
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                  {items.length === 0 && (
+                    <li className="text-white/30 text-xs py-2">
+                      Sin tareas. Los proyectos de este tipo nacen vacíos.
+                    </li>
+                  )}
+                </ul>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={() => setItems([...items, vacio()])}
+                    className="flex items-center gap-1 bg-white/8 hover:bg-white/12 text-white/70 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer">
+                    <Plus size={12} /> Tarea
+                  </button>
+                  <button onClick={() => setItems([...items, { ...vacio(), clase: "instrumentos", titulo: "Grabar {instrumento}", resp: "eliud" }])}
+                    disabled={hayHueco}
+                    title={hayHueco ? "Ya hay un lugar para los instrumentos" : "Dónde se expanden las tareas de los instrumentos vendidos"}
+                    className="flex items-center gap-1 bg-purple-400/15 hover:bg-purple-400/25 text-purple-200 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
+                    <Music size={12} /> Aquí van los instrumentos
+                  </button>
+                  <div className="flex-1" />
+                  {(plantillas[sel]?.length ?? 0) > 0 && (
+                    <button onClick={restaurar} disabled={busy}
+                      className="text-white/35 hover:text-red-300 px-2 py-1.5 rounded-lg text-xs cursor-pointer disabled:opacity-40">
+                      Borrar plantilla
+                    </button>
+                  )}
+                  <button onClick={guardar} disabled={busy}
+                    className="flex items-center gap-1 bg-lgb-red text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50 cursor-pointer">
+                    {busy ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Guardar
+                  </button>
+                </div>
+
+                <p className="text-white/25 text-[10px] mt-2 flex items-start gap-1">
+                  <AlertTriangle size={11} className="mt-0.5 shrink-0 text-amber-300/50" />
+                  <span>
+                    Las <b className="text-white/40">subtareas</b> sólo se crean al nacer el proyecto; agregarlas
+                    aquí no las mete en los que ya existen. Y si le quitas el
+                    <b className="text-white/40"> lugar de los instrumentos</b> a un tipo de grabación, esas tareas
+                    dejan de crearse y el músico a distancia se queda sin dónde ver su fecha límite.
+                  </span>
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

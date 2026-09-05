@@ -6,6 +6,8 @@ import { ROLE_MODULES, MODULES, GRUPOS, GRUPO_LABEL, moduleLabel, moduleDef, typ
 import { toast } from "@/lib/toast";
 import { MusicosSection } from "./MusicosSection";
 import { InstrumentoPistasSection } from "./InstrumentoPistasSection";
+import { ReaperPlantillasSection } from "./ReaperPlantillasSection";
+import { TareaPlantillasEditor } from "./TareaPlantillasEditor";
 import { PerfilSection } from "./PerfilSection";
 
 const FONTS = [{ k: "sm", label: "Chico" }, { k: "md", label: "Mediano" }, { k: "lg", label: "Grande" }];
@@ -157,6 +159,8 @@ export function AjustesPanel({ fontSize, theme, moduleOrder, modules, isAdmin, u
 
       {isAdmin && <MusicosSection />}
 
+      {isAdmin && <TareaPlantillasEditor />}
+      {isAdmin && <ReaperPlantillasSection />}
       {isAdmin && <InstrumentoPistasSection />}
     </div>
   );

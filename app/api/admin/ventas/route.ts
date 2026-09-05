@@ -233,6 +233,9 @@ export async function POST(req: NextRequest) {
       //  3. Si no → mismo motor de plantillas que Producción.
       const libres = String(b.tareas_libres || "").split(/[\n;]+/).map((s) => s.trim()).filter(Boolean);
       if (proy?.id) {
+        // Qué tarea quedó para cada instrumento, para colgar ahí la asignación
+        // del músico sin tener que volver a buscarla por su título.
+        let tareaDeInstrumento = new Map<string, string>();
         if (canciones.length) {
           const rows = canciones.map((titulo, i) => ({ proyecto_id: proy.id, titulo, responsable_id: responsableId, orden: i, es_cancion: true }));
           await sb.from("proyecto_tareas").insert(rows);
@@ -241,12 +244,12 @@ export async function POST(req: NextRequest) {
           await sb.from("proyecto_tareas").insert(rows);
         } else {
           // `instrumentos` viene del selector; `extras` queda como respaldo histórico.
-          await crearTareasDeProyecto(sb, proy.id, tproy, parseInstrumentos(b.instrumentos || b.extras));
+          tareaDeInstrumento = await crearTareasDeProyecto(sb, proy.id, tproy, parseInstrumentos(b.instrumentos || b.extras));
         }
         // A quien tenga portal, se le habilita el proyecto en /musico. Va aquí,
         // después de las tareas, para poder colgar cada asignación de su tarea
         // "Grabar {instrumento}" y que el músico vea la fecha límite.
-        if (elegidos.length) await habilitarPortal(sb, proy.id as string, elegidos);
+        if (elegidos.length) await habilitarPortal(sb, proy.id as string, elegidos, tareaDeInstrumento);
 
         // Dispara el pedido del sitio ligado → el cliente ve el avance en su panel.
         try { await crearPedidoDeProyecto(sb, proy.id); } catch (e) { console.error("pedido-sync:", e); }
@@ -371,6 +374,13 @@ async function habilitarPortal(
   sb: any,
   proyectoId: string,
   elegidos: { instrumento: string; musico_id: string }[],
+  /**
+   * Qué tarea quedó para cada instrumento, tal como las acaba de crear
+   * `crearTareasDeProyecto`. Es la vía buena: buscar la tarea por su título
+   * dejó de ser confiable desde que las plantillas se editan desde el panel y
+   * el patrón "Grabar {instrumento}" se puede cambiar.
+   */
+  tareaDeInstrumento?: Map<string, string>,
 ): Promise<void> {
   try {
     const { data: musicos } = await sb.from("musicos")
@@ -382,13 +392,16 @@ async function habilitarPortal(
     );
     if (!conPortal.size) return;
 
-    // Las tareas que acaba de crear `crearTareasDeProyecto`, para colgar cada
-    // asignación de su "Grabar {instrumento}".
+    // Respaldo por título, sólo para los caminos que no traen el mapa (una venta
+    // de EP, o tareas libres). Se deja porque es mejor que nada, pero el mapa es
+    // la vía buena: esta depende de que el título siga diciendo "Grabar X".
     const { data: tareas } = await sb.from("proyecto_tareas")
       .select("id, titulo").eq("proyecto_id", proyectoId);
     const clave = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
     const tareaDe = (inst: string) =>
-      (tareas ?? []).find((t: { titulo: string }) => clave(t.titulo) === clave(`Grabar ${inst}`))?.id ?? null;
+      tareaDeInstrumento?.get(inst) ??
+      (tareas ?? []).find((t: { titulo: string }) => clave(t.titulo) === clave(`Grabar ${inst}`))?.id ??
+      null;
 
     for (const e of elegidos) {
       if (!conPortal.has(e.musico_id)) continue;

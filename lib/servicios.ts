@@ -15,6 +15,18 @@ const services = servicesRaw as unknown as {
 /** Extras contratables como instrumento suelto (chips seleccionables). */
 export const EXTRAS_SERVICIOS: string[] = services.extras.map((e) => e.label.es);
 
+/**
+ * Los paquetes del catálogo, con su id.
+ *
+ * El id es la llave con la que se liga un paquete a su plantilla de REAPER:
+ * `proyectos.tipo` no sirve para eso porque Tumbes, Alucines y Empedes son tres
+ * instrumentaciones distintas y los tres caen en 'grabacion'.
+ */
+export const PAQUETES: { id: string; nombre: string }[] = services.bases.map((b) => ({
+  id: b.id,
+  nombre: b.name.es,
+}));
+
 // Lo que NO es instrumento dentro de `includes` (ya son tareas propias de la plantilla).
 const NO_INSTRUMENTO = /mezcla|master|producci[oó]n personalizada|plataforma/i;
 
