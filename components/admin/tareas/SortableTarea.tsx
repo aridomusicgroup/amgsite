@@ -4,15 +4,17 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 // ── Fila de tarea arrastrable (dnd-kit); el handle son los 6 puntitos ─────────
-export function SortableTarea({ id, children }: {
+export function SortableTarea({ id, disabled, children }: {
   id: string;
+  /** Con el acomodo automático encendido no se arrastra: ver ./auto-orden.ts */
+  disabled?: boolean;
   children: (h: {
     attributes: ReturnType<typeof useSortable>["attributes"];
     listeners: ReturnType<typeof useSortable>["listeners"];
     setActivatorNodeRef: ReturnType<typeof useSortable>["setActivatorNodeRef"];
   }) => ReactNode;
 }) {
-  const { setNodeRef, setActivatorNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id });
+  const { setNodeRef, setActivatorNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id, disabled });
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,

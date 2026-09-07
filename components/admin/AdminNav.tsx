@@ -170,7 +170,7 @@ export function AdminNav({ email, nombre, foto, modules, order, colapsado }: {
 
       {/* Sidebar desktop */}
       <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-60 bg-lgb-dark border-r border-white/5 flex-col p-4">
-        <div className="px-2 py-3 mb-4">
+        <div className="px-2 py-3 mb-4 shrink-0">
           <Image
             src="/logos/arido-blanco.png"
             alt="ARIDO"
@@ -190,7 +190,10 @@ export function AdminNav({ email, nombre, foto, modules, order, colapsado }: {
           </p>
         </div>
 
-        <nav className="flex flex-col gap-1 flex-1">
+        {/* Lo unico que se desplaza. Sin este overflow, con muchas secciones
+            abiertas (o con la letra en "Muy grande") la lista empujaba el bloque
+            del perfil fuera de la pantalla y "Cerrar sesion" quedaba inalcanzable. */}
+        <nav className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto overscroll-contain hide-scrollbar">
           {agrupado ? (
             <>
               {portada && linkEscritorio(portada)}
@@ -248,7 +251,7 @@ export function AdminNav({ email, nombre, foto, modules, order, colapsado }: {
           </a>
         </nav>
 
-        <div className="border-t border-white/5 pt-3">
+        <div className="border-t border-white/5 pt-3 mt-2 shrink-0">
           {/* Quién está usando el panel. Lleva a Ajustes, que es donde se edita. */}
           <Link href="/admin/ajustes" className="flex items-center gap-2.5 px-3 mb-2 group" title="Ver mi perfil">
             {foto ? (

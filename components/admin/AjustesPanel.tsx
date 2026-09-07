@@ -10,7 +10,7 @@ import { ReaperPlantillasSection } from "./ReaperPlantillasSection";
 import { TareaPlantillasEditor } from "./TareaPlantillasEditor";
 import { PerfilSection } from "./PerfilSection";
 
-const FONTS = [{ k: "sm", label: "Chico" }, { k: "md", label: "Mediano" }, { k: "lg", label: "Grande" }];
+const FONTS = [{ k: "sm", label: "Chico" }, { k: "md", label: "Mediano" }, { k: "lg", label: "Grande" }, { k: "xl", label: "Muy grande" }];
 const ROL_LABEL: Record<string, string> = { admin: "Admin", crm: "CRM / Marketing", produccion: "Producción" };
 
 type Usuario = { email: string; role: string; activo: boolean; modules_extra: string[] | null; nombre?: string | null; foto_url?: string | null };

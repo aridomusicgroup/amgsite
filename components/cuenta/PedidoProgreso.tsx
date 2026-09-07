@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
+import { Check, CalendarCheck, CalendarClock } from "lucide-react";
 import type { PedidoTarea } from "@/lib/cuenta-cliente";
 
 interface Props {
@@ -14,6 +14,10 @@ interface Props {
   revisionActual: number;
   /** EP o Álbum: cada tarea es una canción, no una etapa del proceso. */
   esAlbum: boolean;
+  /** Entrega estimada (YYYY-MM-DD) o null si el equipo no la ha fijado. */
+  fechaEntrega: string | null;
+  /** Entrega real, si ya se entregó. Manda sobre la estimada. */
+  fechaEntregaReal: string | null;
 }
 
 /**
@@ -21,7 +25,7 @@ interface Props {
  * movimiento; la tarea ACTUAL resalta y late, las demás fases quedan nítidas y
  * legibles con una leve atenuación. Respeta prefers-reduced-motion.
  */
-export function PedidoProgreso({ concepto, tareas, hechas, total, pct, entregado, revisionActual, esAlbum }: Props) {
+export function PedidoProgreso({ concepto, tareas, hechas, total, pct, entregado, revisionActual, esAlbum, fechaEntrega, fechaEntregaReal }: Props) {
   const unidad = esAlbum ? (total === 1 ? "canción" : "canciones") : "etapas";
   // Índice de la tarea "actual" = la primera no completada (o ninguna si ya acabó).
   const currentIndex = tareas.findIndex((t) => !t.hecho);
@@ -42,9 +46,12 @@ export function PedidoProgreso({ concepto, tareas, hechas, total, pct, entregado
         <div>
           <p className="pp-kicker">{entregado ? "Producción entregada" : "Avance de tu producción"}</p>
           <h2 className="pp-title">{concepto}</h2>
-          {revisionActual > 0 && (
-            <span className="pp-round">🔄 Ronda de revisión {revisionActual}</span>
-          )}
+          <div className="pp-chips">
+            <EntregaChip entregado={entregado} fechaEntrega={fechaEntrega} fechaEntregaReal={fechaEntregaReal} />
+            {revisionActual > 0 && (
+              <span className="pp-round">🔄 Ronda de revisión {revisionActual}</span>
+            )}
+          </div>
         </div>
         <div className="pp-pct" aria-label={`${pct} por ciento`}>
           <span>{pct}</span><small>%</small>
@@ -100,11 +107,93 @@ export function PedidoProgreso({ concepto, tareas, hechas, total, pct, entregado
   );
 }
 
+const MESES = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+
+/** "2026-09-15" → "15 de septiembre". Sin año: la entrega siempre está cerca. */
+function fechaLarga(iso: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return null;
+  const mes = MESES[Number(m[2]) - 1];
+  return mes ? `${Number(m[3])} de ${mes}` : null;
+}
+
+/** Días entre hoy y una fecha YYYY-MM-DD, en la zona horaria de QUIEN MIRA. */
+function diasHasta(iso: string): number | null {
+  const destino = Date.parse(`${iso}T12:00:00`);
+  if (Number.isNaN(destino)) return null;
+  const h = new Date();
+  const hoy = new Date(h.getFullYear(), h.getMonth(), h.getDate(), 12).getTime();
+  return Math.round((destino - hoy) / 86400000);
+}
+
+/**
+ * Fecha de entrega del pedido, tal como la ve el cliente.
+ *
+ * Dos reglas de negocio metidas aquí a propósito:
+ *  1. La cuenta regresiva ("faltan 5 días") se calcula DESPUÉS de montar. En el
+ *     servidor "hoy" es UTC y en el navegador es la hora de México: pintarla en
+ *     el render inicial descuadraría la hidratación cerca de medianoche.
+ *  2. Si la fecha ya pasó y no hemos entregado, se muestra la fecha SIN conteo.
+ *     Nunca un "faltan -3 días": el atraso se atiende por WhatsApp, no con un
+ *     número rojo en la cara del cliente.
+ */
+export function EntregaChip({
+  entregado, fechaEntrega, fechaEntregaReal,
+}: { entregado: boolean; fechaEntrega: string | null; fechaEntregaReal: string | null }) {
+  const yaEntregado = entregado || Boolean(fechaEntregaReal);
+  const iso = (yaEntregado ? fechaEntregaReal ?? fechaEntrega : fechaEntrega) ?? null;
+  const [relativo, setRelativo] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!iso || yaEntregado) { setRelativo(null); return; }
+    const dias = diasHasta(iso);
+    if (dias === null || dias < 0) { setRelativo(null); return; }
+    setRelativo(dias === 0 ? "es hoy" : dias === 1 ? "es mañana" : `faltan ${dias} días`);
+  }, [iso, yaEntregado]);
+
+  if (!iso) return null;
+  const texto = fechaLarga(iso);
+  if (!texto) return null;
+
+  return (
+    <span className={`pp-fecha${yaEntregado ? " pp-fecha-ok" : ""}`}>
+      {/* Estilos propios: el chip también se usa fuera del timeline (pedido aún
+          sin etapas), donde el <style> de PedidoProgreso no llega a montarse. */}
+      <style>{CHIP_CSS}</style>
+      {yaEntregado ? <CalendarCheck size={13} strokeWidth={2.4} /> : <CalendarClock size={13} strokeWidth={2.4} />}
+      <span>
+        {yaEntregado ? "Entregado el " : "Entrega estimada: "}
+        <b>{texto}</b>
+        {relativo && <span className="pp-fecha-rel"> · {relativo}</span>}
+      </span>
+    </span>
+  );
+}
+
+const CHIP_CSS = `
+.pp-chips { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:9px; }
+.pp-chips:empty { display:none; }
+.pp-fecha { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; line-height:1.2;
+  color:rgba(255,255,255,.72); border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.05);
+  border-radius:99px; padding:4px 11px 4px 9px; }
+.pp-fecha svg { color:#c42f42; flex-shrink:0; }
+.pp-fecha b { color:#fff; font-weight:700; }
+.pp-fecha-rel { color:rgba(255,255,255,.45); }
+.pp-fecha-ok { color:#8fe0b0; border-color:rgba(52,199,123,.35); background:rgba(52,199,123,.1); }
+.pp-fecha-ok svg { color:#34c77b; }
+.pp-fecha-ok b { color:#c9f5dc; }
+`;
+
 const CSS = `
 .pp { color:#fff; }
 .pp-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:16px; }
 .pp-kicker { color:#c42f42; font-size:11px; letter-spacing:2px; text-transform:uppercase; margin:0 0 4px; font-weight:700; }
 .pp-title { font-size:22px; margin:0; line-height:1.15; }
+.pp-chips { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:9px; }
+.pp-chips:empty { display:none; }
 .pp-pct { font-weight:800; line-height:1; color:#fff; white-space:nowrap; }
 .pp-pct span { font-size:44px; }
 .pp-pct small { font-size:18px; color:#c42f42; margin-left:2px; }
@@ -144,7 +233,7 @@ const CSS = `
 .pp-future .pp-label { color:rgba(255,255,255,.6); }
 
 /* Chip de ronda de revisión + tareas de revisión (tonalidad ámbar). */
-.pp-round { display:inline-block; margin-top:8px; font-size:11px; font-weight:700; color:#f59e0b;
+.pp-round { display:inline-block; font-size:11px; font-weight:700; color:#f59e0b;
   border:1px solid rgba(245,158,11,.4); background:rgba(245,158,11,.12); border-radius:99px; padding:3px 10px; }
 .pp-rev .pp-node { border-color:#f59e0b; }
 .pp-rev.pp-done .pp-node { background:#f59e0b; border-color:#f59e0b; }

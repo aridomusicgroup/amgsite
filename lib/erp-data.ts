@@ -773,7 +773,26 @@ export interface RenderJobResumen {
   /** Puesto = el render va para un MÚSICO, no para el cliente. No se comparte desde aquí. */
   musico_id: string | null;
 }
-export interface RenderInventarioItem { id: string; tarea_id: string | null; clave: string; datos: unknown; updated_at: string }
+/**
+ * Lo que el script local encontró en la carpeta de disco de un proyecto.
+ *
+ * OJO con las columnas: esto pedía `id`, `datos` y `updated_at`, que NO existen
+ * en `render_inventario` (son `clave`, `proyectos` y `escaneado_en`). PostgREST
+ * falla la consulta ENTERA ante una columna inexistente, así que esta lista
+ * llegaba siempre vacía y la línea del panel no se mostraba nunca, aunque la
+ * tabla tuviera filas. La lectura buena está en `lib/render-jobs.ts`.
+ *
+ * Una fila por carpeta: el proyecto, o cada canción si es EP/Álbum.
+ */
+export interface RenderInventarioItem {
+  clave: string;
+  tarea_id: string | null;
+  carpeta: string | null;
+  /** Los .rpp de esa carpeta, cada uno con sus pistas y marcadores. */
+  proyectos: { archivo: string; bytes: number; pistas?: { nombre: string }[] }[];
+  error: string | null;
+  escaneado_en: string;
+}
 export interface ActividadItem { id: string; tipo: string; titulo: string; actor: string | null; created_at: string }
 /** a_tiempo/en_riesgo comparan contra la mediana histórica del mismo tipo (ver getEntregasReferencia). */
 export type SaludEntrega = "sin_fecha" | "a_tiempo" | "en_riesgo" | "atrasado" | "entregado";
@@ -849,7 +868,7 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
       ? sb.from("cotizaciones").select("id, folio, estado, created_at").eq("id", cotizacionId).single()
       : Promise.resolve({ data: null as { id: string; folio: string | null; estado: string; created_at: string } | null }),
     sb.from("render_jobs").select("id, tipo, estado, tarea_id, created_at, drive_urls, compartir, avisado_en, musico_id").eq("proyecto_id", id).order("created_at", { ascending: false }),
-    sb.from("render_inventario").select("id, tarea_id, clave, datos, updated_at").eq("proyecto_id", id),
+    sb.from("render_inventario").select("clave, tarea_id, carpeta, proyectos, error, escaneado_en").eq("proyecto_id", id),
     (esAdmin
       ? sb.from("actividad").select("id, tipo, titulo, actor, created_at, entidad")
       : sb.from("actividad").select("id, tipo, titulo, actor, created_at, entidad")

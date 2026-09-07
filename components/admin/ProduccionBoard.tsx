@@ -6,6 +6,8 @@ import { Plus, X, Loader2, ChevronDown, GripVertical, Eye, EyeOff, Check, Trash2
 import { DndContext, closestCenter, MouseSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { SortableTarea } from "@/components/admin/tareas/SortableTarea";
+import { AutoOrdenToggle } from "@/components/admin/tareas/AutoOrdenToggle";
+import { useAutoOrden, acomodarPendientesPrimero } from "@/components/admin/tareas/auto-orden";
 import { TareaModal } from "@/components/admin/tareas/TareaModal";
 import { inp, lblS, type Equipo, type VentaLite } from "@/components/admin/tareas/estilos";
 import {
@@ -477,9 +479,14 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
   // segundo plano; cuando el server vuelve a mandar datos, se reconcilia.
   const [ordenLocal, setOrdenLocal] = useState<string[] | null>(null);
   useEffect(() => { setOrdenLocal(null); }, [p.tareas]);
-  const tareas = ordenLocal
+  const manuales = ordenLocal
     ? (ordenLocal.map((id) => p.tareas.find((t) => t.id === id)).filter(Boolean) as ProyectoTarea[])
     : p.tareas;
+
+  // Acomodo automatico: lo palomeado se va al final (ver tareas/auto-orden.ts).
+  // Usa taskDone, el valor optimista, para que la tarea baje al instante.
+  const [autoOrden, setAutoOrden] = useAutoOrden();
+  const tareas = autoOrden ? acomodarPendientesPrimero(manuales, taskDone) : manuales;
 
   // Arrastre de tareas (dnd-kit). Mientras se arrastra una tarea, se desactiva el
   // arrastre nativo de la tarjeta para que no se muevan las dos cosas a la vez.
@@ -493,7 +500,8 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
     const activeId = String(e.active.id);
     const overId = e.over ? String(e.over.id) : null;
     if (!overId || activeId === overId) return;
-    const ids = tareas.map((t) => t.id);
+    // Sobre el orden MANUAL, que es el que se guarda y el que ve el cliente.
+    const ids = manuales.map((t) => t.id);
     const from = ids.indexOf(activeId);
     const to = ids.indexOf(overId);
     if (from < 0 || to < 0) return;
@@ -694,7 +702,10 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
 
           {/* Checklist */}
           <div>
-            <p className="text-[10px] text-white/30 uppercase tracking-wider mb-1.5">Tareas</p>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <p className="text-[10px] text-white/30 uppercase tracking-wider">Tareas</p>
+              <AutoOrdenToggle activo={autoOrden} onChange={setAutoOrden} />
+            </div>
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEndTarea}>
               <SortableContext items={tareas.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-1">
@@ -702,16 +713,19 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
                     const subDone = t.subtareas.filter((s) => s.hecho).length;
                     const esRev = t.revision > 0;
                     return (
-                      <SortableTarea key={t.id} id={t.id}>
+                      <SortableTarea key={t.id} id={t.id} disabled={autoOrden}>
                         {(h) => (
                           <div data-destacar-id={t.id}
                             className={`flex items-center gap-1.5 group ${destacado === t.id ? "arido-destacado" : ""}`}>
-                            {/* Gripcito: arrastra para reordenar (el orden que ve el cliente) */}
-                            <span ref={h.setActivatorNodeRef} {...h.attributes} {...h.listeners}
-                              title="Arrastra para reordenar"
-                              className="touch-none cursor-grab active:cursor-grabbing text-white/25 hover:text-white/60 shrink-0 -ml-1 py-1 pr-1">
-                              <GripVertical size={14} />
-                            </span>
+                            {/* Gripcito: arrastra para reordenar (el orden que ve el cliente).
+                                Con el acomodo automatico no hay nada que arrastrar. */}
+                            {!autoOrden && (
+                              <span ref={h.setActivatorNodeRef} {...h.attributes} {...h.listeners}
+                                title="Arrastra para reordenar"
+                                className="touch-none cursor-grab active:cursor-grabbing text-white/25 hover:text-white/60 shrink-0 -ml-1 py-1 pr-1">
+                                <GripVertical size={14} />
+                              </span>
+                            )}
                             <button onClick={() => toggleTarea(t)}
                               className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${taskDone(t) ? "bg-green-500/30 border-green-400/50" : "border-white/20"}`}>
                               {taskDone(t) && <Check size={11} className="text-green-300" />}

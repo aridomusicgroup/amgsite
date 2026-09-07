@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   const b = await req.json().catch(() => ({}));
   const patch: Record<string, unknown> = { email: email.toLowerCase(), updated_at: new Date().toISOString() };
-  if (["sm", "md", "lg"].includes(b.font_size)) patch.font_size = b.font_size;
+  if (["sm", "md", "lg", "xl"].includes(b.font_size)) patch.font_size = b.font_size;
   if (["dark", "light"].includes(b.theme)) patch.theme = b.theme;
   if (Array.isArray(b.module_order)) patch.module_order = b.module_order.filter((x: unknown) => typeof x === "string");
   // Solo claves de área conocidas: así una versión vieja del navegador no puede

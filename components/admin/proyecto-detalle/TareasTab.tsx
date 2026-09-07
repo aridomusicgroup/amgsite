@@ -8,6 +8,8 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-ki
 import { toast } from "@/lib/toast";
 import { esContenido, esContenidoPub } from "@/components/admin/ProduccionBoard";
 import { SortableTarea } from "@/components/admin/tareas/SortableTarea";
+import { AutoOrdenToggle } from "@/components/admin/tareas/AutoOrdenToggle";
+import { useAutoOrden, acomodarPendientesPrimero } from "@/components/admin/tareas/auto-orden";
 import { TareaModal } from "@/components/admin/tareas/TareaModal";
 import type { Equipo } from "@/components/admin/tareas/estilos";
 import type { MusicoLite } from "@/components/admin/tareas/AsignarMusico";
@@ -90,9 +92,15 @@ export function TareasTab({ proyecto, equipo, recordatorios, miId, musicos }: {
   // Orden optimista: se acomoda al soltar y se guarda de fondo, igual que el kanban.
   const [ordenLocal, setOrdenLocal] = useState<string[] | null>(null);
   useEffect(() => { setOrdenLocal(null); }, [proyecto.tareas]);
-  const tareas = ordenLocal
+  const manuales = ordenLocal
     ? (ordenLocal.map((id) => proyecto.tareas.find((t) => t.id === id)).filter(Boolean) as ProyectoTarea[])
     : proyecto.tareas;
+
+  // Con el acomodo automático encendido, lo palomeado se va al final. Ojo: se
+  // usa `hechoDe` (el valor optimista), así que la tarea baja en cuanto se hace
+  // clic, sin esperar al servidor.
+  const [autoOrden, setAutoOrden] = useAutoOrden();
+  const tareas = autoOrden ? acomodarPendientesPrimero(manuales, hechoDe) : manuales;
 
   // Ratón: arranca a los 5px. Táctil: mantén presionado ~180ms, para no secuestrar el scroll.
   const sensors = useSensors(
@@ -103,7 +111,8 @@ export function TareasTab({ proyecto, equipo, recordatorios, miId, musicos }: {
     const activeId = String(e.active.id);
     const overId = e.over ? String(e.over.id) : null;
     if (!overId || activeId === overId) return;
-    const ids = tareas.map((t) => t.id);
+    // Sobre el orden MANUAL, que es el que se guarda y el que ve el cliente.
+    const ids = manuales.map((t) => t.id);
     const from = ids.indexOf(activeId), to = ids.indexOf(overId);
     if (from < 0 || to < 0) return;
     const nuevo = arrayMove(ids, from, to);
@@ -127,10 +136,13 @@ export function TareasTab({ proyecto, equipo, recordatorios, miId, musicos }: {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-sm text-white/60">{hechas} de {tareas.length} completadas</p>
-        <div className="h-1.5 w-40 rounded-full bg-white/8 overflow-hidden">
-          <motion.div className="h-full bg-lgb-red rounded-full" initial={{ width: 0 }} animate={{ width: `${proyecto.progreso}%` }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }} />
+        <div className="flex items-center gap-2.5">
+          <AutoOrdenToggle activo={autoOrden} onChange={setAutoOrden} />
+          <div className="h-1.5 w-40 rounded-full bg-white/8 overflow-hidden">
+            <motion.div className="h-full bg-lgb-red rounded-full" initial={{ width: 0 }} animate={{ width: `${proyecto.progreso}%` }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }} />
+          </div>
         </div>
       </div>
 
@@ -142,15 +154,18 @@ export function TareasTab({ proyecto, equipo, recordatorios, miId, musicos }: {
               const subDone = t.subtareas.filter((s) => s.hecho).length;
               const rec = recordatorios[t.id];
               return (
-                <SortableTarea key={t.id} id={t.id}>
+                <SortableTarea key={t.id} id={t.id} disabled={autoOrden}>
                   {(h) => (
                     <div className="flex items-center gap-2 group rounded-lg border border-white/8 bg-white/[0.03] px-2.5 py-2">
-                      {/* Los seis puntitos: arrastra para reordenar (es el orden que ve el cliente) */}
-                      <span ref={h.setActivatorNodeRef} {...h.attributes} {...h.listeners}
-                        title="Arrastra para reordenar"
-                        className="touch-none cursor-grab active:cursor-grabbing text-white/25 hover:text-white/60 shrink-0 -ml-1 py-1">
-                        <GripVertical size={14} />
-                      </span>
+                      {/* Los seis puntitos: arrastra para reordenar (es el orden que ve el
+                          cliente). Con el acomodo automático no hay nada que arrastrar. */}
+                      {!autoOrden && (
+                        <span ref={h.setActivatorNodeRef} {...h.attributes} {...h.listeners}
+                          title="Arrastra para reordenar"
+                          className="touch-none cursor-grab active:cursor-grabbing text-white/25 hover:text-white/60 shrink-0 -ml-1 py-1">
+                          <GripVertical size={14} />
+                        </span>
+                      )}
 
                       <button onClick={() => toggle(t)}
                         className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${done ? "bg-green-500/30 border-green-400/50" : "border-white/20"}`}>

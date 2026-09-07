@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, FileAudio, Send, Check, Loader2 } from "lucide-react";
-import type { ProyectoDetalle, RenderJobResumen } from "@/lib/erp-data";
+import type { ProyectoDetalle, RenderJobResumen, RenderInventarioItem } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
 import { MusicosProyecto } from "./MusicosProyecto";
 
@@ -101,9 +101,47 @@ export function ProduccionTab({ proyecto }: { proyecto: ProyectoDetalle }) {
           </div>
         </div>
       )}
-      {proyecto.renderInventario.length > 0 && (
-        <p className="text-xs text-white/30">Inventario de REAPER: {proyecto.renderInventario.length} pista(s) escaneada(s) desde la última sincronización.</p>
+      <InventarioResumen inventario={proyecto.renderInventario} />
+    </div>
+  );
+}
+
+/**
+ * Qué vio el script local en la carpeta de disco.
+ *
+ * Antes esto decía "N pista(s) escaneada(s)" contando FILAS del inventario, que
+ * son una por carpeta (el proyecto, o cada canción de un EP) — nunca pistas. Y
+ * daba igual, porque la consulta pedía columnas inexistentes y la lista llegaba
+ * siempre vacía, así que el renglón no se mostraba jamás.
+ */
+function InventarioResumen({ inventario }: { inventario: RenderInventarioItem[] }) {
+  if (!inventario.length) return null;
+
+  const conError = inventario.filter((i) => i.error);
+  const rpps = inventario.reduce((a, i) => a + (i.proyectos?.length ?? 0), 0);
+  const pistas = inventario.reduce(
+    (a, i) => a + (i.proyectos ?? []).reduce((b, p) => b + (p.pistas?.length ?? 0), 0),
+    0,
+  );
+  // El más reciente de todos: en un EP hay una fila por canción y cada una se
+  // escanea cuando le toca.
+  const ultimo = inventario
+    .map((i) => i.escaneado_en)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+
+  return (
+    <div className="text-xs text-white/30 space-y-0.5">
+      {rpps > 0 && (
+        <p>
+          En el disco: {rpps} proyecto(s) de REAPER, {pistas} pista(s)
+          {ultimo && <> · escaneado {new Date(ultimo).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</>}
+        </p>
       )}
+      {conError.map((i) => (
+        <p key={i.clave} className="text-amber-300/60">⚠ {i.error}</p>
+      ))}
     </div>
   );
 }

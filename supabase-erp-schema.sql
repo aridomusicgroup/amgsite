@@ -223,7 +223,7 @@ where not exists (select 1 from public.equipo where nombre = 'Leo Tristán');
 -- ============================================================================
 create table if not exists public.user_prefs (
   email         text primary key,
-  font_size     text default 'md',     -- sm | md | lg
+  font_size     text default 'md',     -- sm | md | lg | xl
   theme         text default 'dark',   -- dark | light (modo claro se implementa después)
   module_order  jsonb,                 -- orden personalizado del nav: ["/admin/produccion", ...]
   modules_extra jsonb,                 -- módulos opcionales habilitados por un admin

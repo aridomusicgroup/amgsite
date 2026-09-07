@@ -156,6 +156,10 @@ export interface PedidoDetalle {
   revisionActual: number;
   /** EP o Álbum: cada tarea es una canción, no una etapa. Cambia el lenguaje. */
   esAlbum: boolean;
+  /** Entrega ESTIMADA (`proyectos.fecha_entrega`, YYYY-MM-DD) o null si no se ha fijado. */
+  fechaEntrega: string | null;
+  /** Entrega REAL, cuando ya se entregó. Manda sobre la estimada al pintarla. */
+  fechaEntregaReal: string | null;
   tareas: PedidoTarea[];
   hechas: number;
   total: number;
@@ -236,13 +240,21 @@ export async function getPedidoDetalle(email: string, orderId: string): Promise<
     let entregableUrl: string | null = null;
     let revisionActual = 0;
     let esAlbum = false;
+    let fechaEntrega: string | null = null;
+    let fechaEntregaReal: string | null = null;
     let tareas: PedidoTarea[] = [];
-    const { data: proy } = await sb.from("proyectos").select("id, tipo, estado, entregable_url, revision_actual").eq("order_id", orderId).maybeSingle();
+    const { data: proy } = await sb
+      .from("proyectos")
+      .select("id, tipo, estado, entregable_url, revision_actual, fecha_entrega, fecha_entrega_real")
+      .eq("order_id", orderId)
+      .maybeSingle();
     if (proy) {
       proyectoEstado = (proy.estado as string) ?? null;
       entregableUrl = (proy.entregable_url as string | null) ?? null;
       revisionActual = Number(proy.revision_actual) || 0;
       esAlbum = ["ep", "album"].includes(String(proy.tipo ?? ""));
+      fechaEntrega = (proy.fecha_entrega as string | null) ?? null;
+      fechaEntregaReal = (proy.fecha_entrega_real as string | null) ?? null;
       const { data: ts } = await sb
         .from("proyecto_tareas")
         .select("id, titulo, hecho, completado_at, orden, visible_cliente, revision")
@@ -300,6 +312,8 @@ export async function getPedidoDetalle(email: string, orderId: string): Promise<
       entregableUrl,
       revisionActual,
       esAlbum,
+      fechaEntrega,
+      fechaEntregaReal,
       tareas,
       hechas,
       total,

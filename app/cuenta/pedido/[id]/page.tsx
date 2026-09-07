@@ -5,7 +5,7 @@ import { ArrowLeft, Clock, FolderDown } from "lucide-react";
 import { getCustomerEmail } from "@/lib/cuenta-auth";
 import { getPedidoDetalle, rendersDelPedido } from "@/lib/cuenta-cliente";
 import { acuerdosPendientes } from "@/lib/acuerdos/server";
-import { PedidoProgreso } from "@/components/cuenta/PedidoProgreso";
+import { PedidoProgreso, EntregaChip } from "@/components/cuenta/PedidoProgreso";
 import { SubirArchivos } from "@/components/cuenta/SubirArchivos";
 import { RendersPedido } from "@/components/cuenta/RendersPedido";
 import { SOCIALS } from "@/lib/site";
@@ -79,6 +79,8 @@ export default async function PedidoPage({ params }: Props) {
               entregado={entregado}
               revisionActual={d.revisionActual}
               esAlbum={d.esAlbum}
+              fechaEntrega={d.fechaEntrega}
+              fechaEntregaReal={d.fechaEntregaReal}
             />
           </div>
         ) : (
@@ -88,6 +90,11 @@ export default async function PedidoPage({ params }: Props) {
             <p className="text-white/50 text-sm">
               Estamos preparando tu producción. Muy pronto verás aquí el avance paso a paso. 🌵
             </p>
+            {/* Aún sin etapas que mostrar, pero si ya hay fecha comprometida el
+                cliente merece verla desde el primer día. */}
+            <div className="pp-chips justify-center">
+              <EntregaChip entregado={false} fechaEntrega={d.fechaEntrega} fechaEntregaReal={d.fechaEntregaReal} />
+            </div>
           </div>
         )}
 
