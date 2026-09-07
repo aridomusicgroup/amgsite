@@ -323,6 +323,48 @@ export async function hacerPublico(fileId: string): Promise<string | null> {
   return `https://drive.google.com/file/d/${fileId}/view`;
 }
 
+/**
+ * Le da acceso a UNA persona a una carpeta, por su cuenta de Google.
+ *
+ * Hermana de `hacerPublico`, y la diferencia importa. `hacerPublico` pone
+ * `type: "anyone"`: un enlace que sirve para quien lo tenga. Está bien para un
+ * previo en mp3 de 3 MB, que es para lo que se hizo, y está MAL para la sesión
+ * completa de un cliente que paga — cientos de archivos que, si el enlace se
+ * reenvía por WhatsApp, quedan expuestos sin que nadie sepa quién los abrió.
+ *
+ * Con la cuenta nombrada: se puede revocar a esa persona el día que deje de
+ * colaborar, Drive registra quién entró, y un enlace reenviado no sirve.
+ *
+ * `sendNotificationEmail: false` porque el aviso lo damos nosotros, con un
+ * enlace que lleva a la pestaña del panel y no al Drive pelón.
+ *
+ * Devuelve `true` también cuando ya estaba compartida: Drive responde 400
+ * "duplicate" y eso no es un fallo, igual que en `hacerPublico`.
+ */
+export async function compartirConCorreo(
+  fileId: string,
+  email: string,
+  rol: "reader" | "writer" = "reader",
+): Promise<boolean> {
+  const token = await getAccessToken();
+  if (!token) return false;
+  const correo = String(email || "").trim().toLowerCase();
+  if (!correo.includes("@")) return false;
+
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}/permissions?sendNotificationEmail=false&supportsAllDrives=true`,
+    {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ role: rol, type: "user", emailAddress: correo }),
+    },
+  );
+  if (res.ok) return true;
+  if (res.status === 400) return true; // ya la tenía
+  console.error(`[drive] no se pudo compartir ${fileId} con ${correo}:`, res.status, (await res.text().catch(() => "")).slice(0, 200));
+  return false;
+}
+
 /** Quita el enlace público de un archivo. Lo que hace `hacerPublico`, al revés. */
 export async function quitarPublico(fileId: string): Promise<boolean> {
   const token = await getAccessToken();

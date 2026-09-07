@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { carpetaDelProyecto } from "@/lib/proyecto-carpeta";
-import { buscarOCrearCarpeta, tokenParaNavegador, diagnosticoDrive } from "@/lib/drive-oauth";
+import { buscarOCrearCarpeta, tokenParaNavegador, diagnosticoDrive, compartirConCorreo } from "@/lib/drive-oauth";
+import { pushAEmails, destinoProyectoTab, conProyecto } from "@/lib/push";
+import { registrarActividad } from "@/lib/actividad";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -40,8 +42,120 @@ export async function POST(req: NextRequest) {
   const accion = String(b.accion || "");
 
   if (accion === "carpeta") return resolverCarpeta(b);
+  if (accion === "compartir") return compartir(b);
+  if (accion === "aviso") return avisar(b);
 
   return NextResponse.json({ error: "Acción desconocida." }, { status: 400 });
+}
+
+/**
+ * Le da acceso a la carpeta a quien va a editar, por su cuenta de Google.
+ *
+ * Se comparte SÓLO la raíz EDICION: Drive hereda el permiso a todo lo que
+ * cuelgue después, así que los archivos que se suban más tarde ya nacen
+ * accesibles y no hay que compartir 300 veces.
+ *
+ * Con `reader`, no `writer`: la revisión vuelve por el panel, no por Drive. Con
+ * permiso de escritura podría borrar la sesión completa sin querer y no habría
+ * marcha atrás automática.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function compartir(b: any) {
+  const envioId = String(b.envioId || "").trim();
+  if (!envioId) return NextResponse.json({ error: "Falta el envío." }, { status: 400 });
+
+  const sb = supabaseAdmin();
+  const { data: env } = await sb
+    .from("edicion_envios")
+    .select("id, clave, notificar_email, compartido_con")
+    .eq("id", envioId)
+    .maybeSingle();
+  if (!env) return NextResponse.json({ error: "Ese envío ya no existe." }, { status: 404 });
+
+  const correo = String(env.notificar_email || "").trim().toLowerCase();
+  if (!correo) return NextResponse.json({ ok: true, omitido: "el envío no tiene correo a quien avisar" });
+  if (env.compartido_con === correo) return NextResponse.json({ ok: true, yaEstaba: true });
+
+  const { data: raiz } = await sb
+    .from("edicion_carpetas")
+    .select("drive_id")
+    .eq("clave", env.clave)
+    .eq("subruta", "")
+    .maybeSingle();
+  if (!raiz?.drive_id) return NextResponse.json({ ok: true, omitido: "la carpeta todavía no existe" });
+
+  const ok = await compartirConCorreo(raiz.drive_id, correo, "reader");
+  if (!ok) return NextResponse.json({ error: "Drive no aceptó compartir la carpeta." }, { status: 502 });
+
+  await sb.from("edicion_envios").update({ compartido_con: correo }).eq("id", envioId);
+  return NextResponse.json({ ok: true, compartido: correo, carpeta: `https://drive.google.com/drive/folders/${raiz.drive_id}` });
+}
+
+/**
+ * Avisa a quien edita que ya está todo arriba.
+ *
+ * El momento importa: esto se llama al CERRAR el envío, nunca al abrirlo. Un
+ * aviso que diga "empecé a subir 1.3 GB, vuelve en media hora" no le sirve a
+ * nadie y enseña a ignorar las notificaciones.
+ *
+ * El texto se arma AQUÍ y no en el script, igual que `/api/reaper/aviso`: las
+ * plantillas y el mecanismo de push viven en el sitio, el script sólo dice
+ * "este envío terminó".
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function avisar(b: any) {
+  const envioId = String(b.envioId || "").trim();
+  if (!envioId) return NextResponse.json({ error: "Falta el envío." }, { status: 400 });
+
+  const sb = supabaseAdmin();
+  const { data: env } = await sb
+    .from("edicion_envios")
+    .select("id, clave, proyecto_id, tarea_id, num, estado, nota, notificar_a, notificar_email, avisado_en")
+    .eq("id", envioId)
+    .maybeSingle();
+  if (!env) return NextResponse.json({ error: "Ese envío ya no existe." }, { status: 404 });
+  if (env.estado !== "listo") return NextResponse.json({ ok: true, omitido: "el envío no ha terminado" });
+  if (env.avisado_en) return NextResponse.json({ ok: true, omitido: "ya se avisó antes" });
+
+  const correo = String(env.notificar_email || "").trim().toLowerCase();
+  if (!correo) return NextResponse.json({ ok: true, omitido: "sin correo a quien avisar" });
+
+  // Se marca ANTES de mandar: si el script reintenta, vale más que falte un
+  // aviso a que lleguen tres iguales.
+  await sb.from("edicion_envios").update({ avisado_en: new Date().toISOString() }).eq("id", envioId);
+
+  const [{ data: proy }, { count: n }, { data: pesos }] = await Promise.all([
+    sb.from("proyectos").select("titulo").eq("id", env.proyecto_id).maybeSingle(),
+    sb.from("edicion_archivos").select("id", { count: "exact", head: true }).eq("clave", env.clave).not("subido_at", "is", null),
+    sb.from("edicion_archivos").select("bytes").eq("clave", env.clave).not("subido_at", "is", null).limit(1000),
+  ]);
+
+  // El peso exacto no vale una segunda consulta paginada: es para un texto de
+  // notificación, no para una factura.
+  const mb = (pesos ?? []).reduce((a, r) => a + Number(r.bytes), 0) / 1e6;
+  const cuanto = mb > 900 ? `${(mb / 1000).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+
+  const cuerpo = env.num === 1
+    ? `Ya está en Drive lo que tienes que editar — ${n} archivos, ${cuanto}`
+    : `Se subieron los archivos que faltaban — envío ${env.num}`;
+
+  await pushAEmails(sb, [correo], {
+    titulo: "ARIDO · Edición",
+    cuerpo: conProyecto((proy?.titulo as string | null) ?? null, env.nota ? `${cuerpo}. ${env.nota}` : cuerpo),
+    // A la pestaña, no al tablero: este aviso pide una acción que vive ahí.
+    url: destinoProyectoTab(env.proyecto_id as string, "produccion"),
+  });
+
+  await registrarActividad(sb, {
+    tipo: "edicion_enviada",
+    titulo: `Se le mandó a editar el envío ${env.num} (${n} archivos)`,
+    actor: null,
+    proyecto_id: env.proyecto_id as string,
+    tarea_id: (env.tarea_id as string | null) ?? null,
+    meta: { envio: env.num, archivos: n, correo },
+  });
+
+  return NextResponse.json({ ok: true, avisado: correo });
 }
 
 /**
