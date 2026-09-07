@@ -5,6 +5,7 @@ import { ExternalLink, FileAudio, Send, Check, Loader2 } from "lucide-react";
 import type { ProyectoDetalle, RenderJobResumen, RenderInventarioItem } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
 import { MusicosProyecto } from "./MusicosProyecto";
+import { EdicionProyecto } from "./EdicionProyecto";
 
 const TIPO_LABEL: Record<string, string> = { previo: "Previo", entregables: "Entregables", stems: "Stems", musico: "Previo p/ músico" };
 const ESTADO_COLOR: Record<string, string> = {
@@ -20,7 +21,7 @@ const ESTADO_COLOR: Record<string, string> = {
  * desmarcada al lanzarlo, así que sin este botón un previo que salió sin marcar
  * se quedaría interno para siempre y habría que volver a renderizarlo.
  */
-export function ProduccionTab({ proyecto }: { proyecto: ProyectoDetalle }) {
+export function ProduccionTab({ proyecto, miId }: { proyecto: ProyectoDetalle; miId?: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const sinRenders = !proyecto.renderJobs.length && !proyecto.renderInventario.length;
@@ -52,6 +53,8 @@ export function ProduccionTab({ proyecto }: { proyecto: ProyectoDetalle }) {
       {sinRenders && (
         <p className="text-sm text-white/30">Sin renders todavía — se generan desde REAPER (reaper-sync).</p>
       )}
+
+      <EdicionProyecto proyectoId={proyecto.id} miId={miId ?? null} />
 
       <MusicosProyecto proyectoId={proyecto.id} />
 

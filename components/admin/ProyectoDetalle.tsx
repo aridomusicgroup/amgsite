@@ -166,7 +166,7 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
           {tab === "tareas" && <TareasTab proyecto={proyecto} equipo={equipo} recordatorios={recordatorios} miId={miId} musicos={musicos} />}
           {tab === "cliente" && <ClienteVentaTab proyecto={proyecto} isAdmin={isAdmin} />}
           {tab === "contrato" && <ContratoTab proyecto={proyecto} />}
-          {tab === "produccion" && <ProduccionTab proyecto={proyecto} />}
+          {tab === "produccion" && <ProduccionTab proyecto={proyecto} miId={miId} />}
           {tab === "redes" && <RedesTab proyecto={proyecto} />}
           {tab === "drive" && <DriveTab proyectoId={proyecto.id} />}
           {tab === "actividad" && <ActividadTab actividad={proyecto.actividad} isAdmin={isAdmin} />}
