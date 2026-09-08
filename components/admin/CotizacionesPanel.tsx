@@ -454,7 +454,7 @@ function CotizacionesList({ items, rastro, isAdmin, onEdit, onConvert, onConvert
       {filtered.length === 0 && <Empty label="Sin cotizaciones con ese filtro." />}
       {filtered.map((c) => {
         const est = COT_ESTADO[c.estado] ?? COT_ESTADO.borrador;
-        const r = rastro[c.id] ?? { venta: null, proyecto: null, contrato: null, acuerdo: null };
+        const r = rastro[c.id] ?? RASTRO_VACIO;
         return (
           <div key={c.id} data-destacar-id={c.id}
             className={`bg-lgb-surface border border-white/5 rounded-2xl p-3 sm:p-4 ${destacado === c.id ? "arido-destacado" : ""}`}>
@@ -1041,8 +1041,126 @@ function SaveBar({ saving, onSave, onClose }: { saving: boolean; onSave: () => v
     </div>
   );
 }
+/** Cotización sin nada ligado todavía. Fuera del render para no rearmarlo por fila. */
+const RASTRO_VACIO: RastroCot = {
+  venta: null, proyecto: null, contrato: null, proyectoId: null,
+  acuerdo: null, acuerdoFamilia: null, acuerdoLabel: null, acuerdoEmail: null,
+  acuerdoFirmadoEn: null, acuerdoRecordadoEn: null,
+};
+
+const fechaCorta = (iso: string) =>
+  new Date(iso).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+
+const haceCuanto = (iso: string) => {
+  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (d <= 0) return "hoy";
+  if (d === 1) return "ayer";
+  return `hace ${d} días`;
+};
+
+/**
+ * Qué pasa con el acuerdo de esta cotización, y cómo pedirlo otra vez.
+ *
+ * El enlace de firma sale hoy pegado al envío de la cotización, una sola vez.
+ * Si el cliente no lo abrió, no habia forma de reenviarselo sin volver a
+ * mandarle la cotización entera con su PDF, que a esas alturas ya no es lo que
+ * hace falta.
+ */
+function AcuerdoModal({ c, r, onClose }: { c: Cotizacion; r: RastroCot; onClose: () => void }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [listo, setListo] = useState<string | null>(null);
+
+  const mandar = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/cotizaciones/recordar-firma", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: c.id }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(`⚠️ ${d.error || "No se pudo mandar"}`); return; }
+      setListo(d.enviado);
+      toast(`✓ Se le mandó el enlace de firma a ${d.enviado}`);
+      router.refresh();
+    } catch {
+      toast("⚠️ No se pudo mandar");
+    } finally { setBusy(false); }
+  };
+
+  const firmado = r.acuerdo === "firmado";
+  const sinPedir = r.acuerdo === "sin_pedir";
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-lgb-dark border border-white/10" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 p-5 pb-3">
+          <div className="min-w-0">
+            <p className="font-coolvetica text-lg">Acuerdo de {c.folio}</p>
+            <p className="text-white/40 text-xs mt-0.5">{r.acuerdoLabel}</p>
+          </div>
+          <button onClick={onClose} className="text-white/40 hover:text-white cursor-pointer shrink-0"><X size={18} /></button>
+        </div>
+
+        <div className="px-5 pb-5 space-y-3">
+          {firmado ? (
+            <div className="rounded-xl border border-green-500/25 bg-green-500/[0.07] px-3.5 py-3">
+              <p className="text-sm text-green-300 flex items-center gap-1.5">
+                <Check size={14} /> Ya lo firmó{r.acuerdoFirmadoEn ? ` el ${fechaCorta(r.acuerdoFirmadoEn)}` : ""}
+              </p>
+              <p className="text-[11px] text-white/40 mt-1">{r.acuerdoEmail}</p>
+            </div>
+          ) : (
+            <>
+              <div className={`rounded-xl border px-3.5 py-3 ${sinPedir ? "border-red-500/25 bg-red-500/[0.07]" : "border-amber-500/25 bg-amber-500/[0.07]"}`}>
+                <p className={`text-sm ${sinPedir ? "text-red-300" : "text-amber-300"}`}>
+                  {sinPedir ? "Nunca se le ha mandado el enlace de firma." : "Ya tiene el enlace, pero todavía no firma."}
+                </p>
+                <p className="text-[11px] text-white/45 mt-1">
+                  {sinPedir
+                    ? "Salió sin el enlace, o el que tenía ya venció."
+                    : r.acuerdoRecordadoEn
+                      ? `Último recordatorio ${haceCuanto(r.acuerdoRecordadoEn)}.`
+                      : "Le llegó junto con la cotización; desde entonces no se le ha insistido."}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Le llega a</p>
+                <p className="text-sm text-white/75 break-all">{r.acuerdoEmail}</p>
+                <p className="text-[11px] text-white/30 mt-1.5 leading-relaxed">
+                  Sólo a esa dirección, sin copias: el enlace lleva el correo dentro y quien lo abra
+                  firma como el cliente.
+                </p>
+              </div>
+
+              {listo ? (
+                <p className="text-sm text-green-300 flex items-center gap-1.5"><Check size={14} /> Enviado a {listo}</p>
+              ) : (
+                <div className="flex gap-2 pt-1">
+                  <button onClick={mandar} disabled={busy || !r.acuerdoEmail}
+                    className="flex items-center gap-1.5 bg-lgb-red text-white px-3.5 py-2 rounded-lg text-sm hover:bg-red-700 disabled:opacity-40 cursor-pointer">
+                    {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    {sinPedir ? "Mandarle el acuerdo" : "Mandarle recordatorio"}
+                  </button>
+                  <button onClick={onClose} className="text-white/50 hover:text-white text-sm px-2 cursor-pointer">Cancelar</button>
+                </div>
+              )}
+              <p className="text-[11px] text-white/25 leading-relaxed">
+                Es el mismo correo y el mismo enlace que salió con la cotización — no se le manda
+                el PDF otra vez, ni se invalida el enlace que ya tenga abierto.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Línea de vida: el rastro desde la cotización hasta el contrato.
 function RastroLinea({ c, r, onContratos }: { c: Cotizacion; r: RastroCot; onContratos: () => void }) {
+  const [verAcuerdo, setVerAcuerdo] = useState(false);
   const steps = [
     { label: c.contacto_id ? "Contacto ✓" : "Sin contacto", on: !!c.contacto_id, href: "/admin/clientes" },
     { label: r.venta || "Venta", on: !!r.venta, href: "/admin/ventas" },
@@ -1054,12 +1172,19 @@ function RastroLinea({ c, r, onContratos }: { c: Cotizacion; r: RastroCot; onCon
   // El acuerdo solo aparece cuando el tipo de servicio tiene uno (personalizado,
   // servicio, exclusiva negociada): los "genérico" no tienen texto legal que
   // ofrecer, y mostrar un pill siempre apagado sería ruido, no información.
+  //
+  // `sin_pedir` es el caso que antes NO SE PINTABA: hay acuerdo que firmar y el
+  // cliente nunca recibió el enlace. Se veía igual que "aquí no aplica" — o sea,
+  // invisible justo cuando es lo más urgente. Va en rojo, no en ámbar: "no
+  // firma" y "ni siquiera se le pidió" no son el mismo problema.
   const acuerdo =
     r.acuerdo === "firmado"
-      ? { label: "Acuerdo firmado", cls: "bg-green-500/15 text-green-300" }
+      ? { label: "Acuerdo firmado", cls: "bg-green-500/15 text-green-300", titulo: "Ver cuándo lo firmó" }
       : r.acuerdo === "pendiente"
-        ? { label: "Falta firmar acuerdo", cls: "bg-amber-500/15 text-amber-300" }
-        : null;
+        ? { label: "Falta firmar acuerdo", cls: "bg-amber-500/15 text-amber-300", titulo: "Mandarle recordatorio para que firme" }
+        : r.acuerdo === "sin_pedir"
+          ? { label: "No se le ha pedido el acuerdo", cls: "bg-red-500/15 text-red-300", titulo: "Mandarle el enlace de firma" }
+          : null;
   return (
     <div className="flex items-center gap-1 flex-wrap mt-2.5 pt-2.5 border-t border-white/5">
       {steps.map((s, i) => {
@@ -1087,9 +1212,16 @@ function RastroLinea({ c, r, onContratos }: { c: Cotizacion; r: RastroCot; onCon
       {acuerdo && (
         <span className="flex items-center gap-1">
           <ArrowRight size={10} className="text-white/20" />
-          <span className={`text-[10px] px-2 py-0.5 rounded-full ${acuerdo.cls}`}>{acuerdo.label}</span>
+          <button
+            onClick={() => setVerAcuerdo(true)}
+            title={acuerdo.titulo}
+            className={`text-[10px] px-2 py-0.5 rounded-full hover:brightness-125 transition-[filter] cursor-pointer ${acuerdo.cls}`}
+          >
+            {acuerdo.label}
+          </button>
         </span>
       )}
+      {verAcuerdo && <AcuerdoModal c={c} r={r} onClose={() => setVerAcuerdo(false)} />}
     </div>
   );
 }

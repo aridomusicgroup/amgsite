@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { QuoteItem } from "@/lib/pdf/quote";
 import { ContractTipo } from "@/lib/pdf/contracts";
-import { familiaDeCotizacion, type Familia } from "@/lib/acuerdos/familias";
+import { familiaDeCotizacion, FAMILIA_LABEL, type Familia } from "@/lib/acuerdos/familias";
 import { ACUERDO_VERSIONES } from "@/lib/acuerdos/acuerdo-cliente";
 
 /**
@@ -144,8 +144,27 @@ export interface RastroCot {
   contrato: string | null;
   /** Id del proyecto: el rastro enlaza a su ficha, no sólo al tablero. */
   proyectoId: string | null;
-  /** null = ese tipo de servicio no tiene acuerdo (p. ej. "generico"). */
-  acuerdo: "firmado" | "pendiente" | null;
+  /**
+   * En qué va el acuerdo de esta cotización.
+   *
+   * `null` = no aplica: el tipo de servicio no tiene texto legal ("generico")
+   * o la cotización no trae correo del cliente.
+   *
+   * `sin_pedir` es un estado NUEVO y el más importante de los tres: tiene
+   * familia y correo, pero nunca se le mandó el enlace de firma. Antes caía en
+   * `null` y el panel no pintaba nada — o sea, se veía idéntico a "aquí no hay
+   * nada que hacer" justo cuando es lo contrario. Medido: 3 de 58, y una de
+   * ellas es una cotización que el cliente ya ACEPTÓ.
+   */
+  acuerdo: "firmado" | "pendiente" | "sin_pedir" | null;
+  /** La familia y el correo al que va dirigido, para el recordatorio. */
+  acuerdoFamilia: Familia | null;
+  acuerdoLabel: string | null;
+  acuerdoEmail: string | null;
+  /** Cuándo firmó, si firmó. */
+  acuerdoFirmadoEn: string | null;
+  /** Cuándo se le mandó el último recordatorio desde el panel. */
+  acuerdoRecordadoEn: string | null;
 }
 
 export async function getRastroCotizaciones(): Promise<Record<string, RastroCot>> {
@@ -157,7 +176,11 @@ export async function getRastroCotizaciones(): Promise<Record<string, RastroCot>
     sb.from("cotizaciones").select("id, tipo, cliente_email"),
   ]);
   const out: Record<string, RastroCot> = {};
-  const ensure = (id: string) => (out[id] ??= { venta: null, proyecto: null, contrato: null, proyectoId: null, acuerdo: null });
+  const ensure = (id: string) => (out[id] ??= {
+    venta: null, proyecto: null, contrato: null, proyectoId: null,
+    acuerdo: null, acuerdoFamilia: null, acuerdoLabel: null, acuerdoEmail: null,
+    acuerdoFirmadoEn: null, acuerdoRecordadoEn: null,
+  });
   for (const v of ventasRes.data ?? []) if (v.cotizacion_id) ensure(v.cotizacion_id as string).venta = (v.folio as string) ?? null;
   for (const p of proyectosRes.data ?? []) {
     if (!p.cotizacion_id) continue;
@@ -176,19 +199,39 @@ export async function getRastroCotizaciones(): Promise<Record<string, RastroCot>
 
   if (relevantes.length) {
     const emails = [...new Set(relevantes.map((c) => c.cliente_email.toLowerCase()))];
-    const [{ data: firmas }, { data: invites }] = await Promise.all([
-      sb.from("cliente_acuerdos").select("email, familia, version").in("email", emails),
-      sb.from("acuerdo_invitaciones").select("email, familia").in("email", emails).is("usado_at", null),
+    const [{ data: firmas }, { data: invites }, { data: recordatorios }] = await Promise.all([
+      // `aceptado_at`, no `created_at`: pedir la columna equivocada no deja el
+      // dato vacío, hace fallar la consulta ENTERA y todo aparece sin firmar.
+      sb.from("cliente_acuerdos").select("email, familia, version, aceptado_at").in("email", emails),
+      // Sólo cuenta un enlace VIVO. Uno vencido es lo mismo que no tener ninguno:
+      // el cliente que le pique ve "este enlace ya no sirve" y nadie se entera.
+      sb.from("acuerdo_invitaciones").select("email, familia")
+        .in("email", emails).is("usado_at", null).gt("expira_at", new Date().toISOString()),
+      sb.from("actividad").select("entidad_id, created_at")
+        .eq("tipo", "acuerdo_recordado").eq("entidad", "cotizacion")
+        .order("created_at", { ascending: false }),
     ]);
-    const firmadas = new Set(
+    const firmadas = new Map(
       (firmas ?? [])
         .filter((f) => f.version === ACUERDO_VERSIONES[f.familia as Familia])
-        .map((f) => `${String(f.email).toLowerCase()}|${f.familia}`),
+        .map((f) => [`${String(f.email).toLowerCase()}|${f.familia}`, (f.aceptado_at as string | null) ?? null]),
     );
     const invitadas = new Set((invites ?? []).map((i) => `${String(i.email).toLowerCase()}|${i.familia}`));
+    // Vienen de nuevo a viejo: el primero de cada cotización es el último aviso.
+    const ultimoAviso = new Map<string, string>();
+    for (const a of recordatorios ?? []) {
+      const k = a.entidad_id as string | null;
+      if (k && !ultimoAviso.has(k)) ultimoAviso.set(k, a.created_at as string);
+    }
     for (const c of relevantes) {
       const key = `${c.cliente_email.toLowerCase()}|${c.familia}`;
-      ensure(c.id).acuerdo = firmadas.has(key) ? "firmado" : invitadas.has(key) ? "pendiente" : null;
+      const e = ensure(c.id);
+      e.acuerdoFamilia = c.familia;
+      e.acuerdoLabel = FAMILIA_LABEL[c.familia];
+      e.acuerdoEmail = c.cliente_email;
+      e.acuerdoFirmadoEn = firmadas.get(key) ?? null;
+      e.acuerdoRecordadoEn = ultimoAviso.get(c.id) ?? null;
+      e.acuerdo = firmadas.has(key) ? "firmado" : invitadas.has(key) ? "pendiente" : "sin_pedir";
     }
   }
 
