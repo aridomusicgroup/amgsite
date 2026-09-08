@@ -55,6 +55,15 @@ export interface Contacto {
   saldo: number;
   /** Días de la deuda más VIEJA. Para cobrar, la antigüedad pesa más que el monto. */
   saldoDias: number;
+  /**
+   * No escribirle por ningún canal automático.
+   *
+   * Lo único que hace segura cualquier automatización, y hasta ahora no
+   * existía: sin esto le seguiríamos mandando correos a quien ya nos bloqueó
+   * en WhatsApp e Instagram. Excluye de cobranza, de recompra y del
+   * recordatorio diario.
+   */
+  noContactar: boolean;
 }
 
 export const ETAPAS = ["lead", "negociacion", "cliente", "recurrente", "perdido", "inactivo"] as const;
@@ -71,11 +80,18 @@ export const ETAPA_LABEL: Record<string, string> = {
 export async function getContactos(): Promise<Contacto[]> {
   const sb = supabaseAdmin();
   const [activosRes, fusionadosRes, ventasRes, proyRes, pagosRes] = await Promise.all([
-    sb.from("contactos")
-      .select("id, nombre, telefono, email, direccion, etapa, origen, servicio_interes, motivo_perdida, ltv, created_at, proxima_accion, proxima_fecha")
-      .is("merged_into", null)
-      .order("ltv", { ascending: false })
-      .limit(2000),
+    // `no_contactar` es columna nueva. PostgREST falla la consulta ENTERA ante
+    // una columna inexistente, así que sin este reintento la pantalla de
+    // Clientes se quedaría EN BLANCO —no sin ese dato, en blanco— desde el
+    // despliegue hasta que alguien corra supabase-cobranza.sql.
+    (async () => {
+      const COLS = "id, nombre, telefono, email, direccion, etapa, origen, servicio_interes, motivo_perdida, ltv, created_at, proxima_accion, proxima_fecha";
+      const conMarca = await sb.from("contactos").select(`${COLS}, no_contactar`)
+        .is("merged_into", null).order("ltv", { ascending: false }).limit(2000);
+      if (!conMarca.error) return conMarca;
+      return sb.from("contactos").select(COLS)
+        .is("merged_into", null).order("ltv", { ascending: false }).limit(2000);
+    })(),
     sb.from("contactos").select("nombre, merged_into").not("merged_into", "is", null),
     sb.from("ventas").select("id, contacto_id, fecha, beat_nombre, tipo, total_mxn").not("contacto_id", "is", null),
     sb.from("proyectos").select("contacto_id, estado").not("contacto_id", "is", null),
@@ -151,6 +167,7 @@ export async function getContactos(): Promise<Contacto[]> {
     proyectosAbiertos: abiertosBy.get(c.id as string) ?? 0,
     proximaAccion: (c.proxima_accion as string | null) ?? null,
     proximaFecha: (c.proxima_fecha as string | null) ?? null,
+    noContactar: (c as Record<string, unknown>).no_contactar === true,
     saldo: saldoBy.get(c.id as string) ?? 0,
     saldoDias: (() => {
       const f = saldoDesdeBy.get(c.id as string);

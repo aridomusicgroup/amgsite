@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { deudores } from "@/lib/cobranza";
 import { pushAResponsables } from "@/lib/push";
 import { adminEmails, crmEmails } from "@/lib/supabase/auth-server";
 
@@ -32,14 +33,19 @@ export async function GET(req: NextRequest) {
   desde.setDate(desde.getDate() - DIAS_VENTANA);
   const limite = desde.toISOString().slice(0, 10);
 
-  const { data: todos, error } = await sb
-    .from("contactos")
+  // A quien pidió que no le escribamos tampoco se le persigue por dentro: si
+  // no le vamos a hablar, recordarlo cada mañana sólo engorda el aviso.
+  // Reintento sin la columna porque es nueva (supabase-cobranza.sql): sin esto
+  // el aviso diario se caería entero hasta que corra el SQL.
+  const base = () => sb.from("contactos")
     .select("id, nombre, proxima_accion, proxima_fecha")
     .is("merged_into", null)
     .not("proxima_fecha", "is", null)
     .lte("proxima_fecha", hoy)
     .order("proxima_fecha", { ascending: true })
     .limit(200);
+  const conMarca = await base().eq("no_contactar", false);
+  const { data: todos, error } = conMarca.error ? await base() : conMarca;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -60,12 +66,12 @@ export async function GET(req: NextRequest) {
 
   // El primero da contexto concreto; el resto va como conteo.
   const primero = pend[0];
-  const base = primero.nombre
+  const linea = primero.nombre
     ? `${primero.nombre}: ${primero.proxima_accion ?? "dar seguimiento"}`
     : (primero.proxima_accion ?? "dar seguimiento");
   // Los viejos se mencionan aunque no se persigan: esconderlos sin decirlo haría
   // creer que la lista está limpia.
-  const ejemplo = viejos > 0 ? `${base} · (+${viejos} sin tocar hace rato)` : base;
+  const ejemplo = viejos > 0 ? `${linea} · (+${viejos} sin tocar hace rato)` : linea;
 
   // Sin dueño por contacto: avisa a quien trabaja el CRM (admin + crm).
   const correos = [...new Set([...adminEmails(), ...crmEmails()].map((e) => e.toLowerCase()))];
@@ -81,9 +87,17 @@ export async function GET(req: NextRequest) {
       ? `https://admin.aridomusicgroup.com/admin/clientes?destacar=${primero.id}`
       : "https://admin.aridomusicgroup.com/admin/clientes?foco=toca";
 
+  // Cuántos saldos ya se pueden recordar. Va en el MISMO push y no en otro:
+  // dos avisos a la misma hora se leen como uno y medio.
+  let cola = 0;
+  try {
+    cola = (await deudores(sb)).filter((d) => d.listo).length;
+  } catch { /* la cola es información de más; el aviso sale igual */ }
+
   await pushAResponsables(sb, ids, {
     titulo: `📞 Seguimientos: ${partes.join(" · ")}`,
-    cuerpo: ejemplo,
+    cuerpo: cola > 0 ? `${ejemplo}
+💵 ${cola} saldo(s) listos para recordatorio` : ejemplo,
     url,
   });
 

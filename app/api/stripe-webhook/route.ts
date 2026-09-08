@@ -15,7 +15,7 @@ import { cleanTitle } from "@/lib/beatstars";
 import { generateExclusiveContract } from "@/lib/contract";
 import { generateLicenseCertificate } from "@/lib/license";
 import { getBeatMeta } from "@/lib/beat-drive";
-import { registrarPagoDeContado } from "@/lib/fidelidad-server";
+import { registrarPagoDeContado, sincronizarFidelidadVenta } from "@/lib/fidelidad-server";
 import { adminEmails, crmEmails } from "@/lib/supabase/auth-server";
 import { pushAEmails } from "@/lib/push";
 import { tramosConEstado, siguientePendiente } from "@/lib/cotizacion-pagos";
@@ -67,6 +67,13 @@ export async function POST(req: NextRequest) {
   // sola, desde el primer tramo que llegue (ver handleCotizacionPago).
   if (session.metadata?.tipo === "cotizacion_pago") {
     return handleCotizacionPago(stripe, session);
+  }
+
+  // ── Pago del SALDO de una venta que ya existe (cobranza) ──
+  // Distinto del de arriba: aquí no hay tramos ni venta que crear, sólo un
+  // pago más sobre una venta viva. Ver /api/admin/ventas/[id]/link-saldo.
+  if (session.metadata?.tipo === "saldo_venta") {
+    return handleSaldoVenta(stripe, session);
   }
 
   // Conceptos del pedido
@@ -436,6 +443,98 @@ export async function POST(req: NextRequest) {
  * `stripe_session_id` (Stripe reintenta el webhook) — si ya está registrado,
  * no vuelve a insertar ni a mandar el push.
  */
+/**
+ * Registra el pago del saldo de una venta.
+ *
+ * Un solo renglón en `pagos`. No crea venta ni proyecto: los dos ya existen —
+ * este link se genera desde una venta viva con saldo.
+ *
+ * **Idempotente por `stripe_session_id`**, que es lo único que evita acreditar
+ * dos veces cuando Stripe reintenta el webhook (lo hace, y con dinero de un
+ * cliente eso no se arregla con un "ups"). Si la columna todavía no existe
+ * —`supabase-pagos-stripe.sql` sin correr— se responde 200 sin escribir, en vez
+ * de insertar un pago que después no se puede deduplicar.
+ */
+async function handleSaldoVenta(stripe: Stripe, session: Stripe.Checkout.Session): Promise<NextResponse> {
+  const sbUrl = process.env.SUPABASE_URL;
+  const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const ventaId = session.metadata?.venta_id;
+  if (!sbUrl || !sbKey || !ventaId) return NextResponse.json({ received: true });
+
+  try {
+    const sb = createClient(sbUrl, sbKey);
+
+    const { data: yaRegistrado, error: errBusca } = await sb
+      .from("pagos")
+      .select("id")
+      .eq("stripe_session_id", session.id)
+      .maybeSingle();
+    if (errBusca) {
+      // Falta la columna: mejor no cobrar que cobrar sin poder deduplicar.
+      console.error("saldo_venta: falta pagos.stripe_session_id — corre supabase-pagos-stripe.sql", errBusca.message);
+      return NextResponse.json({ received: true, omitido: "sin columna de idempotencia" });
+    }
+    if (yaRegistrado) return NextResponse.json({ received: true });
+
+    const monto = (session.amount_total ?? 0) / 100;
+    if (!(monto > 0)) return NextResponse.json({ received: true });
+
+    const { data: venta } = await sb.from("ventas").select("folio, total_mxn, beat_nombre").eq("id", ventaId).single();
+    const { data: prev } = await sb.from("pagos").select("monto_mxn").eq("venta_id", ventaId);
+    const cobradoPrev = (prev ?? []).reduce((a: number, p: { monto_mxn: number }) => a + (Number(p.monto_mxn) || 0), 0);
+    const total = Number(venta?.total_mxn) || 0;
+    const saldoAntes = Math.max(0, total - cobradoPrev);
+    // Mismo criterio de etiqueta que /api/admin/pagos y registrarTramoPagado.
+    const tipo = monto >= saldoAntes - 0.5 ? "finiquito" : "abono";
+
+    const comisionMxn = await comisionStripeMxn(
+      stripe,
+      typeof session.payment_intent === "string" ? session.payment_intent : null,
+      18,
+    );
+
+    const campos = {
+      venta_id: ventaId,
+      fecha: new Date().toISOString().slice(0, 10),
+      monto_mxn: monto,
+      tipo,
+      medio_pago: "Stripe",
+      notas: "Saldo pagado por link de Stripe",
+      stripe_session_id: session.id,
+      comision_stripe_mxn: comisionMxn,
+    };
+    const { error } = await sb.from("pagos").insert(campos);
+    if (error) {
+      // Falta la columna de comisión (su SQL sin correr): reintenta sin ella,
+      // pero NUNCA sin `stripe_session_id` — ahí se pierde la idempotencia.
+      const { comision_stripe_mxn: _omit, ...sinComision } = campos;
+      const { error: e2 } = await sb.from("pagos").insert(sinComision);
+      if (e2) {
+        console.error("saldo_venta: no se pudo registrar el pago:", e2.message);
+        return NextResponse.json({ received: true, omitido: e2.message });
+      }
+    }
+
+    await registrarComisionStripeEgreso(
+      sb, ventaId, (venta?.folio as string) ?? "", new Date().toISOString().slice(0, 10), comisionMxn, "Saldo",
+    );
+    await sincronizarFidelidadVenta(sb, ventaId);
+
+    const saldoDespues = Math.max(0, saldoAntes - monto);
+    const peso = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
+    await pushAEmails(sb, [...new Set([...adminEmails(), ...crmEmails()])], {
+      titulo: saldoDespues <= 0.5 ? "💵 Saldo liquidado" : "💵 Abono al saldo",
+      cuerpo: `${venta?.folio ?? "Una venta"} · ${peso(monto)} por Stripe${saldoDespues > 0.5 ? ` · falta ${peso(saldoDespues)}` : " — queda en cero"}`,
+      url: "/admin/ventas",
+    });
+
+    return NextResponse.json({ received: true, saldo: saldoDespues });
+  } catch (e) {
+    console.error("saldo_venta webhook failed:", e);
+    return NextResponse.json({ received: true });
+  }
+}
+
 async function handleCotizacionPago(stripe: Stripe, session: Stripe.Checkout.Session): Promise<NextResponse> {
   const sbUrl = process.env.SUPABASE_URL;
   const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

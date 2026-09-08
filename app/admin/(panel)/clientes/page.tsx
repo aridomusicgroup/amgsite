@@ -4,6 +4,7 @@ import { candidatosRecompra } from "@/lib/recompra";
 import { CrmList } from "@/components/admin/CrmList";
 import { SeguimientosSugeridos } from "@/components/admin/SeguimientosSugeridos";
 import { CarteraPanel } from "@/components/admin/CarteraPanel";
+import { CobranzaPanel } from "@/components/admin/CobranzaPanel";
 import { RecompraPanel } from "@/components/admin/RecompraPanel";
 import { ActividadFeed } from "@/components/admin/ActividadFeed";
 
@@ -74,6 +75,7 @@ export default async function ClientesPage({
       </div>
 
       <CarteraPanel contactos={contactos} />
+      <CobranzaPanel />
       <RecompraPanel candidatos={recompra} abiertoInicial={foco === "recompra"} />
       <SeguimientosSugeridos />
       <CrmList

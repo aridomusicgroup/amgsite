@@ -124,6 +124,13 @@ export function candidatosRecompra(
     if (c.proyectosAbiertos > 0) continue;
     if (c.proximaAccion || c.proximaFecha) continue;
     if (ETAPAS_FUERA.includes(c.etapa)) continue;
+    // Ya nos bloqueó o pidió que no le escribiéramos.
+    if (c.noContactar) continue;
+    // Debe dinero. Ofrecerle comprar más a quien no ha pagado lo anterior es
+    // peor que no ofrecerle nada: le dice que el saldo no nos importa.
+    // (Antes quedaba fuera por accidente, porque el seguimiento de cobranza
+    // cuenta como `proximaAccion`; aquí queda explícito.)
+    if (c.saldo > 0.5) continue;
 
     const dias = diasDesde(c.ultimaCompra, hoy);
     if (dias < DIAS_MIN || dias > DIAS_MAX) continue;

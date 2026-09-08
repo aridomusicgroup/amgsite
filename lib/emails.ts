@@ -812,3 +812,179 @@ export function internalOrderEmail(d: {
     html: wrap(content),
   };
 }
+
+// ─── Cobranza: la escalera de tres toques ────────────────────────────────────
+//
+// Los tres correos de abajo NO son tres versiones de "págame". Cada uno tiene
+// un trabajo distinto, y eso es lo que separa una escalera de un acoso: tres
+// recordatorios iguales sólo enseñan al cliente a ignorarnos.
+//
+//   1. Recordatorio  — da por hecho que se le pasó. Aquí paga la mayoría.
+//   2. Acomodo       — convierte al que NO PUEDE pagar y por eso te evita.
+//   3. Cierre        — para el que dejó de contestar. No pide dinero.
+//
+// Restricción de diseño: **ninguno lleva BOTÓN a WhatsApp**. Estos correos son
+// para quien dejó de responder y, en algunos casos, hasta nos bloqueó — el
+// correo es el único canal que queda, y empujarlo a uno donde nos bloqueó es
+// decirle que no estamos poniendo atención. (El pie de `wrap` sí trae el
+// enlace de siempre, igual que en los otros 18 correos.)
+
+interface DatosSaldo {
+  nombre: string | null;
+  /** Qué compró: el nombre del beat o el tipo de servicio. */
+  concepto: string;
+  folio: string;
+  total: number;
+  cobrado: number;
+  saldo: number;
+  /** Link de Stripe por el saldo exacto. Sin él, el correo va sin botón de pago. */
+  urlPago: string | null;
+  /** Su panel, cuando la venta tiene pedido ligado. */
+  urlPanel: string | null;
+}
+
+const pesoMx = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
+
+/**
+ * El recuadro de tres renglones: total, pagado, falta.
+ *
+ * La razón número uno por la que no pagan no es mala fe, es que no se acuerdan
+ * de los números. Ponerlos a la vista, sin que tenga que ir a buscar la
+ * cotización, resuelve más que cualquier insistencia.
+ */
+const cuentaHtml = (d: DatosSaldo) => `
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#141414;border:1px solid #222;border-radius:14px;margin-bottom:18px;">
+    <tr><td style="padding:14px 16px 6px;">
+      <p style="color:#c42f42;font-size:11px;font-weight:bold;letter-spacing:2px;margin:0 0 10px;">${escHtml(d.folio)} · ${escHtml(d.concepto)}</p>
+    </td></tr>
+    <tr><td style="padding:0 16px 4px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="color:#888;font-size:13px;padding:3px 0;">Total</td>
+          <td align="right" style="color:#ccc;font-size:13px;padding:3px 0;">${pesoMx(d.total)}</td>
+        </tr>
+        <tr>
+          <td style="color:#888;font-size:13px;padding:3px 0;">Ya pagaste</td>
+          <td align="right" style="color:#7ddba0;font-size:13px;padding:3px 0;">${pesoMx(d.cobrado)}</td>
+        </tr>
+        <tr>
+          <td style="color:#fff;font-size:15px;font-weight:bold;padding:9px 0 14px;border-top:1px solid #222;">Falta</td>
+          <td align="right" style="color:#fff;font-size:19px;font-weight:bold;padding:9px 0 14px;border-top:1px solid #222;">${pesoMx(d.saldo)}</td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>`;
+
+const botonSaldo = (url: string, texto: string) => `
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:2px 0 4px;">
+    <a href="${url}" style="display:inline-block;background:#c42f42;color:#fff;font-size:15px;font-weight:bold;text-decoration:none;padding:13px 30px;border-radius:10px;">${escHtml(texto)}</a>
+  </td></tr></table>`;
+
+/**
+ * Toque 1, a los ~7 días. Da por hecho que se le pasó.
+ *
+ * Tono administrativo y tibio: ni disculpa ni presión. Sin emoji de alarma en
+ * el asunto y sin la palabra "urgente" — a esta altura lo más probable es que
+ * simplemente se le olvidó, y tratarlo como moroso desde el primer correo es
+ * la forma más rápida de perder a un cliente recurrente. De los 10 que deben
+ * hoy, 6 lo son.
+ */
+export function saldoRecordatorioEmail(d: DatosSaldo): { subject: string; html: string } {
+  const content = `
+    <tr><td>
+      <h1 style="color:#fff;font-size:23px;margin:0 0 6px;">Quedó pendiente un saldo</h1>
+      <p style="color:#999;font-size:14px;line-height:1.6;margin:0 0 18px;">
+        ${d.nombre ? `${escHtml(d.nombre)}, nos` : "Nos"} quedó pendiente el saldo de
+        <b style="color:#fff;">${escHtml(d.concepto)}</b>. Te dejamos la cuenta a la mano.
+      </p>
+      ${cuentaHtml(d)}
+      ${d.urlPago ? botonSaldo(d.urlPago, `Pagar ${pesoMx(d.saldo)}`) : ""}
+      <p style="color:#777;font-size:12px;margin:16px 0 0;line-height:1.6;">
+        ¿Prefieres transferencia u otro método? Respóndenos este correo y te pasamos los datos.
+        ${d.urlPanel ? `<br />También puedes ver tu proyecto en <a href="${d.urlPanel}" style="color:#c42f42;text-decoration:none;">tu cuenta</a>.` : ""}
+      </p>
+    </td></tr>`;
+  return {
+    subject: `Quedó pendiente el saldo de ${d.concepto}`,
+    html: wrap(content, `Faltan ${pesoMx(d.saldo)} de ${d.folio}.`),
+  };
+}
+
+/**
+ * Toque 2, a los ~21 días. **Abre con la oferta, no con la deuda.**
+ *
+ * Es el correo que casi nadie manda y el que de verdad cobra. A las tres
+ * semanas, quien no ha pagado normalmente no está ignorándote por gusto: no
+ * puede, y te evita justamente por eso. Ofrecerle partirlo o moverlo le quita
+ * la vergüenza de contestar, que es lo que tiene atorado el pago.
+ *
+ * Dice qué está detenido, y lo dice como HECHO, no como amenaza: ya está en el
+ * acuerdo que firmó. La diferencia está en el verbo — "queda pendiente de
+ * entrega", no "no te lo vamos a dar".
+ */
+export function saldoAcomodoEmail(d: DatosSaldo): { subject: string; html: string } {
+  const content = `
+    <tr><td>
+      <h1 style="color:#fff;font-size:23px;margin:0 0 6px;">¿Vemos cómo cerrarlo?</h1>
+      <p style="color:#ddd;font-size:14px;line-height:1.6;margin:0 0 16px;">
+        ${d.nombre ? `${escHtml(d.nombre)}, si` : "Si"} algo cambió de tu lado, dinos y lo acomodamos:
+        lo partimos en pagos, lo movemos de fecha o cambiamos el método.
+        <b style="color:#fff;">Preferimos ajustar el plan que dejarlo colgado.</b>
+      </p>
+      ${cuentaHtml(d)}
+      ${d.urlPago ? botonSaldo(d.urlPago, `Pagar ${pesoMx(d.saldo)}`) : ""}
+      <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:10px 0 4px;">
+        <a href="mailto:${SOCIALS.email}?subject=Saldo%20de%20${encodeURIComponent(d.folio)}" style="display:inline-block;border:1px solid #333;color:#ccc;font-size:14px;text-decoration:none;padding:11px 26px;border-radius:10px;">Escríbenos y lo acomodamos</a>
+      </td></tr></table>
+      <p style="color:#777;font-size:12px;margin:18px 0 0;line-height:1.6;">
+        Mientras quede saldo, la entrega final de <b style="color:#999;">${escHtml(d.concepto)}</b>
+        queda pendiente — es lo que acordamos desde el principio. Todo tu material está guardado
+        y no se pierde nada.
+      </p>
+    </td></tr>`;
+  return {
+    subject: `¿Vemos cómo cerrar el saldo de ${d.concepto}?`,
+    html: wrap(content, "Si algo cambió, lo acomodamos."),
+  };
+}
+
+/**
+ * Toque 3, a los ~45 días. **Este correo NO pide dinero.**
+ *
+ * Es para quien dejó de contestar, y a veces para quien ya nos bloqueó en todo
+ * lo demás. Nada de "lamentablemente", nada de fecha límite, nada de culpa:
+ * sólo qué pasa ahora y una puerta abierta.
+ *
+ * La frase "éste es el último correo que te mandamos por esto" es la que hace
+ * el trabajo. Suena a cierre y es lo contrario: cierra el circuito abierto en
+ * vez de apretarlo, y por eso es el toque que más respuestas saca. También es
+ * lo honesto — después de este correo el sistema deja de escribirle de verdad,
+ * porque al mandarlo se prende `no_contactar`.
+ */
+export function saldoCierreEmail(d: DatosSaldo): { subject: string; html: string } {
+  const content = `
+    <tr><td>
+      <h1 style="color:#fff;font-size:23px;margin:0 0 6px;">Cerramos ${escHtml(d.folio)} por ahora</h1>
+      <p style="color:#ddd;font-size:14px;line-height:1.6;margin:0 0 14px;">
+        ${d.nombre ? `${escHtml(d.nombre)}, archivamos` : "Archivamos"}
+        <b style="color:#fff;">${escHtml(d.concepto)}</b> por lo pronto. Tu material se queda
+        guardado con nosotros y no se borra.
+      </p>
+      <p style="color:#999;font-size:14px;line-height:1.6;margin:0 0 18px;">
+        Si más adelante quieres retomarlo, contéstanos y lo reactivamos desde donde se quedó
+        — sin volver a empezar.
+      </p>
+      ${d.urlPago ? `
+      <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:2px 0 6px;">
+        <a href="${d.urlPago}" style="display:inline-block;border:1px solid #333;color:#bbb;font-size:14px;text-decoration:none;padding:11px 26px;border-radius:10px;">Retomarlo (${pesoMx(d.saldo)})</a>
+      </td></tr></table>` : ""}
+      <p style="color:#666;font-size:12px;margin:18px 0 0;line-height:1.6;">
+        Éste es el último correo que te mandamos por esto. Gracias por haber trabajado con
+        nosotros 🌵
+      </p>
+    </td></tr>`;
+  return {
+    subject: `Cerramos ${d.folio} por ahora`,
+    html: wrap(content, "Tu material queda guardado. Sin más correos por esto."),
+  };
+}
