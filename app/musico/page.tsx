@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Image from "next/image";
-import { Music2, CalendarClock, ExternalLink, LogOut, Check } from "lucide-react";
+import { Music2, CalendarClock, ExternalLink, LogOut, Check, ChevronDown } from "lucide-react";
 import { getMusicoId } from "@/lib/musico-auth";
 import { getMusico, asignacionesDeMusico, type AsignacionMusico } from "@/lib/musico-data";
 import { SubirParte } from "@/components/musico/SubirParte";
@@ -17,6 +17,15 @@ export const dynamic = "force-dynamic";
 const fecha = (s: string) =>
   new Date(s + "T12:00:00").toLocaleDateString("es-MX", { day: "2-digit", month: "long" });
 
+/**
+ * Cuántas pistas se le piden. Con un instrumento de dos canales —Martín manda
+ * primera y segunda charcheta— una sola pista todavía no es "entregado".
+ */
+const piden = (a: AsignacionMusico) => Math.max(1, a.canales.length);
+const subidas = (a: AsignacionMusico) =>
+  new Set(a.archivos.filter((x) => x.clase === "stem").map((x) => x.slot)).size;
+const entregada = (a: AsignacionMusico) => subidas(a) >= piden(a);
+
 export default async function MusicoPage() {
   const id = await getMusicoId();
   if (!id) redirect("/musico/enlace");
@@ -31,10 +40,12 @@ export default async function MusicoPage() {
   // `estado`, que solo avanza a "aceptado" cuando alguien del estudio lo marca:
   // con eso, una grabación ya entregada seguía contándose como pendiente y el
   // encabezado contradecía a la tarjeta, que ya decía "Entregado".
-  const pendientes = asignaciones.filter((a) => {
-    const slots = new Set(a.archivos.filter((x) => x.clase === "stem").map((x) => x.slot));
-    return slots.size < Math.max(1, a.canales.length);
-  });
+  const pendientes = asignaciones.filter((a) => !entregada(a));
+  // Lo ya entregado NO se borra —puede necesitar resubir algo— pero tampoco
+  // compite por la atención: una canción sigue apareciendo aquí hasta que el
+  // proyecto se cierra, que puede ser semanas después de que él terminó. Con
+  // las dos juntas, la de arriba parecía la única y lo nuevo pasaba por viejo.
+  const entregadas = asignaciones.filter(entregada);
 
   return (
     <main className="min-h-screen bg-lgb-black text-white">
@@ -68,7 +79,26 @@ export default async function MusicoPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {asignaciones.map((a) => <Tarjeta key={a.id} a={a} />)}
+            {pendientes.map((a) => <Tarjeta key={a.id} a={a} />)}
+
+            {entregadas.length > 0 && (
+              // <details> y no un botón: esto es una página de servidor y no
+              // vale traerse React al navegador para plegar una lista.
+              <details className="rounded-2xl border border-white/8 bg-white/[0.02] group">
+                <summary className="flex items-center gap-2 px-5 py-3.5 cursor-pointer text-sm text-white/45 hover:text-white/70 transition-colors list-none [&::-webkit-details-marker]:hidden">
+                  <Check size={14} className="text-green-400/60 shrink-0" />
+                  <span className="flex-1">
+                    {entregadas.length === 1
+                      ? "1 grabación que ya entregaste"
+                      : `${entregadas.length} grabaciones que ya entregaste`}
+                  </span>
+                  <ChevronDown size={15} className="shrink-0 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="px-2.5 pb-2.5 space-y-3">
+                  {entregadas.map((a) => <Tarjeta key={a.id} a={a} />)}
+                </div>
+              </details>
+            )}
           </div>
         )}
 
@@ -82,10 +112,9 @@ export default async function MusicoPage() {
 
 function Tarjeta({ a }: { a: AsignacionMusico }) {
   const vencida = a.fechaLimite && !a.hecha && a.fechaLimite < new Date().toISOString().slice(0, 10);
-  // Con dos canales, una sola pista todavía no es "entregado".
-  const slots = new Set(a.archivos.filter((x) => x.clase === "stem").map((x) => x.slot));
-  const piden = Math.max(1, a.canales.length);
-  const completo = slots.size >= piden;
+  const hechas = subidas(a);
+  const total = piden(a);
+  const completo = hechas >= total;
 
   return (
     <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
@@ -94,13 +123,13 @@ function Tarjeta({ a }: { a: AsignacionMusico }) {
           <p className="font-coolvetica text-lg truncate">{a.cancion}</p>
           <p className="text-lgb-red text-sm mt-0.5">{a.instrumento}</p>
         </div>
-        {slots.size > 0 && (
+        {hechas > 0 && (
           <span className={`flex items-center gap-1 text-[11px] rounded-full px-2.5 py-1 shrink-0 border ${
             completo
               ? "text-green-300 bg-green-500/10 border-green-500/25"
               : "text-amber-300 bg-amber-500/10 border-amber-500/25"
           }`}>
-            <Check size={11} /> {completo ? "Entregado" : `${slots.size} de ${piden}`}
+            <Check size={11} /> {completo ? "Entregado" : `${hechas} de ${total}`}
           </span>
         )}
       </div>

@@ -5,6 +5,7 @@ import { ExternalLink, FileAudio, Send, Check, Loader2 } from "lucide-react";
 import type { ProyectoDetalle, RenderJobResumen, RenderInventarioItem } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
 import { MusicosProyecto } from "./MusicosProyecto";
+import { PortalMusicos } from "./PortalMusicos";
 import { EdicionProyecto } from "./EdicionProyecto";
 
 const TIPO_LABEL: Record<string, string> = { previo: "Previo", entregables: "Entregables", stems: "Stems", musico: "Previo p/ músico" };
@@ -55,6 +56,8 @@ export function ProduccionTab({ proyecto, miId }: { proyecto: ProyectoDetalle; m
       )}
 
       <EdicionProyecto proyectoId={proyecto.id} miId={miId ?? null} />
+
+      <PortalMusicos proyectoId={proyecto.id} />
 
       <MusicosProyecto proyectoId={proyecto.id} />
 

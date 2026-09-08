@@ -49,6 +49,21 @@ function leerOpciones(raw: unknown): { ok: true; op: OpcionesRender | null } | {
   if (b.bpm !== undefined && b.bpm !== null && b.bpm !== "") op.bpm = Number(b.bpm);
   if (b.tonalidad) op.tonalidad = String(b.tonalidad).trim();
 
+  // Estos dos NO son opciones del render: no cambian ni un byte del mp3. Van
+  // aquí porque el cuadro los manda en el mismo cuerpo, y omitirlos de esta
+  // lista blanca es exactamente lo que los tuvo muertos: la casilla salía
+  // palomeada, el navegador la mandaba y el servidor la tiraba, así que
+  // `asignarEnPortal()` nunca corrió y el músico recibía el correo con el
+  // previo y encontraba su portal vacío.
+  if (b.asignar !== undefined) op.asignar = b.asignar === true;
+  if (b.instrumento !== undefined && b.instrumento !== null) {
+    const inst = String(b.instrumento).trim();
+    // Se guarda tal cual en la asignación y se le muestra al músico; el largo
+    // es el mismo del campo del formulario.
+    if (inst.length > 40) return { ok: false, error: "El instrumento es demasiado largo." };
+    if (inst) op.instrumento = inst;
+  }
+
   if (b.pistas !== undefined && b.pistas !== null) {
     if (!Array.isArray(b.pistas)) return { ok: false, error: "La lista de pistas no es válida." };
     const pistas = b.pistas.map((p) => String(p).trim()).filter(Boolean);
@@ -102,7 +117,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Dile qué va a grabar, o desmarca lo del portal." }, { status: 400 });
       }
     }
-  } else if (op.op?.musicoId || op.op?.bpm || op.op?.tonalidad) {
+  } else if (op.op?.musicoId || op.op?.bpm || op.op?.tonalidad || op.op?.asignar || op.op?.instrumento) {
     return NextResponse.json({ error: "Músico, BPM y tonalidad sólo aplican al previo de músico." }, { status: 400 });
   }
   // Elegir pistas sólo tiene sentido en stems; en otro tipo sería una elección

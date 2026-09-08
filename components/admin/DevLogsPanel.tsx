@@ -58,7 +58,15 @@ export function DevLogsPanel({ logs, proyectos, musicos }: { logs: LogRow[]; pro
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Error");
-      toast("✓ En cola — REAPER lo toma en menos de 2 min");
+      // Se dice si quedó o no en su portal. Que esto pase callado fue lo que
+      // dejó a Martín con el correo del previo y el portal vacío durante días.
+      if (opciones.asignar && !d.asignado) {
+        toast("⚠️ El render quedó en cola, pero NO se le pudo dejar en su portal. Asígnaselo desde la tarea.");
+      } else if (d.asignado) {
+        toast("✓ En cola, y ya lo tiene en su portal");
+      } else {
+        toast("✓ En cola — REAPER lo toma en menos de 2 min");
+      }
       setAbierto(null);
       router.refresh();
     } catch (e) {

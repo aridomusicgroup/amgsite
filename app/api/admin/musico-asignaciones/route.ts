@@ -32,7 +32,86 @@ export async function GET(req: NextRequest) {
     .eq("proyecto_id", proyectoId)
     .order("creado_at", { ascending: true });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ asignaciones: data ?? [] });
+
+  return NextResponse.json({
+    asignaciones: data ?? [],
+    huerfanos: await previosSinPortal(proyectoId, (data ?? []).map((a) => a.musico_id as string)),
+  });
+}
+
+/**
+ * A quién se le mandó un previo de este proyecto y NO lo tiene en su portal.
+ *
+ * Es la pregunta que nadie podía contestar sin entrar a la base: mandar el
+ * previo escribe en `render_jobs` y el portal lee `musico_asignaciones`, así
+ * que las dos cosas se pueden desincronizar sin que nada se vea roto. El músico
+ * recibe su correo, entra, y encuentra el portal vacío o con lo del proyecto
+ * anterior — que es exactamente lo que le pasó a Martín con 4-6 A 9.
+ *
+ * Devuelve también qué instrumento proponerle, para que arreglarlo sea un clic
+ * y no un formulario.
+ */
+async function previosSinPortal(proyectoId: string, yaAsignados: string[]) {
+  try {
+    const sb = supabaseAdmin();
+    const { data: jobs } = await sb
+      .from("render_jobs")
+      .select("musico_id, tarea_id, opciones, created_at")
+      .eq("proyecto_id", proyectoId)
+      .eq("tipo", "musico")
+      .not("musico_id", "is", null)
+      .order("created_at", { ascending: false });
+
+    // Un músico puede tener varios previos del mismo proyecto (se re-renderiza
+    // con otro BPM, se corrige la tonalidad): interesa el más reciente.
+    const faltantes = new Map<string, { tareaId: string | null; instrumento: string; enviadoAt: string }>();
+    for (const j of jobs ?? []) {
+      const id = j.musico_id as string;
+      if (yaAsignados.includes(id) || faltantes.has(id)) continue;
+      const op = (j.opciones ?? {}) as Record<string, unknown>;
+      faltantes.set(id, {
+        tareaId: (j.tarea_id as string | null) ?? null,
+        instrumento: String(op.instrumento ?? "").trim(),
+        enviadoAt: j.created_at as string,
+      });
+    }
+    if (!faltantes.size) return [];
+
+    const ids = [...faltantes.keys()];
+    const [{ data: musicos }, { data: tareas }] = await Promise.all([
+      sb.from("musicos").select("id, nombre, email, instrumentos, activo, portal_activo").in("id", ids),
+      sb.from("proyecto_tareas").select("id, titulo").eq("proyecto_id", proyectoId),
+    ]);
+
+    // "Grabar Charchetas" → "Charchetas". Es de donde sale la sugerencia buena:
+    // cruza lo que el proyecto pide con lo que ese músico toca.
+    const norm = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
+    const pedidas = (tareas ?? [])
+      .filter((t) => /^grabar\s+/i.test(String(t.titulo)))
+      .map((t) => ({ id: t.id as string, inst: String(t.titulo).replace(/^grabar\s+/i, "").trim() }))
+      .filter((t) => t.inst);
+
+    return (musicos ?? []).map((m) => {
+      const f = faltantes.get(m.id as string)!;
+      const suyos = (m.instrumentos as string[] | null) ?? [];
+      const cruce = pedidas.find((p) => suyos.some((s) => norm(s) === norm(p.inst)));
+      return {
+        musicoId: m.id as string,
+        nombre: (m.nombre as string) ?? "",
+        tieneCorreo: Boolean(String(m.email ?? "").trim()),
+        // Sin portal prendido, asignarle es escribir una fila que no va a ver.
+        portalActivo: Boolean(m.activo) && Boolean(m.portal_activo),
+        enviadoAt: f.enviadoAt,
+        // Prioridad: lo que se eligió al mandar el previo → el cruce con las
+        // tareas del proyecto → su primer instrumento del catálogo.
+        tareaId: f.tareaId ?? cruce?.id ?? null,
+        instrumento: f.instrumento || cruce?.inst || suyos[0] || "",
+      };
+    });
+  } catch {
+    // Es información de más: si falla, la lista de asignados sigue sirviendo.
+    return [];
+  }
 }
 
 // ── POST: asignar (y opcionalmente mandarle el enlace) ──
