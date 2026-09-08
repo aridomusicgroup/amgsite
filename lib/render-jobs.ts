@@ -103,6 +103,8 @@ export interface MusicoLite {
   nombre: string;
   email: string | null;
   instrumentos: string[];
+  /** Si además de recibir el correo puede entrar a /musico a subir su grabación. */
+  portalActivo: boolean;
 }
 
 /** Un archivo ya subido a Drive por el script local. */
@@ -354,7 +356,7 @@ export async function musicosParaPrevio(): Promise<MusicoLite[]> {
   const sb = supabaseAdmin();
   const { data } = await sb
     .from("musicos")
-    .select("id, nombre, email, instrumentos")
+    .select("id, nombre, email, instrumentos, portal_activo")
     .eq("activo", true)
     .order("nombre", { ascending: true });
   return (data ?? []).map((m) => ({
@@ -362,5 +364,6 @@ export async function musicosParaPrevio(): Promise<MusicoLite[]> {
     nombre: m.nombre as string,
     email: (m.email as string | null) ?? null,
     instrumentos: (m.instrumentos as string[] | null) ?? [],
+    portalActivo: m.portal_activo === true,
   }));
 }

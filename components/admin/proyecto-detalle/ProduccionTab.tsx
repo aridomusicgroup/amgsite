@@ -1,11 +1,13 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, FileAudio, Send, Check, Loader2 } from "lucide-react";
+import { ExternalLink, FileAudio, Send, Check, Loader2, UserPlus } from "lucide-react";
 import type { ProyectoDetalle, RenderJobResumen, RenderInventarioItem } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
 import { MusicosProyecto } from "./MusicosProyecto";
 import { PortalMusicos } from "./PortalMusicos";
+import { MandarPrevioMusico } from "./MandarPrevioMusico";
+import type { MusicoLite } from "@/lib/render-jobs";
 import { EdicionProyecto } from "./EdicionProyecto";
 
 const TIPO_LABEL: Record<string, string> = { previo: "Previo", entregables: "Entregables", stems: "Stems", musico: "Previo p/ músico" };
@@ -22,9 +24,27 @@ const ESTADO_COLOR: Record<string, string> = {
  * desmarcada al lanzarlo, así que sin este botón un previo que salió sin marcar
  * se quedaría interno para siempre y habría que volver a renderizarlo.
  */
-export function ProduccionTab({ proyecto, miId }: { proyecto: ProyectoDetalle; miId?: string | null }) {
+export function ProduccionTab({ proyecto, miId, musicos }: {
+  proyecto: ProyectoDetalle;
+  miId?: string | null;
+  musicos: MusicoLite[];
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
+  /** Qué previo se está reenviando. */
+  const [mandando, setMandando] = useState<RenderJobResumen | null>(null);
+
+  // A quién se le mandó ya CADA archivo de Drive, para poder avisar "ya lo tiene"
+  // antes de que le pique. La llave es el id del archivo, no el del trabajo:
+  // un reenvío es una fila distinta apuntando al mismo mp3.
+  const yaLoTienen = new Map<string, Map<string, string>>();
+  for (const r of proyecto.renderJobs) {
+    const archivo = r.drive_urls?.[0]?.id;
+    if (!archivo || !r.musico_id) continue;
+    const porMusico = yaLoTienen.get(archivo) ?? new Map<string, string>();
+    if (!porMusico.has(r.musico_id)) porMusico.set(r.musico_id, r.created_at);
+    yaLoTienen.set(archivo, porMusico);
+  }
   const sinRenders = !proyecto.renderJobs.length && !proyecto.renderInventario.length;
 
   const compartir = async (r: RenderJobResumen) => {
@@ -72,12 +92,20 @@ export function ProduccionTab({ proyecto, miId }: { proyecto: ProyectoDetalle; m
               // sube y aprobamos también trae músico, y ya nace compartido.
               const paraMusico = Boolean(r.musico_id);
               const compartible = r.estado === "listo" && !r.compartir && !paraMusico && Boolean(enDrive);
+              // Sólo los previos de músico: son los que llevan bpm y tonalidad en
+              // el nombre del archivo, que es lo que necesita quien graba encima.
+              const reenviable = r.tipo === "musico" && r.estado === "listo" && Boolean(enDrive);
               return (
                 <div key={r.id} className="flex items-center justify-between gap-2 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <FileAudio size={14} className="text-white/30 shrink-0" />
                     <span className="text-sm text-white/75">{TIPO_LABEL[r.tipo] ?? r.tipo}</span>
                     <span className="text-xs text-white/30">{new Date(r.created_at).toLocaleDateString("es-MX", { day: "2-digit", month: "short" })}</span>
+                    {/* A quién fue. Sin esto, dos previos de músico del mismo día
+                        son indistinguibles y hay que abrir la base para saberlo. */}
+                    {r.musico_nombre && (
+                      <span className="text-xs text-white/45 truncate">→ {r.musico_nombre}</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {r.compartir ? (
@@ -96,6 +124,15 @@ export function ProduccionTab({ proyecto, miId }: { proyecto: ProyectoDetalle; m
                     ) : r.estado === "listo" && !paraMusico ? (
                       <span className="text-[11px] text-white/25" title="No llegó a subirse a Drive">Solo interno</span>
                     ) : null}
+                    {reenviable && (
+                      <button
+                        onClick={() => setMandando(r)}
+                        title="Mandarle este mismo archivo a otro músico de la producción, sin volver a renderizar"
+                        className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white/8 text-white/60 hover:bg-lgb-red/20 hover:text-white transition-colors"
+                      >
+                        <UserPlus size={11} /> Mandar a otro
+                      </button>
+                    )}
                     <span className={`text-[11px] px-2 py-0.5 rounded-full ${ESTADO_COLOR[r.estado] ?? "bg-white/8 text-white/50"}`}>{r.estado}</span>
                     {enDrive && (
                       <a href={enDrive} target="_blank" rel="noopener noreferrer" className="text-white/40 hover:text-white"><ExternalLink size={13} /></a>
@@ -108,6 +145,16 @@ export function ProduccionTab({ proyecto, miId }: { proyecto: ProyectoDetalle; m
         </div>
       )}
       <InventarioResumen inventario={proyecto.renderInventario} />
+
+      {mandando && (
+        <MandarPrevioMusico
+          job={mandando}
+          proyectoId={proyecto.id}
+          musicos={musicos}
+          yaLoTienen={yaLoTienen.get(mandando.drive_urls?.[0]?.id ?? "") ?? new Map()}
+          onCerrar={() => setMandando(null)}
+        />
+      )}
     </div>
   );
 }

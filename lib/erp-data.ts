@@ -772,6 +772,12 @@ export interface RenderJobResumen {
   avisado_en: string | null;
   /** Puesto = el render va para un MÚSICO, no para el cliente. No se comparte desde aquí. */
   musico_id: string | null;
+  /** A quién se le mandó, para no tener que abrir la base para saberlo. */
+  musico_nombre: string | null;
+  /** El enlace de Drive "cualquiera con el enlace" que ya se le mandó al músico. */
+  enlace_publico: string | null;
+  /** Lo que se eligió al renderizar: `bpm`, `tonalidad`, `instrumento`, `nota`, `reenvioDe`. */
+  opciones: Record<string, unknown> | null;
 }
 /**
  * Lo que el script local encontró en la carpeta de disco de un proyecto.
@@ -867,7 +873,13 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
     cotizacionId
       ? sb.from("cotizaciones").select("id, folio, estado, created_at").eq("id", cotizacionId).single()
       : Promise.resolve({ data: null as { id: string; folio: string | null; estado: string; created_at: string } | null }),
-    sb.from("render_jobs").select("id, tipo, estado, tarea_id, created_at, drive_urls, compartir, avisado_en, musico_id").eq("proyecto_id", id).order("created_at", { ascending: false }),
+    // `enlace_publico`, `opciones` y el nombre del músico son para el bloque de
+    // "Mandar a otro músico": sin ellos el renglón no puede decir a quién fue,
+    // ni con qué tempo y tonalidad se renderizó. Las tres existen en producción
+    // (`musico-data.ts` lee `enlace_publico` a diario), así que no hace falta el
+    // reintento-sin-columna — pero ojo: una columna inexistente aquí no deja el
+    // dato vacío, VACÍA LA PANTALLA ENTERA.
+    sb.from("render_jobs").select("id, tipo, estado, tarea_id, created_at, drive_urls, compartir, avisado_en, musico_id, enlace_publico, opciones, musicos(nombre)").eq("proyecto_id", id).order("created_at", { ascending: false }),
     sb.from("render_inventario").select("clave, tarea_id, carpeta, proyectos, error, escaneado_en").eq("proyecto_id", id),
     (esAdmin
       ? sb.from("actividad").select("id, tipo, titulo, actor, created_at, entidad")
@@ -1010,6 +1022,9 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
       compartir: r.compartir === true,
       avisado_en: (r.avisado_en as string | null) ?? null,
       musico_id: (r.musico_id as string | null) ?? null,
+      musico_nombre: ((r.musicos as unknown as { nombre: string } | null)?.nombre) ?? null,
+      enlace_publico: (r.enlace_publico as string | null) ?? null,
+      opciones: (r.opciones as Record<string, unknown> | null) ?? null,
     })),
     renderInventario: (renderInvRes.data ?? []) as RenderInventarioItem[],
     actividad: (actividadRes.data ?? []) as ActividadItem[],

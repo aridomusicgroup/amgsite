@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { requireModule } from "@/lib/supabase/auth-server";
 import { misRecordatorios } from "@/lib/recordatorios-server";
 import { musicosConPortal } from "@/lib/musico-data";
+import { musicosParaPrevio } from "@/lib/render-jobs";
 import { getProyectoDetalle, getEquipoActivo, getVentas } from "@/lib/erp-data";
 import { ProyectoDetalle } from "@/components/admin/ProyectoDetalle";
 
@@ -22,8 +23,11 @@ export default async function ProyectoDetallePage({ params }: Props) {
 
   const { id } = await params;
   // Los recordatorios dependen de QUIÉN abre la página: cada quien ve los suyos.
-  const [proyecto, equipo, ventas, recordatorios, musicos] = await Promise.all([
-    getProyectoDetalle(id, session.role === "admin"), getEquipoActivo(), getVentas(), misRecordatorios(session.email), musicosConPortal(),
+  // Dos listas distintas a propósito: para ASIGNARLE trabajo hace falta portal
+  // (sin él, la asignación es una fila que nadie va a ver), pero para MANDARLE
+  // un previo basta el correo — son 3 músicos contra 9.
+  const [proyecto, equipo, ventas, recordatorios, musicos, musicosPrevio] = await Promise.all([
+    getProyectoDetalle(id, session.role === "admin"), getEquipoActivo(), getVentas(), misRecordatorios(session.email), musicosConPortal(), musicosParaPrevio(),
   ]);
   if (!proyecto) notFound();
 
@@ -44,6 +48,7 @@ export default async function ProyectoDetallePage({ params }: Props) {
         isAdmin={session.role === "admin"}
         recordatorios={recordatorios}
         musicos={musicos}
+        musicosPrevio={musicosPrevio}
         miId={equipo.find((e) => e.email && e.email.toLowerCase() === session.email.toLowerCase())?.id ?? null}
       />
     </div>

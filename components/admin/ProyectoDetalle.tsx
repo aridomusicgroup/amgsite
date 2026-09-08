@@ -7,6 +7,10 @@ import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { toast } from "@/lib/toast";
 import type { MiRecordatorio } from "@/lib/recordatorios";
 import type { MusicoLite } from "@/components/admin/tareas/AsignarMusico";
+// El mismo humano, otra lista: `MusicoLite` de aquí son los que tienen PORTAL
+// (se les puede asignar trabajo); `MusicoPrevio` son los que tienen CORREO
+// (se les puede mandar un previo, tengan portal o no).
+import type { MusicoLite as MusicoPrevio } from "@/lib/render-jobs";
 import { ESTADOS_PROY, ESTADO_PROY_LABEL, ESTADO_PROY_COLOR, TIPO_PROY_LABEL, PRIORIDAD_LABEL, type ProyectoDetalle as TProyectoDetalle } from "@/lib/erp-data";
 import { esContenido, esContenidoPub, type Equipo, type VentaLite } from "@/components/admin/ProduccionBoard";
 import { ConfirmCascadeDialog } from "@/components/admin/ui/ConfirmCascadeDialog";
@@ -23,13 +27,14 @@ import { RedesTab } from "@/components/admin/proyecto-detalle/RedesTab";
 const MUSICA_TIPOS = ["beat_personalizado", "bp_letra", "grabacion", "mezcla_master", "ep", "album"];
 const PRIOR_DOT: Record<string, string> = { alta: "bg-red-400", media: "bg-amber-400", baja: "bg-white/30" };
 
-export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatorios, miId, musicos }: {
+export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatorios, miId, musicos, musicosPrevio }: {
   proyecto: TProyectoDetalle; equipo: Equipo[]; ventas: VentaLite[]; isAdmin: boolean;
   /** MIS recordatorios (los de los demás no se ven ni se tocan). */
   recordatorios: Record<string, MiRecordatorio>;
   miId: string | null;
   /** Músicos externos con portal, para asignarles una tarea. */
   musicos: MusicoLite[];
+  musicosPrevio: MusicoPrevio[];
 }) {
   const router = useRouter();
   // proyectos/proyecto_tareas/proyecto_subtareas ya se cubren globalmente en AdminNav;
@@ -187,7 +192,7 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
           {tab === "tareas" && <TareasTab proyecto={proyecto} equipo={equipo} recordatorios={recordatorios} miId={miId} musicos={musicos} />}
           {tab === "cliente" && <ClienteVentaTab proyecto={proyecto} isAdmin={isAdmin} />}
           {tab === "contrato" && <ContratoTab proyecto={proyecto} />}
-          {tab === "produccion" && <ProduccionTab proyecto={proyecto} miId={miId} />}
+          {tab === "produccion" && <ProduccionTab proyecto={proyecto} miId={miId} musicos={musicosPrevio} />}
           {tab === "redes" && <RedesTab proyecto={proyecto} />}
           {tab === "drive" && <DriveTab proyectoId={proyecto.id} />}
           {tab === "actividad" && <ActividadTab actividad={proyecto.actividad} isAdmin={isAdmin} />}

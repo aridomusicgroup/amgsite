@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { encolarRender, TIPOS_RENDER, type TipoRender, type OpcionesRender } from "@/lib/render-jobs";
 import { avisarClienteDeRender } from "@/lib/render-aviso";
 import { registrarActividad } from "@/lib/actividad";
+import { asignarEnPortal } from "@/lib/musico-asignar";
 
 export const dynamic = "force-dynamic";
 
@@ -146,42 +147,10 @@ export async function POST(req: NextRequest) {
   // puede hacer a mano desde la tarea.
   let asignado = false;
   if (tipo === "musico" && op.op?.asignar && op.op.musicoId) {
-    asignado = await asignarEnPortal(proyectoId, tareaId, op.op.musicoId, String(op.op.instrumento || "").trim(), email);
+    asignado = await asignarEnPortal(supabaseAdmin(), proyectoId, tareaId, op.op.musicoId, String(op.op.instrumento || "").trim(), email);
   }
 
   return NextResponse.json({ ok: true, id: r.id, asignado });
-}
-
-/**
- * Le deja el trabajo en /musico, además del correo con el previo.
- *
- * No usa `upsert` sobre el índice único porque ese índice es
- * `(musico_id, tarea_id)` y Postgres trata cada NULL como distinto: en un
- * proyecto sin canción (tarea_id null) mandar el previo dos veces habría creado
- * dos asignaciones y el músico vería la misma canción duplicada.
- */
-async function asignarEnPortal(
-  proyectoId: string,
-  tareaId: string | null,
-  musicoId: string,
-  instrumento: string,
-  actor: string,
-): Promise<boolean> {
-  try {
-    const sb = supabaseAdmin();
-    const q = sb.from("musico_asignaciones").select("id")
-      .eq("musico_id", musicoId).eq("proyecto_id", proyectoId);
-    const { data: ya } = await (tareaId ? q.eq("tarea_id", tareaId) : q.is("tarea_id", null)).maybeSingle();
-    if (ya) return true;   // ya lo tenía: no es error
-
-    const { error } = await sb.from("musico_asignaciones").insert({
-      musico_id: musicoId, proyecto_id: proyectoId, tarea_id: tareaId,
-      instrumento, creado_por: actor,
-    });
-    return !error;
-  } catch {
-    return false;
-  }
 }
 
 /**

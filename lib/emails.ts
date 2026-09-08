@@ -536,13 +536,27 @@ export function previoMusicoEmail(d: {
   bpm: number;
   tonalidad: string;
   instrumentos: string[];
+  /** Lo que hoy se dice por WhatsApp y se pierde: "entras en el segundo coro". */
+  nota?: string | null;
   url: string;
 }): { subject: string; html: string } {
   const parte = d.instrumentos.length ? ` de <b style="color:#fff;">${escHtml(d.instrumentos.join(", "))}</b>` : "";
+  // Va ARRIBA del tempo y la tonalidad a propósito: esos dos los puede volver a
+  // mirar cuando quiera, la indicación es lo que se lee una vez y decide cómo
+  // toca. Sin nota, el correo queda idéntico al de siempre.
+  const indicaciones = d.nota
+    ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#1a1414;border-left:3px solid #c42f42;border-radius:8px;margin-bottom:16px;">
+        <tr><td style="padding:12px 14px;">
+          <p style="color:#c42f42;font-size:11px;font-weight:bold;letter-spacing:2px;margin:0 0 5px;">INDICACIONES</p>
+          <p style="color:#ddd;font-size:14px;line-height:1.5;margin:0;white-space:pre-wrap;">${escHtml(d.nota)}</p>
+        </td></tr>
+      </table>`
+    : "";
   const content = `
     <tr><td>
       <h1 style="color:#fff;font-size:24px;margin:0 0 6px;">Pista lista para grabar 🎷</h1>
       <p style="color:#999;font-size:14px;margin:0 0 16px;">${d.musico ? `${escHtml(d.musico)}, aquí` : "Aquí"} está el previo de <b style="color:#fff;">${escHtml(d.proyecto)}</b> para que prepares tu parte${parte}.</p>
+      ${indicaciones}
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#141414;border:1px solid #222;border-radius:14px;margin-bottom:16px;">
         <tr>
           <td align="center" style="padding:16px;border-right:1px solid #222;">
