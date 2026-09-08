@@ -3,6 +3,7 @@ import { getContactos, crmResumen, getRecompraMarcas } from "@/lib/erp-data";
 import { candidatosRecompra } from "@/lib/recompra";
 import { CrmList } from "@/components/admin/CrmList";
 import { SeguimientosSugeridos } from "@/components/admin/SeguimientosSugeridos";
+import { CarteraPanel } from "@/components/admin/CarteraPanel";
 import { RecompraPanel } from "@/components/admin/RecompraPanel";
 import { ActividadFeed } from "@/components/admin/ActividadFeed";
 
@@ -33,11 +34,20 @@ export default async function ClientesPage({
   const foco = typeof sp.foco === "string" ? sp.foco : null;
   const contactabilidad = typeof sp.contacto === "string" ? sp.contacto : null;
 
+  // El dinero pendiente va en los KPIs de arriba, no escondido: es lo primero
+  // que hay que ver al entrar, y hasta hoy Clientes no mostraba dinero alguno.
+  const porCobrar = contactos.reduce((a, c) => a + c.saldo, 0);
+  const deudores = contactos.filter((c) => c.saldo > 0.5).length;
+
   const kpis = [
     { label: "Contactos", value: String(r.total) },
     { label: "Clientes", value: String(r.clientes) },
-    { label: "En negociación", value: String(r.porEtapa["negociacion"] ?? 0) },
     { label: "Valor de clientes", value: peso(r.ltvTotal) },
+    {
+      label: deudores ? `Por cobrar · ${deudores} clientes` : "Por cobrar",
+      value: peso(porCobrar),
+      amber: porCobrar > 0,
+    },
   ];
 
   return (
@@ -57,18 +67,19 @@ export default async function ClientesPage({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {kpis.map((k) => (
           <div key={k.label} className="bg-white/[0.03] border border-white/10 rounded-xl p-4">
-            <p className="text-2xl font-coolvetica">{k.value}</p>
+            <p className={`text-2xl font-coolvetica ${k.amber ? "text-amber-300" : ""}`}>{k.value}</p>
             <p className="text-white/40 text-xs mt-1">{k.label}</p>
           </div>
         ))}
       </div>
 
+      <CarteraPanel contactos={contactos} />
       <RecompraPanel candidatos={recompra} abiertoInicial={foco === "recompra"} />
       <SeguimientosSugeridos />
       <CrmList
         contactos={contactos}
         isAdmin={isAdmin}
-        focoInicial={foco === "toca" || foco === "sin" ? foco : undefined}
+        focoInicial={foco === "toca" || foco === "sin" || foco === "deben" ? foco : undefined}
         contactoInicial={contactabilidad ?? undefined}
       />
     </div>

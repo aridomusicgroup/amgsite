@@ -5,7 +5,7 @@ import { crearTareasDeProyecto, parseInstrumentos } from "@/lib/produccion-tarea
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
 import { crearPagosMusicoPendientes } from "@/lib/musicos-sync";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
-import { seguimientoAuto } from "@/lib/seguimiento-auto";
+import { seguimientoDeCobranza } from "@/lib/seguimiento-auto";
 import { esPagoDeContado } from "@/lib/fidelidad";
 import { registrarPagoDeContado, revertirFidelidadDeVenta, sincronizarFidelidadVenta } from "@/lib/fidelidad-server";
 
@@ -141,17 +141,6 @@ export async function POST(req: NextRequest) {
     await sb.from("cotizaciones").update(patchCot).eq("id", b.cotizacion_id);
   }
 
-  // ── Se cerró la venta: ya no hay nada que perseguir ──
-  // El siguiente recordatorio nace cuando el proyecto se entregue, no antes.
-  // Esto es lo que evitaba que a un cliente que acaba de comprar le siguiéramos
-  // preguntando "si sigue interesado".
-  await seguimientoAuto(sb, {
-    contactoId,
-    accion: null,
-    motivo: `se cerró la venta ${folio}`,
-    actor: await getFullAdminEmail(),
-  });
-
   // ── Anticipo: si lo dieron parcial, registra el primer pago (resto = saldo) ──
   // Sin anticipo (o anticipo ≥ total) la venta queda sin pagos = cobrada al 100%.
   const anticipo = Number(b.anticipo) || 0;
@@ -167,6 +156,14 @@ export async function POST(req: NextRequest) {
     // Si la tabla pagos aún no existe, no truena la venta: solo se omite el anticipo.
     if (!pErr) saldoPendiente = total - anticipo;
   }
+
+  // ── El seguimiento del CRM, ahora que YA se sabe si quedó saldo ──
+  // Va aquí y no antes del anticipo a propósito: estaba arriba, cerrando el
+  // seguimiento con `accion: null` justo en el momento en que nacía el saldo.
+  // Liquidada se cierra igual que siempre; con saldo, queda "cobrar".
+  await seguimientoDeCobranza(sb, {
+    contactoId, folio, saldo: saldoPendiente, actor: await getFullAdminEmail(),
+  });
 
   // ── Fidelidad: esta venta se pagó de una sola vez (sin anticipo, o el
   //    anticipo cubrió todo) → suma un escalón permanente. Las ventas de

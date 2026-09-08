@@ -3,6 +3,7 @@ import { getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { getVentas, getInventario } from "@/lib/erp-data";
 import { VentasList } from "@/components/admin/VentasList";
 import { NuevaVentaForm } from "@/components/admin/NuevaVentaForm";
+import { ConciliarVentas } from "@/components/admin/ConciliarVentas";
 import { tipoCambioSugerido } from "@/lib/tipo-cambio-server";
 
 export const dynamic = "force-dynamic";
@@ -18,12 +19,19 @@ export default async function VentasPage() {
   const total = ventas.reduce((a, v) => a + v.total_mxn, 0);
   const ticket = ventas.length ? total / ventas.length : 0;
   const porCobrar = ventas.reduce((a, v) => a + v.saldo, 0);
+  // Lo que el "Por cobrar" NO ve: ventas sin un solo pago capturado, que se
+  // cuentan como liquidadas. Se dice el número junto al KPI para que nadie lea
+  // ese total como si fuera la cartera completa.
+  const sinPagos = ventas.filter((v) => !v.tienePagos).length;
 
   const kpis = [
     { label: "Ventas", value: String(ventas.length) },
     { label: "Total (MXN)", value: peso(total) },
     { label: "Ticket promedio", value: peso(ticket) },
-    { label: "Por cobrar", value: peso(porCobrar), amber: porCobrar > 0 },
+    {
+      label: sinPagos ? `Por cobrar · ${sinPagos} sin conciliar` : "Por cobrar",
+      value: peso(porCobrar), amber: porCobrar > 0,
+    },
   ];
 
   return (
@@ -41,6 +49,8 @@ export default async function VentasPage() {
           </div>
         ))}
       </div>
+
+      <ConciliarVentas ventas={ventas} />
 
       <NuevaVentaForm beats={beats} tcSugerido={tcSugerido} />
       <VentasList ventas={ventas} />

@@ -39,6 +39,22 @@ export interface Contacto {
   proximaAccion: string | null;
   /** Cuándo toca (YYYY-MM-DD). Vencida = ya pasó y sigue abierta. */
   proximaFecha: string | null;
+  /**
+   * Lo que este cliente debe, sumando TODAS sus ventas con saldo.
+   *
+   * Se persigue por PERSONA y no por venta: `getVentas()` devuelve el saldo
+   * suelto por folio, así que un cliente con dos ventas parciales se acababa
+   * persiguiendo dos veces. Y Clientes —que es donde está el historial
+   * completo— no mostraba dinero en absoluto.
+   *
+   * Misma regla que `getVentas()`: **venta sin renglones en `pagos` = cobrada
+   * al 100%**. Es discutible, pero tiene que ser la MISMA en las dos partes,
+   * o Clientes y Ventas dirían números distintos del mismo dinero. Lo que hace
+   * esa regla verdadera es conciliar (ver `ConciliarVentas`).
+   */
+  saldo: number;
+  /** Días de la deuda más VIEJA. Para cobrar, la antigüedad pesa más que el monto. */
+  saldoDias: number;
 }
 
 export const ETAPAS = ["lead", "negociacion", "cliente", "recurrente", "perdido", "inactivo"] as const;
@@ -54,15 +70,18 @@ export const ETAPA_LABEL: Record<string, string> = {
 
 export async function getContactos(): Promise<Contacto[]> {
   const sb = supabaseAdmin();
-  const [activosRes, fusionadosRes, ventasRes, proyRes] = await Promise.all([
+  const [activosRes, fusionadosRes, ventasRes, proyRes, pagosRes] = await Promise.all([
     sb.from("contactos")
       .select("id, nombre, telefono, email, direccion, etapa, origen, servicio_interes, motivo_perdida, ltv, created_at, proxima_accion, proxima_fecha")
       .is("merged_into", null)
       .order("ltv", { ascending: false })
       .limit(2000),
     sb.from("contactos").select("nombre, merged_into").not("merged_into", "is", null),
-    sb.from("ventas").select("contacto_id, fecha, beat_nombre, tipo").not("contacto_id", "is", null),
+    sb.from("ventas").select("id, contacto_id, fecha, beat_nombre, tipo, total_mxn").not("contacto_id", "is", null),
     sb.from("proyectos").select("contacto_id, estado").not("contacto_id", "is", null),
+    // Para el saldo por persona. Va aparte de `ventas` porque `pagos` no tiene
+    // `contacto_id`: se cruza por `venta_id`.
+    sb.from("pagos").select("venta_id, monto_mxn"),
   ]);
 
   // Nombres consolidados por ficha sobreviviente
@@ -89,6 +108,30 @@ export async function getContactos(): Promise<Contacto[]> {
       tipoBy.set(id, (v.tipo as string | null) ?? null);
     }
   }
+  // ── Saldo por persona ─────────────────────────────────────────────────────
+  const cobradoPorVenta = new Map<string, number>();
+  const tienePagos = new Set<string>();
+  for (const p of pagosRes.data ?? []) {
+    const id = p.venta_id as string;
+    tienePagos.add(id);
+    cobradoPorVenta.set(id, (cobradoPorVenta.get(id) ?? 0) + (Number(p.monto_mxn) || 0));
+  }
+  const saldoBy = new Map<string, number>();
+  const saldoDesdeBy = new Map<string, string>();
+  for (const v of ventasRes.data ?? []) {
+    const vid = v.id as string;
+    // Sin pagos = cobrada. Misma regla que getVentas(), a propósito.
+    if (!tienePagos.has(vid)) continue;
+    const total = Number(v.total_mxn) || 0;
+    const saldo = total - (cobradoPorVenta.get(vid) ?? 0);
+    if (saldo <= 0.5) continue;
+    const cid = v.contacto_id as string;
+    saldoBy.set(cid, (saldoBy.get(cid) ?? 0) + saldo);
+    const f = v.fecha as string | null;
+    // La más VIEJA de sus deudas manda: es la que marca la urgencia.
+    if (f && (!saldoDesdeBy.has(cid) || f < saldoDesdeBy.get(cid)!)) saldoDesdeBy.set(cid, f);
+  }
+
   // Trabajo que todavía les debemos: bloquea la oferta de recompra.
   const abiertosBy = new Map<string, number>();
   for (const p of proyRes.data ?? []) {
@@ -108,6 +151,11 @@ export async function getContactos(): Promise<Contacto[]> {
     proyectosAbiertos: abiertosBy.get(c.id as string) ?? 0,
     proximaAccion: (c.proxima_accion as string | null) ?? null,
     proximaFecha: (c.proxima_fecha as string | null) ?? null,
+    saldo: saldoBy.get(c.id as string) ?? 0,
+    saldoDias: (() => {
+      const f = saldoDesdeBy.get(c.id as string);
+      return f ? Math.floor((Date.now() - new Date(f).getTime()) / 86400000) : 0;
+    })(),
   })) as Contacto[];
 }
 
@@ -147,6 +195,19 @@ export interface Venta {
   saldo: number;
   /** liquidada · parcial (anticipo) · pendiente (registrada sin pago) */
   estadoPago: "liquidada" | "parcial" | "pendiente";
+  /**
+   * Si la venta tiene AL MENOS un renglón en `pagos`.
+   *
+   * Distingue las dos cosas que `estadoPago: "liquidada"` mezcla: cobrada de
+   * verdad (con su rastro de pagos) contra **cobrada por suposición** — la
+   * regla de arriba, "sin pagos = 100%". Son 231 de 262 ventas por $410,240,
+   * y 28 de ellas son trabajos de estudio de $7,000 a $12,000 donde esa
+   * suposición no es obvia. Sin este campo no hay forma de saber cuáles
+   * revisar, y el "por cobrar" del panel es una creencia, no un dato.
+   */
+  tienePagos: boolean;
+  /** Para poder juntar la deuda POR PERSONA y no sólo por venta. */
+  contactoId: string | null;
   /** costo de músicos de sesión (COGS de la venta) — editable */
   costo_extra: number;
   /** instrumentos/músicos de la venta ("TOLOLOCHE, CHARCHETAS") — para sugerir músicos */
@@ -163,13 +224,13 @@ export async function getVentas(): Promise<Venta[]> {
   const ventasQuery = (async () => {
     const withComision = await sb
       .from("ventas")
-      .select("id, folio, fecha, tipo, beat_nombre, canal, moneda, total_mxn, costo_extra, extras, medio_pago, quien_cerro, comision_stripe_mxn, contactos(nombre)")
+      .select("id, folio, fecha, tipo, beat_nombre, canal, moneda, total_mxn, costo_extra, extras, medio_pago, quien_cerro, contacto_id, comision_stripe_mxn, contactos(nombre)")
       .order("fecha", { ascending: false })
       .limit(1000);
     if (!withComision.error) return withComision;
     return sb
       .from("ventas")
-      .select("id, folio, fecha, tipo, beat_nombre, canal, moneda, total_mxn, costo_extra, extras, medio_pago, quien_cerro, contactos(nombre)")
+      .select("id, folio, fecha, tipo, beat_nombre, canal, moneda, total_mxn, costo_extra, extras, medio_pago, quien_cerro, contacto_id, contactos(nombre)")
       .order("fecha", { ascending: false })
       .limit(1000);
   })();
@@ -224,6 +285,8 @@ export async function getVentas(): Promise<Venta[]> {
     return {
       id,
       folio,
+      tienePagos: tiene,
+      contactoId: (v.contacto_id as string | null) ?? null,
       fecha: v.fecha as string,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       cliente: ((v.contactos as any)?.nombre ?? null) as string | null,

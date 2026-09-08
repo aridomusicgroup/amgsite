@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Phone, Mail, TrendingUp, Merge, Download, Loader2, Pencil, Trash2, MoreHorizontal, History, CalendarClock } from "lucide-react";
+import { Search, Phone, Mail, TrendingUp, Merge, Download, Loader2, Pencil, Trash2, MoreHorizontal, History, CalendarClock, CircleDollarSign } from "lucide-react";
 import type { Contacto } from "@/lib/erp-data";
 import { ETAPA_LABEL } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
@@ -45,7 +45,7 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
   contactos: Contacto[];
   isAdmin?: boolean;
   /** Foco preseleccionado desde Marketing (`?foco=toca|sin`). */
-  focoInicial?: "toca" | "sin";
+  focoInicial?: "toca" | "sin" | "deben";
   /** Contactabilidad preseleccionada desde Marketing (`?contacto=email|whatsapp`). */
   contactoInicial?: string;
 }) {
@@ -67,7 +67,7 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
   /** Contacto con la línea de tiempo abierta (null = ninguna). */
   const [historialId, setHistorialId] = useState<string | null>(null);
   /** Foco de trabajo: "toca" = vence hoy o antes · "sin" = abierto sin seguimiento. */
-  const [foco, setFoco] = useState<"todos" | "toca" | "sin">(focoInicial ?? "todos");
+  const [foco, setFoco] = useState<"todos" | "toca" | "sin" | "deben">(focoInicial ?? "todos");
 
   // Llegando desde la campanita de Clientes (?destacar=<contacto>): se abren
   // los filtros para que el contacto no quede escondido, se le prende el
@@ -115,6 +115,7 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
       // Foco de seguimiento: qué toca trabajar hoy.
       if (foco === "toca" && !(c.proximaFecha && c.proximaFecha <= hoyISO)) return false;
       if (foco === "sin" && (c.proximaAccion || !ABIERTAS.includes(c.etapa))) return false;
+      if (foco === "deben" && !(c.saldo > 0.5)) return false;
 
       const hasMail = !!c.email, hasTel = !!c.telefono;
       if (contacto === "email" && !hasMail) return false;
@@ -153,6 +154,7 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
   // Conteos para los chips de foco (sobre TODOS los contactos, no los filtrados).
   const nToca = contactos.filter((c) => c.proximaFecha && c.proximaFecha <= hoyISO).length;
   const nSin = contactos.filter((c) => !c.proximaAccion && ABIERTAS.includes(c.etapa)).length;
+  const nDeben = contactos.filter((c) => c.saldo > 0.5).length;
 
   // Resumen del segmento (lo que ve Tozi antes de lanzar campaña)
   const seg = useMemo(() => ({
@@ -336,6 +338,12 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
             Sin seguimiento ({nSin})
           </button>
         )}
+        {nDeben > 0 && (
+          <button onClick={() => setFoco((v) => (v === "deben" ? "todos" : "deben"))}
+            className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors ${foco === "deben" ? "bg-lgb-red text-white" : "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"}`}>
+            <CircleDollarSign size={13} /> Deben dinero ({nDeben})
+          </button>
+        )}
         {totalConsolidados > 0 && (
           <button onClick={() => setSoloConsolidados((v) => !v)}
             className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors ${soloConsolidados ? "bg-lgb-red text-white" : "bg-white/5 text-white/50 hover:text-white"}`}>
@@ -409,6 +417,13 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
                     {c.ventasCount > 0 && <span>· {c.ventasCount} {c.ventasCount === 1 ? "compra" : "compras"}</span>}
                     {d !== null && <span className={d > 90 ? "text-amber-300/70" : ""}>· última hace {d}d</span>}
                     {c.servicio_interes && <span className="truncate">· {c.servicio_interes}</span>}
+                    {/* El dinero pendiente va en el renglón, no en otra pantalla:
+                        es donde se decide a quién hablarle. */}
+                    {c.saldo > 0.5 && (
+                      <span className={c.saldoDias >= 61 ? "text-red-300" : "text-amber-300"}>
+                        · debe {peso(c.saldo)}{c.saldoDias > 0 ? ` (${c.saldoDias}d)` : ""}
+                      </span>
+                    )}
                   </div>
                   {c.mergedFrom.length > 0 && <p className="text-blue-300/60 text-[11px] mt-1 truncate">Incluye: {c.mergedFrom.join(" · ")}</p>}
                   {!mergeMode && (

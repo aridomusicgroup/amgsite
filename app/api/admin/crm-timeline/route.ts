@@ -17,6 +17,8 @@ export interface EventoCrm {
   id: string;
   /** Familia del evento: define ícono y color en la UI. */
   clase: "mensaje" | "cotizacion" | "contrato" | "venta" | "proyecto" | "nota" | "recompra";
+  /** Sólo en ventas: lo que falta por cobrar, 0 si está liquidada. */
+  saldo?: number;
   titulo: string;
   detalle: string | null;
   fecha: string;
@@ -44,6 +46,22 @@ export async function GET(req: NextRequest) {
     sb.from("proyectos").select("id, folio, titulo, estado, created_at").eq("contacto_id", contactoId).limit(100),
   ]);
 
+  // Cuánto se cobró de cada venta suya. La línea de tiempo mostraba el TOTAL y
+  // nunca el saldo, así que la pantalla con el historial completo era justo la
+  // que no dejaba ver que un cliente todavía debe.
+  const idsVenta = (ventas.data ?? []).map((v) => v.id as string);
+  const cobradoPorVenta = new Map<string, number>();
+  const tienePagos = new Set<string>();
+  if (idsVenta.length) {
+    const { data: pagos } = await sb.from("pagos").select("venta_id, monto_mxn").in("venta_id", idsVenta);
+    for (const p of pagos ?? []) {
+      const id = p.venta_id as string;
+      tienePagos.add(id);
+      cobradoPorVenta.set(id, (cobradoPorVenta.get(id) ?? 0) + (Number(p.monto_mxn) || 0));
+    }
+  }
+  const peso = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
+
   const eventos: EventoCrm[] = [];
 
   for (const x of inter.data ?? []) {
@@ -59,12 +77,21 @@ export async function GET(req: NextRequest) {
     });
   }
   for (const v of ventas.data ?? []) {
+    const id = v.id as string;
+    const total = Number(v.total_mxn) || 0;
+    // Misma regla que en todo el panel: sin renglones en `pagos` = cobrada.
+    const cobrado = tienePagos.has(id) ? cobradoPorVenta.get(id) ?? 0 : total;
+    const saldo = Math.max(0, total - cobrado);
     eventos.push({
-      id: `v-${v.id}`, clase: "venta",
+      id: `v-${id}`, clase: "venta",
       titulo: `Venta ${v.folio ?? ""}`.trim(),
-      detalle: [v.tipo, v.beat_nombre].filter(Boolean).join(" · ") || null,
+      detalle: [
+        [v.tipo, v.beat_nombre].filter(Boolean).join(" · ") || null,
+        saldo > 0.5 ? `cobrado ${peso(cobrado)} de ${peso(total)} — falta ${peso(saldo)}` : null,
+      ].filter(Boolean).join(" · ") || null,
       fecha: (v.fecha as string) ?? "", canal: (v.canal as string | null) ?? null,
-      monto: Number(v.total_mxn) || 0,
+      monto: total,
+      saldo,
     });
   }
   for (const c of cots.data ?? []) {

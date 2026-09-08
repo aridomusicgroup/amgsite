@@ -12,7 +12,8 @@ import { registrarActividad, nombreDeActor } from "@/lib/actividad";
  * La cadena que sigue el negocio:
  *
  *   cotización creada  → perseguir la cotización     (hay algo que cobrar)
- *   venta registrada   → se cierra                   (ya está en producción, nada que perseguir)
+ *   venta LIQUIDADA    → se cierra                   (ya está en producción, nada que perseguir)
+ *   venta CON SALDO    → cobrar el saldo             (ver seguimientoDeCobranza)
  *   proyecto entregado → confirmar que quedó conforme (y de ahí lo toma recompra)
  *
  * Recompra sigue igual: su reloj arranca en la ÚLTIMA VENTA, no aquí.
@@ -21,6 +22,15 @@ import { registrarActividad, nombreDeActor } from "@/lib/actividad";
 /** Cuántos días esperar antes de recordar cada cosa. */
 export const DIAS_TRAS_COTIZACION = 3;
 export const DIAS_TRAS_ENTREGA = 3;
+/**
+ * Cuánto se le da al cliente antes del primer recordatorio de saldo.
+ *
+ * Una semana: suficiente para que no se sienta cobranza al día siguiente de
+ * pagar el anticipo, y poco para que no se enfríe. La antigüedad medida de la
+ * cartera es de 9 de 10 saldos por debajo de 30 días — el problema nunca fue
+ * el tiempo, fue que nadie preguntaba.
+ */
+export const DIAS_TRAS_SALDO = 7;
 
 const enDias = (n: number): string => {
   const d = new Date();
@@ -38,6 +48,36 @@ interface Opciones {
   motivo: string;
   /** Quién disparó el evento (correo). */
   actor?: string | null;
+}
+
+/**
+ * El seguimiento que deja una venta recién registrada.
+ *
+ * Aquí estaba el agujero de la cobranza: al registrar una venta se llamaba a
+ * `seguimientoAuto` con `accion: null` —cerrando el seguimiento— y hasta
+ * DESPUÉS se registraba el anticipo parcial. O sea, **se cerraba el seguimiento
+ * justo en el momento en que nacía el saldo**. Medido cuando se encontró: de
+ * 10 clientes con saldo, 8 no tenían absolutamente nada agendado, y 6 de esos
+ * 10 son clientes recurrentes.
+ *
+ * Liquidada se sigue cerrando, que era el comportamiento correcto: a alguien
+ * que acaba de pagar todo no se le pregunta "si sigue interesado".
+ */
+export async function seguimientoDeCobranza(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: SupabaseClient<any, any, any>,
+  o: { contactoId: string | null | undefined; folio: string; saldo: number; actor?: string | null },
+): Promise<void> {
+  const haySaldo = o.saldo > 0.5;
+  await seguimientoAuto(sb, {
+    contactoId: o.contactoId,
+    accion: haySaldo ? `Cobrar el saldo de ${o.folio} ($${Math.round(o.saldo).toLocaleString("es-MX")})` : null,
+    dias: DIAS_TRAS_SALDO,
+    motivo: haySaldo
+      ? `se registró la venta ${o.folio} con saldo pendiente`
+      : `se cerró la venta ${o.folio}`,
+    actor: o.actor ?? null,
+  });
 }
 
 /**

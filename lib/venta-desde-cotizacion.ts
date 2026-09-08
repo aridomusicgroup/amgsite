@@ -2,7 +2,7 @@ import { resolverEquipo, crearTareasDeProyecto } from "@/lib/produccion-tareas";
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
 import { crearPagosMusicoPendientes } from "@/lib/musicos-sync";
 import { registrarActividad } from "@/lib/actividad";
-import { seguimientoAuto } from "@/lib/seguimiento-auto";
+import { seguimientoDeCobranza } from "@/lib/seguimiento-auto";
 import { inferirInstrumentos } from "@/lib/servicios";
 import { nextFolio } from "@/lib/folio";
 import { sincronizarFidelidadVenta } from "@/lib/fidelidad-server";
@@ -201,11 +201,19 @@ export async function crearVentaDesdeCotizacionPagada(
     });
   } catch { /* bitácora best-effort */ }
 
-  await seguimientoAuto(sb, { contactoId: cot.contacto_id, accion: null, motivo: `se cerró la venta ${ventaFolio}`, actor: null });
-
   // Fidelidad ("de contado") solo se otorga cuando la venta queda cobrada al
   // 100% — registrarTramoPagado se encarga de checarlo cada vez.
   await registrarTramoPagado(sb, ventaId, montoTramoMxn, true, comisionTramoMxn);
+
+  // El seguimiento va DESPUÉS de registrar el tramo, para saber si quedó saldo.
+  // Con un esquema 50/50 este primer pago es el anticipo: quedan por cobrar los
+  // otros $X y alguien tiene que acordarse.
+  await seguimientoDeCobranza(sb, {
+    contactoId: cot.contacto_id,
+    folio: ventaFolio,
+    saldo: Math.max(0, totalMxn - montoTramoMxn),
+    actor: null,
+  });
 
   if (cot.contacto_id) {
     const { data: vts } = await sb.from("ventas").select("total_mxn").eq("contacto_id", cot.contacto_id);
