@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Pencil, Trash2, Copy } from "lucide-react";
@@ -59,6 +59,23 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
   const [tab, setTab] = useState(
     () => (pedida && tabs.some((t) => t.id === pedida) ? pedida : tabs[0].id),
   );
+  /**
+   * Traer la pestana activa a la vista.
+   *
+   * En vertical las 8 pestanas no caben y la tira se desplaza. Sin esto, abrir
+   * el proyecto desde un aviso con ?tab=actividad (la ultima) dejaba la tira
+   * hasta la izquierda: la pestana activa quedaba fuera de pantalla y no se
+   * veia NINGUNA subrayada, como si no hubiera nada seleccionado.
+   *
+   * `block: "nearest"` es obligatorio: sin el, el navegador tambien desplaza la
+   * PAGINA para centrar la tira y te brinca la vista al cambiar de pestana.
+   */
+  const tiraRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const activa = tiraRef.current?.querySelector(`[data-tab="${tab}"]`);
+    activa?.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
+  }, [tab]);
+
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [duplicando, setDuplicando] = useState(false);
@@ -150,9 +167,13 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
         </div>
       </div>
 
-      <div className="flex items-center gap-1 border-b border-white/8 mb-5 overflow-x-auto">
+      {/* hide-scrollbar quita DOS barras, no una: la horizontal (que sin
+          `height` en globals.css salia de 16px) y una vertical de 5px que nadie
+          pidio — `overflow-x: auto` promueve `overflow-y` de visible a auto por
+          spec, y el subrayado de la pestana activa sobresale 1px por abajo. */}
+      <div ref={tiraRef} className="flex items-center gap-1 border-b border-white/8 mb-5 overflow-x-auto hide-scrollbar">
         {tabs.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)}
+          <button key={t.id} onClick={() => setTab(t.id)} data-tab={t.id}
             className={`relative px-3.5 py-2.5 text-sm whitespace-nowrap transition-colors ${tab === t.id ? "text-white" : "text-white/40 hover:text-white/70"}`}>
             {t.label}
             {tab === t.id && <motion.div layoutId="proyecto-tab-underline" className="absolute left-0 right-0 -bottom-px h-0.5 bg-lgb-red" />}

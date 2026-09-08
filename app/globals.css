@@ -224,7 +224,10 @@ body {
   .reveal { opacity: 1; transform: none; transition: none; }
   .marquee { animation: none; }
 }
-::-webkit-scrollbar { width: 5px; }
+/* La ALTURA es para las barras HORIZONTALES: sin ella, `width` no las toca y
+   se quedan con el grosor default del navegador (16px de rojo). Se notaba en
+   las pestanas del proyecto, en las columnas del tablero y en las tablas. */
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 3px; }
 
