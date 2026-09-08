@@ -446,6 +446,90 @@ export function asignacionMusicoEmail(d: {
   return { subject: `🎺 Te toca ${d.instrumento} en ${d.cancion}`, html: wrap(content) };
 }
 
+/**
+ * Al que edita y cuantiza: el proyecto ya está arriba y puede bajarlo.
+ *
+ * Va ADEMÁS del push, no en lugar de. El push llega al momento pero se pierde
+ * si el teléfono está silenciado o si no lo ve en la hora siguiente; el correo
+ * se queda en la bandeja y sobrevive al fin de semana. Este aviso puede tardar
+ * media hora en salir (lo que tarde la subida) y no se repite, así que perderlo
+ * significa que nadie empieza a editar.
+ *
+ * Dos enlaces a propósito, y en este orden:
+ *  1. Drive, que es lo que de verdad va a hacer: bajar los archivos.
+ *  2. El panel, para ver la tarea y devolver la revisión cuando termine.
+ *
+ * El envío 2 en adelante NO repite el conteo total: lo que importa entonces es
+ * "se subió lo que faltaba", no cuántos archivos hay en total.
+ */
+export function edicionListaEmail(d: {
+  nombre: string | null;
+  proyecto: string;
+  envio: number;
+  archivos: number;
+  peso: string;
+  nota: string | null;
+  urlDrive: string | null;
+  urlPanel: string;
+}): { subject: string; html: string } {
+  const primero = d.nombre ? escHtml(d.nombre.split(" ")[0]) : null;
+  const esPrimero = d.envio === 1;
+
+  const titulo = esPrimero ? "Ya puedes editar 🎚️" : `Se subió lo que faltaba 🎚️`;
+  const bajada = esPrimero
+    ? `${primero ? `${primero}, el` : "El"} proyecto <b style="color:#fff;">${escHtml(d.proyecto)}</b> ya está completo en Drive, listo para que lo bajes y lo edites.`
+    : `${primero ? `${primero}, se` : "Se"} subieron los archivos que faltaban de <b style="color:#fff;">${escHtml(d.proyecto)}</b>. Bájalos otra vez y ya los tienes.`;
+
+  const bloqueNota = d.nota
+    ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#141414;border-left:3px solid #c42f42;border-radius:8px;margin-bottom:16px;">
+         <tr><td style="padding:12px 14px;">
+           <p style="color:#c42f42;font-size:11px;font-weight:bold;letter-spacing:2px;margin:0 0 4px;">NOTA DEL ESTUDIO</p>
+           <p style="color:#ddd;font-size:14px;margin:0;">${escHtml(d.nota)}</p>
+         </td></tr>
+       </table>`
+    : "";
+
+  const bloqueCuenta = esPrimero
+    ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#141414;border:1px solid #222;border-radius:14px;margin-bottom:16px;">
+         <tr>
+           <td align="center" style="padding:16px;border-right:1px solid #222;">
+             <p style="color:#c42f42;font-size:11px;font-weight:bold;letter-spacing:2px;margin:0 0 4px;">ARCHIVOS</p>
+             <p style="color:#fff;font-size:26px;font-weight:bold;margin:0;">${d.archivos}</p>
+           </td>
+           <td align="center" style="padding:16px;">
+             <p style="color:#c42f42;font-size:11px;font-weight:bold;letter-spacing:2px;margin:0 0 4px;">PESO</p>
+             <p style="color:#fff;font-size:26px;font-weight:bold;margin:0;">${escHtml(d.peso)}</p>
+           </td>
+         </tr>
+       </table>`
+    : "";
+
+  const botonDrive = d.urlDrive
+    ? `<a href="${d.urlDrive}" style="display:block;background:#c42f42;color:#fff;text-decoration:none;text-align:center;padding:14px;border-radius:30px;font-size:15px;font-weight:bold;margin-bottom:10px;">Abrir la carpeta en Drive</a>`
+    : "";
+
+  const content = `
+    <tr><td>
+      <h1 style="color:#fff;font-size:24px;margin:0 0 6px;">${titulo}</h1>
+      <p style="color:#999;font-size:14px;margin:0 0 16px;">${bajada}</p>
+      ${bloqueNota}
+      ${bloqueCuenta}
+      ${botonDrive}
+      <a href="${d.urlPanel}" style="display:block;background:transparent;color:#c42f42;border:1px solid #c42f42;text-decoration:none;text-align:center;padding:13px;border-radius:30px;font-size:14px;font-weight:bold;">Ver la tarea en el panel</a>
+      <p style="color:#666;font-size:12px;margin:14px 0 0;">
+        La carpeta está compartida con este correo — entra a Drive con esta misma cuenta.
+        Cuando termines, sube tu <b style="color:#888;">.rpp</b> desde el panel, en la pestaña Producción.
+      </p>
+    </td></tr>`;
+
+  return {
+    subject: esPrimero
+      ? `🎚️ ${d.proyecto} — listo para editar (${d.archivos} archivos, ${d.peso})`
+      : `🎚️ ${d.proyecto} — se subió lo que faltaba`,
+    html: wrap(content),
+  };
+}
+
 export function previoMusicoEmail(d: {
   musico: string | null;
   proyecto: string;

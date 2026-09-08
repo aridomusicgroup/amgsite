@@ -4,6 +4,8 @@ import { carpetaDelProyecto } from "@/lib/proyecto-carpeta";
 import { buscarOCrearCarpeta, tokenParaNavegador, diagnosticoDrive, compartirConCorreo } from "@/lib/drive-oauth";
 import { pushAEmails, destinoProyectoTab, conProyecto } from "@/lib/push";
 import { registrarActividad } from "@/lib/actividad";
+import { Resend } from "resend";
+import { edicionListaEmail } from "@/lib/emails";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -139,11 +141,32 @@ async function avisar(b: any) {
     ? `Ya está en Drive lo que tienes que editar — ${n} archivos, ${cuanto}`
     : `Se subieron los archivos que faltaban — envío ${env.num}`;
 
+  const urlPanel = destinoProyectoTab(env.proyecto_id as string, "produccion");
+
   await pushAEmails(sb, [correo], {
     titulo: "ARIDO · Edición",
     cuerpo: conProyecto((proy?.titulo as string | null) ?? null, env.nota ? `${cuerpo}. ${env.nota}` : cuerpo),
     // A la pestaña, no al tablero: este aviso pide una acción que vive ahí.
-    url: destinoProyectoTab(env.proyecto_id as string, "produccion"),
+    url: urlPanel,
+  });
+
+  // Y por correo, ADEMÁS del push.
+  //
+  // El push llega al momento pero se pierde si el teléfono está silenciado o si
+  // no lo mira en la hora siguiente. Este aviso puede tardar media hora en salir
+  // (lo que tarde la subida), no se repite, y de él depende que alguien empiece
+  // a editar: si se pierde, el proyecto se queda parado sin que nadie lo sepa.
+  // El correo se queda en la bandeja y sobrevive al fin de semana.
+  const correoEnviado = await mandarCorreo(sb, {
+    correo,
+    clave: env.clave as string,
+    proyecto: (proy?.titulo as string | null) ?? "la producción",
+    envio: env.num as number,
+    archivos: n ?? 0,
+    peso: cuanto,
+    nota: (env.nota as string | null) ?? null,
+    notificarA: (env.notificar_a as string | null) ?? null,
+    urlPanel,
   });
 
   await registrarActividad(sb, {
@@ -152,10 +175,62 @@ async function avisar(b: any) {
     actor: null,
     proyecto_id: env.proyecto_id as string,
     tarea_id: (env.tarea_id as string | null) ?? null,
-    meta: { envio: env.num, archivos: n, correo },
+    meta: { envio: env.num, archivos: n, correo, correoEnviado },
   });
 
-  return NextResponse.json({ ok: true, avisado: correo });
+  return NextResponse.json({ ok: true, avisado: correo, correo: correoEnviado });
+}
+
+/**
+ * Arma y manda el correo de "ya puedes editar".
+ *
+ * Best-effort a propósito y aparte del push: que Resend falle no puede tumbar el
+ * aviso ni dejar el envío sin marcar. Si no sale, queda el push y la bitácora.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function mandarCorreo(sb: any, d: {
+  correo: string; clave: string; proyecto: string; envio: number;
+  archivos: number; peso: string; nota: string | null;
+  notificarA: string | null; urlPanel: string;
+}): Promise<boolean> {
+  try {
+    const key = process.env.RESEND_API_KEY;
+    if (!key) return false;
+
+    // El enlace directo a la carpeta, que es lo que de verdad va a usar. Si
+    // todavía no existe se manda igual: el botón del panel siempre sirve.
+    const { data: raiz } = await sb.from("edicion_carpetas")
+      .select("drive_id").eq("clave", d.clave).eq("subruta", "").maybeSingle();
+
+    // El nombre para saludarlo. Sale de `equipo`, que es a quien apunta la tarea.
+    let nombre: string | null = null;
+    if (d.notificarA) {
+      const { data: e } = await sb.from("equipo").select("nombre").eq("id", d.notificarA).maybeSingle();
+      nombre = (e?.nombre as string | null) ?? null;
+    }
+
+    const mail = edicionListaEmail({
+      nombre,
+      proyecto: d.proyecto,
+      envio: d.envio,
+      archivos: d.archivos,
+      peso: d.peso,
+      nota: d.nota,
+      urlDrive: raiz?.drive_id ? `https://drive.google.com/drive/folders/${raiz.drive_id}` : null,
+      urlPanel: d.urlPanel,
+    });
+
+    await new Resend(key).emails.send({
+      from: "Latino Gang Beats <acceso@aridomusicgroup.com>",
+      to: d.correo,
+      subject: mail.subject,
+      html: mail.html,
+    });
+    return true;
+  } catch {
+    // El push ya salió y el envío ya está marcado; el correo es el refuerzo.
+    return false;
+  }
 }
 
 /**
