@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Music4, Package, Layers, Loader2, Cloud, Music2 } from "lucide-react";
+import { Music4, Package, Layers, Loader2, Cloud, Music2, Grid3x3 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { toast } from "@/lib/toast";
 import { RenderOpciones } from "./RenderOpciones";
@@ -31,9 +31,9 @@ const EN_VUELO = ["pendiente", "renderizando", "subiendo"];
  * cadena de plugins completa. Se muestra en pantalla porque sin esto un
  * "en cola" de 12 minutos se ve idéntico a que algo se trabó.
  */
-const MINUTOS: Record<TipoRender, number> = { previo: 4, entregables: 10, stems: 6, musico: 4 };
+const MINUTOS: Record<TipoRender, number> = { previo: 4, entregables: 10, stems: 6, musico: 4, cuantizar: 2 };
 
-const TIPO_TXT: Record<string, string> = { previo: "Previo", entregables: "Entregables", stems: "Stems", musico: "Previo músico" };
+const TIPO_TXT: Record<string, string> = { previo: "Previo", entregables: "Entregables", stems: "Stems", musico: "Previo músico", cuantizar: "Cuadrar a la rejilla" };
 
 const hora = (iso: string) =>
   new Date(iso).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -185,6 +185,13 @@ function RenderList({ proyectos, onAbrir }: {
                   titulo={`WAV 24-bit por grupo, con mezcla y máster · tarda ~${MINUTOS.stems} min`}
                   deshabilitado={!!enVuelo}
                   onClick={() => onAbrir(p, "stems")}
+                />
+                <BotonRender
+                  icono={<Grid3x3 size={14} />}
+                  texto="Cuadrar"
+                  titulo={`Corta en los transitorios y los cuadra a la rejilla, respetando el groove. Deja un proyecto NUEVO "… AUTO.rpp"; el tuyo no se toca · tarda ~${MINUTOS.cuantizar} min`}
+                  deshabilitado={!!enVuelo}
+                  onClick={() => onAbrir(p, "cuantizar")}
                 />
               </div>
             </div>

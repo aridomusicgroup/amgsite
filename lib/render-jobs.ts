@@ -9,7 +9,14 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
  * disco: el script resuelve la carpeta igual que cuando la creó.
  */
 
-export const TIPOS_RENDER = ["previo", "entregables", "stems", "musico"] as const;
+/**
+ * `cuantizar` no produce audio: reescribe el .rpp cuadrando los transitorios a
+ * la rejilla y deja un proyecto NUEVO al lado. Va en esta misma lista porque
+ * para la cola es igual que un render —se encola, tarda un rato, deja archivo—
+ * y así hereda la barredora de atascados y el candado de uno a la vez.
+ * Requiere haber corrido `supabase-cuantizar.sql`.
+ */
+export const TIPOS_RENDER = ["previo", "entregables", "stems", "musico", "cuantizar"] as const;
 export type TipoRender = (typeof TIPOS_RENDER)[number];
 
 export const TIPO_RENDER_LABEL: Record<TipoRender, string> = {
@@ -17,6 +24,7 @@ export const TIPO_RENDER_LABEL: Record<TipoRender, string> = {
   entregables: "Entregables",
   stems: "Stems",
   musico: "Previo músico",
+  cuantizar: "Cuadrar a la rejilla",
 };
 
 /** Etapas en las que todavía tiene sentido pedir un render. */
@@ -45,6 +53,16 @@ export interface SeleccionRpp {
   valida: boolean;
 }
 
+/** Algo que va a fallar en el proyecto, detectado leyendo el .rpp. */
+export interface ProblemaRpp {
+  /** `alto` rompe un render o un entregable; `bajo` es para tenerlo en cuenta. */
+  sev: "alto" | "medio" | "bajo";
+  /** Qué clase de problema: vacio | fuentes | seleccion | micros | tempo | fades. */
+  clave: string;
+  /** Redactado para leerse tal cual, con los números que lo prueban. */
+  msg: string;
+}
+
 export interface ArchivoRpp {
   archivo: string;
   mtime: number;
@@ -60,6 +78,9 @@ export interface ArchivoRpp {
   marcadores: MarcadorRpp[];
   seleccion: SeleccionRpp | null;
   pistas: PistaRpp[];
+  /** Lo que el diagnóstico encontró roto. `undefined` en filas de antes de este
+   *  dato: el script las vuelve a revisar solo en la siguiente corrida. */
+  problemas?: ProblemaRpp[];
   error: string | null;
 }
 

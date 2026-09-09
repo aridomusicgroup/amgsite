@@ -1,7 +1,14 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { X, Loader2, FolderOpen, AlertTriangle, Send } from "lucide-react";
-import type { ArchivoRpp, Renderizable, TipoRender, OpcionesRender, MusicoLite } from "@/lib/render-jobs";
+import type {
+  ArchivoRpp,
+  ProblemaRpp,
+  Renderizable,
+  TipoRender,
+  OpcionesRender,
+  MusicoLite,
+} from "@/lib/render-jobs";
 
 /**
  * Cuadro de opciones antes de encolar un render.
@@ -16,6 +23,7 @@ const TITULO: Record<TipoRender, string> = {
   entregables: "Entregables",
   stems: "Stems",
   musico: "Previo para músico",
+  cuantizar: "Cuadrar a la rejilla",
 };
 
 const FORMATO: Record<TipoRender, string> = {
@@ -23,6 +31,7 @@ const FORMATO: Record<TipoRender, string> = {
   entregables: "MP3 320 kbps · 48 kHz + WAV 32-bit float",
   stems: "WAV 24-bit por pista, con mezcla y máster",
   musico: "MP3 128 kbps · 44.1 kHz · con BPM y tonalidad en el nombre",
+  cuantizar: "Proyecto nuevo “… AUTO.rpp” al lado. El tuyo no se toca.",
 };
 
 type ModoRango = "todo" | "seleccion" | "marcadores";
@@ -242,6 +251,9 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
                     </Aviso>
                   </div>
                 )}
+                {/* El proyecto vacío ya tiene su propio aviso arriba, con mejores
+                    instrucciones: repetirlo aquí sería decir lo mismo dos veces. */}
+                <Diagnostico problemas={(actual?.problemas ?? []).filter((p) => p.clave !== "vacio")} />
               </Seccion>
 
               <Seccion titulo="Rango">
@@ -546,6 +558,41 @@ function SelectMarcador({ valor, onChange, marcadores }: {
         </option>
       ))}
     </select>
+  );
+}
+
+/**
+ * Lo que el diagnóstico encontró roto en el .rpp elegido.
+ *
+ * Va aquí, en el cuadro de opciones, y no en una pantalla aparte: el momento en
+ * que a alguien le sirve saber que la selección de tiempo está en cero es
+ * JUSTO antes de lanzar el render, no en un tablero que hay que acordarse de
+ * abrir. Los `alto` van primero porque son los que producen un entregable vacío.
+ *
+ * Nunca bloquea el botón. Un aviso puede equivocarse y el dueño del proyecto
+ * sabe más que la heurística; lo que no puede pasar es que se entere después.
+ */
+function Diagnostico({ problemas }: { problemas: ProblemaRpp[] }) {
+  if (!problemas.length) return null;
+  const altos = problemas.filter((p) => p.sev === "alto");
+  const resto = problemas.filter((p) => p.sev !== "alto");
+  return (
+    <div className="mt-2 flex flex-col gap-1.5">
+      {altos.map((p, i) => (
+        <div
+          key={`alto-${i}`}
+          className="flex items-start gap-2.5 bg-lgb-red/10 border border-lgb-red/25 rounded-xl p-3"
+        >
+          <AlertTriangle size={15} className="text-lgb-red shrink-0 mt-0.5" />
+          <p className="text-white/75 text-xs leading-relaxed">{p.msg}</p>
+        </div>
+      ))}
+      {resto.map((p, i) => (
+        <p key={`resto-${i}`} className="text-[11px] text-white/40 leading-relaxed pl-1">
+          {p.msg}
+        </p>
+      ))}
+    </div>
   );
 }
 
