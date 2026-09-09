@@ -38,6 +38,29 @@ const TIPO_TXT: Record<string, string> = { previo: "Previo", entregables: "Entre
 const hora = (iso: string) =>
   new Date(iso).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
+/**
+ * Hace cuánto que el script local dio señales de vida.
+ *
+ * `publicarInventario` reescribe `escaneado_en` en CADA corrida, con cambios o
+ * sin ellos, así que es un latido de verdad — a diferencia de la Consola, que
+ * sólo tiene renglones cuando hubo algo que contar.
+ *
+ * Esa diferencia importa: el 9-sep un previo esperó 81 min con el panel
+ * diciendo "revisa la Consola", y la Consola estaba muda porque el script
+ * llevaba 2.5 h sin correr. El aviso mandaba a mirar justo donde no había nada.
+ */
+function latido(proyectos: Renderizable[]): number | null {
+  const ultimo = proyectos
+    .map((p) => p.inventario?.escaneadoEn)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  return ultimo ? (Date.now() - new Date(ultimo).getTime()) / 60000 : null;
+}
+
+/** Corre cada 2 min: más de 8 es que la tarea de Windows no está disparando. */
+const LATIDO_MAX_MIN = 8;
+
 export function DevLogsPanel({ logs, proyectos, musicos }: { logs: LogRow[]; proyectos: Renderizable[]; musicos: MusicoLite[] }) {
   const router = useRouter();
   const [tab, setTab] = useState<"renders" | "logs">("renders");
@@ -79,8 +102,24 @@ export function DevLogsPanel({ logs, proyectos, musicos }: { logs: LogRow[]; pro
   const chip = (activo: boolean) =>
     `px-4 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer ${activo ? "bg-lgb-red text-white" : "bg-white/5 text-white/60 hover:text-white"}`;
 
+  const min = latido(proyectos);
+  const dormido = min !== null && min > LATIDO_MAX_MIN;
+
   return (
     <div>
+      {dormido && (
+        <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/[0.07] px-4 py-3">
+          <p className="text-sm text-red-300">
+            El script de la computadora del estudio no ha corrido en {min < 60 ? `${min.toFixed(0)} min` : `${(min / 60).toFixed(1)} h`}.
+          </p>
+          <p className="text-[11px] text-white/50 mt-1 leading-relaxed">
+            Nada de la cola va a avanzar hasta que vuelva. Suele ser la PC dormida, o una
+            instancia colgada: la tarea de Windows está en <b className="text-white/70">IgnoreNew</b>,
+            así que mientras una siga viva se salta cada disparo en silencio. Revisa que
+            <b className="text-white/70"> ReaperSync</b> esté corriendo en el Programador de tareas.
+          </p>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 mb-5">
         <button onClick={() => setTab("renders")} className={chip(tab === "renders")}>
           Renders <span className="opacity-60">({proyectos.length})</span>
