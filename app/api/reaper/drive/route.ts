@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { carpetaDelProyecto } from "@/lib/proyecto-carpeta";
 import { buscarOCrearCarpeta, tokenParaNavegador, diagnosticoDrive } from "@/lib/drive-oauth";
+import { alarmaDrive } from "@/lib/drive-alarma";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -42,7 +43,11 @@ export async function POST(req: NextRequest) {
   if (b.soloToken) {
     const solo = await tokenParaNavegador();
     if (!solo) {
-      return NextResponse.json({ error: (await diagnosticoDrive()) ?? "Drive no está conectado." }, { status: 503 });
+      const motivo = (await diagnosticoDrive()) ?? "Drive no está conectado.";
+      // El script pide token cada 2 min: aquí es donde se sabe, en el momento,
+      // que Drive dejó de servir. La alarma se encarga de no repetirse.
+      await alarmaDrive(supabaseAdmin(), motivo);
+      return NextResponse.json({ error: motivo }, { status: 503 });
     }
     return NextResponse.json({ accessToken: solo.accessToken, expiresAt: solo.expiresAt });
   }
@@ -54,7 +59,9 @@ export async function POST(req: NextRequest) {
 
   const cred = await tokenParaNavegador();
   if (!cred) {
-    return NextResponse.json({ error: (await diagnosticoDrive()) ?? "Drive no está conectado." }, { status: 503 });
+    const motivo = (await diagnosticoDrive()) ?? "Drive no está conectado.";
+    await alarmaDrive(supabaseAdmin(), motivo);
+    return NextResponse.json({ error: motivo }, { status: 503 });
   }
 
   const sb = supabaseAdmin();
