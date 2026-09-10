@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Plus, X, ChevronUp, ChevronDown, Save, Music, AlertTriangle } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { TIPO_PROY_LABEL } from "@/lib/erp-data";
+import { TIPO_CANCION, LABEL_CANCION, PASOS_CANCION_FABRICA } from "@/lib/cancion-plantilla";
 
 type Item = {
   clase: "tarea" | "instrumentos";
@@ -52,8 +53,17 @@ export function TareaPlantillasEditor() {
 
   const abrir = (tipo: string) => {
     setSel(tipo);
-    setItems((plantillas?.[tipo] ?? []).map((i) => ({ ...i, subs: [...(i.subs ?? [])] })));
+    const guardada = plantillas?.[tipo] ?? [];
+    // Los temas SIEMPRE tienen pasos: sin plantilla guardada se usa la de
+    // fábrica. Se muestra esa en vez de una lista vacía, para no decir
+    // "nace vacío" de algo que no nace vacío.
+    if (tipo === TIPO_CANCION && !guardada.length) {
+      setItems(PASOS_CANCION_FABRICA.map((p) => ({ clase: p.clase, titulo: p.titulo, resp: p.resp, responsable_id: null, subs: [] })));
+      return;
+    }
+    setItems(guardada.map((i) => ({ ...i, subs: [...(i.subs ?? [])] })));
   };
+  const esCancion = sel === TIPO_CANCION;
 
   const guardar = async () => {
     if (!sel) return;
@@ -61,7 +71,7 @@ export function TareaPlantillasEditor() {
     try {
       const r = await fetch("/api/admin/tarea-plantillas", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo: sel, nombre: TIPO_PROY_LABEL[sel] ?? sel, items }),
+        body: JSON.stringify({ tipo: sel, nombre: sel === TIPO_CANCION ? LABEL_CANCION : (TIPO_PROY_LABEL[sel] ?? sel), items }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { toast(`⚠️ ${d.error || "No se pudo guardar"}`); return; }
@@ -113,6 +123,21 @@ export function TareaPlantillasEditor() {
         <div className="grid md:grid-cols-[190px_1fr] gap-4">
           {/* Los 12 tipos, para que se vea de un golpe cuáles nacen vacíos */}
           <ul className="space-y-1">
+            {/* Los pasos DENTRO de cada tema. Va aparte y arriba porque no es un
+                tipo de proyecto: es lo que nace en cada tema de un EP o álbum. */}
+            <li>
+              <button onClick={() => abrir(TIPO_CANCION)}
+                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-sm transition-colors cursor-pointer border ${
+                  sel === TIPO_CANCION ? "bg-lgb-red/15 text-white border-lgb-red/30" : "text-white/70 hover:bg-white/5 border-white/10"}`}>
+                <span className="block truncate">{LABEL_CANCION}</span>
+                <span className="text-[10px] text-white/30">
+                  {plantillas[TIPO_CANCION]?.length
+                    ? `${plantillas[TIPO_CANCION].length} paso(s) por tema`
+                    : "usa la de fábrica"}
+                </span>
+              </button>
+            </li>
+            <li className="border-t border-white/5 !mt-2 pt-1" aria-hidden />
             {tipos.map(([id, label]) => {
               const n = plantillas[id]?.length ?? 0;
               return (
@@ -121,8 +146,10 @@ export function TareaPlantillasEditor() {
                     className={`w-full text-left px-2.5 py-1.5 rounded-lg text-sm transition-colors cursor-pointer ${
                       sel === id ? "bg-lgb-red/15 text-white" : "text-white/55 hover:bg-white/5"}`}>
                     <span className="block truncate">{label}</span>
-                    <span className={`text-[10px] ${n ? "text-white/30" : "text-amber-300/60"}`}>
-                      {n ? `${n} tarea${n === 1 ? "" : "s"}` : "sin tareas — nace vacío"}
+                    <span className={`text-[10px] ${n || id === "ep" || id === "album" ? "text-white/30" : "text-amber-300/60"}`}>
+                      {id === "ep" || id === "album"
+                        ? (n ? `${n} del disco + cada tema` : "sólo cada tema")
+                        : n ? `${n} tarea${n === 1 ? "" : "s"}` : "sin tareas — nace vacío"}
                     </span>
                   </button>
                 </li>
@@ -135,6 +162,22 @@ export function TareaPlantillasEditor() {
               <p className="text-white/25 text-xs">Elige un tipo de la izquierda.</p>
             ) : (
               <>
+                {esCancion && (
+                  <p className="text-[11px] text-white/45 mb-2 leading-relaxed border-l-2 border-lgb-red/40 pl-2.5">
+                    Cada renglón es una <b className="text-white/70">subtarea</b> que nace dentro de cada tema del
+                    EP o álbum, en este orden. Un disco de 5 temas nace con estos pasos 5 veces.
+                    {!(plantillas[TIPO_CANCION]?.length) && (
+                      <> Ésta es la de fábrica; en cuanto guardes, se usa la tuya.</>
+                    )}
+                  </p>
+                )}
+                {(sel === "ep" || sel === "album") && (
+                  <p className="text-[11px] text-white/45 mb-2 leading-relaxed border-l-2 border-white/15 pl-2.5">
+                    Aquí van las tareas del <b className="text-white/70">disco completo</b> (portada, distribución…),
+                    que nacen después de los temas. Los pasos de cada tema se editan en
+                    <button onClick={() => abrir(TIPO_CANCION)} className="text-white/70 underline mx-1 cursor-pointer">{LABEL_CANCION}</button>.
+                  </p>
+                )}
                 <ul className="space-y-1.5 mb-2">
                   {items.map((it, i) => (
                     <li key={i} className={`rounded-lg border px-2.5 py-2 ${
@@ -146,7 +189,7 @@ export function TareaPlantillasEditor() {
                         </div>
                         {it.clase === "instrumentos" && <Music size={13} className="text-purple-300 shrink-0" />}
                         <input value={it.titulo} onChange={(e) => cambiar(i, { titulo: e.target.value })}
-                          placeholder={it.clase === "instrumentos" ? "Grabar {instrumento}" : "Título de la tarea"}
+                          placeholder={it.clase === "instrumentos" ? "Grabar {instrumento}" : esCancion ? "Paso del tema" : "Título de la tarea"}
                           className={`${inp} flex-1 min-w-0`} />
                         <select value={it.responsable_id ?? ""} onChange={(e) => cambiar(i, { responsable_id: e.target.value || null })}
                           className={`${inp} w-32 cursor-pointer`}>
@@ -156,7 +199,7 @@ export function TareaPlantillasEditor() {
                         <button onClick={() => setItems(items.filter((_, k) => k !== i))}
                           className="text-white/25 hover:text-red-300 shrink-0 cursor-pointer"><X size={14} /></button>
                       </div>
-                      {it.clase === "tarea" && (
+                      {it.clase === "tarea" && !esCancion && (
                         <textarea value={it.subs.join("\n")}
                           onChange={(e) => cambiar(i, { subs: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
                           rows={it.subs.length ? it.subs.length + 1 : 1}
@@ -181,7 +224,7 @@ export function TareaPlantillasEditor() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button onClick={() => setItems([...items, vacio()])}
                     className="flex items-center gap-1 bg-white/8 hover:bg-white/12 text-white/70 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer">
-                    <Plus size={12} /> Tarea
+                    <Plus size={12} /> {esCancion ? "Paso" : "Tarea"}
                   </button>
                   <button onClick={() => setItems([...items, { ...vacio(), clase: "instrumentos", titulo: "Grabar {instrumento}", resp: "eliud" }])}
                     disabled={hayHueco}

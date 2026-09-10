@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { crearTareasDeProyecto, parseInstrumentos } from "@/lib/produccion-tareas";
+import { crearTareasDeProyecto, crearTareasDeCanciones, parseInstrumentos } from "@/lib/produccion-tareas";
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
 import { crearPagosMusicoPendientes } from "@/lib/musicos-sync";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
@@ -234,8 +234,9 @@ export async function POST(req: NextRequest) {
         // del músico sin tener que volver a buscarla por su título.
         let tareaDeInstrumento = new Map<string, string>();
         if (canciones.length) {
-          const rows = canciones.map((titulo, i) => ({ proyecto_id: proy.id, titulo, responsable_id: responsableId, orden: i, es_cancion: true }));
-          await sb.from("proyecto_tareas").insert(rows);
+          // Un tema = una tarea, y DENTRO sus pasos como subtareas. El mismo
+          // motor que el proyecto manual y que la cotización pagada por Stripe.
+          await crearTareasDeCanciones(sb, proy.id, tproy, canciones, parseInstrumentos(b.instrumentos || b.extras), responsableId);
         } else if (libres.length) {
           const rows = libres.map((titulo, i) => ({ proyecto_id: proy.id, titulo, responsable_id: responsableId, orden: i }));
           await sb.from("proyecto_tareas").insert(rows);

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { PASOS_CANCION_FABRICA, TIPO_CANCION } from "@/lib/cancion-plantilla";
 
 /**
  * Motor de plantillas de tareas de producción — COMPARTIDO.
@@ -168,7 +169,13 @@ export async function crearTareasDeProyecto(
   sb: SupabaseClient,
   proyectoId: string,
   tipo: string | undefined,
-  instrumentos: string[]
+  instrumentos: string[],
+  /**
+   * Desde qué número de orden empezar. En un EP las tareas del disco van
+   * DESPUÉS de los temas; sin esto las dos tandas empezaban en 0 y el tablero
+   * las intercalaba en un orden que dependía de la base.
+   */
+  ordenBase = 0,
 ): Promise<Map<string, string>> {
   const porInstrumento = new Map<string, string>();
   const tpl = (await plantillaDeBase(sb, tipo, instrumentos)) ?? plantillaTareas(tipo, instrumentos);
@@ -183,7 +190,7 @@ export async function crearTareasDeProyecto(
     // El id explícito gana sobre el alias: el alias casa por parecido de nombre
     // y con alguien nuevo en el equipo puede resolver a null sin avisar.
     responsable_id: t.respId ?? (t.resp ? findId(t.resp) : null),
-    orden: i,
+    orden: ordenBase + i,
     hecho: false,
   }));
   const { data: ins } = await sb.from("proyecto_tareas").insert(rows).select("id, orden");
@@ -193,7 +200,7 @@ export async function crearTareasDeProyecto(
 
   const subRows: { tarea_id: string; titulo: string; orden: number; hecho: boolean }[] = [];
   tpl.forEach((t, i) => {
-    const tid = ordenToId.get(i);
+    const tid = ordenToId.get(ordenBase + i);
     if (!tid) return;
     if (t.instrumento) porInstrumento.set(t.instrumento, tid);
     if (t.subs?.length) t.subs.forEach((st, j) => subRows.push({ tarea_id: tid, titulo: st, orden: j, hecho: false }));
@@ -201,4 +208,91 @@ export async function crearTareasDeProyecto(
   if (subRows.length) await sb.from("proyecto_subtareas").insert(subRows);
 
   return porInstrumento;
+}
+
+/**
+ * Los pasos de UN tema: la plantilla `_cancion` guardada en Ajustes, o la de
+ * fábrica si nadie ha guardado una. Con los instrumentos ya expandidos.
+ */
+async function pasosDeCancion(sb: SupabaseClient, instrumentos: string[]): Promise<TplTarea[]> {
+  const deBase = await plantillaDeBase(sb, TIPO_CANCION, instrumentos);
+  if (deBase) return deBase;
+  const out: TplTarea[] = [];
+  for (const p of PASOS_CANCION_FABRICA) {
+    if (p.clase === "instrumentos") {
+      for (const i of instrumentos) {
+        out.push({ titulo: p.titulo.replace(/\{instrumento\}/gi, i), resp: p.resp ?? undefined, instrumento: i });
+      }
+    } else {
+      out.push({ titulo: p.titulo, resp: p.resp ?? undefined });
+    }
+  }
+  return out;
+}
+
+/**
+ * Crea un EP o álbum: una tarea por tema, y DENTRO de cada una sus pasos como
+ * subtareas. Luego las tareas del disco completo, si esa plantilla tiene.
+ *
+ * Es la ÚNICA puerta para crear temas. Antes había tres caminos y hacían tres
+ * cosas distintas:
+ *
+ *   venta / convertir cotización → tareas por tema, SIN subtareas
+ *   proyecto manual              → tareas por tema, SIN subtareas
+ *   cotización pagada por Stripe → subtareas, pero temas SIN `es_cancion`
+ *                                  y los pasos fijos en el código
+ *
+ * Y el único que creaba subtareas era el que ningún EP había usado. Los tres EP
+ * que existían (P0044, P0021, P0004) tenían subtareas en todos sus temas porque
+ * alguien las había escrito A MANO, tema por tema: se crearon horas y hasta una
+ * semana después del proyecto, con dedazos, y distintas en cada tema.
+ *
+ * Best-effort como `crearTareasDeProyecto`: la venta o el proyecto ya se
+ * guardaron y no se pierden por esto.
+ */
+export async function crearTareasDeCanciones(
+  sb: SupabaseClient,
+  proyectoId: string,
+  tipo: string | undefined,
+  canciones: string[],
+  instrumentos: string[],
+  responsableId: string | null,
+): Promise<void> {
+  if (!canciones.length) return;
+  try {
+    const { data: temas } = await sb
+      .from("proyecto_tareas")
+      .insert(canciones.map((titulo, i) => ({
+        proyecto_id: proyectoId, titulo, responsable_id: responsableId,
+        orden: i, es_cancion: true, hecho: false,
+      })))
+      .select("id");
+
+    const pasos = await pasosDeCancion(sb, instrumentos);
+    if (pasos.length && temas?.length) {
+      const { data: eq } = await sb.from("equipo").select("id, nombre");
+      const findId = resolverEquipo((eq ?? []) as { id: string; nombre: string }[]);
+      const subRows = temas.flatMap((t) => pasos.map((p, j) => ({
+        tarea_id: t.id as string,
+        titulo: p.titulo,
+        orden: j,
+        hecho: false,
+        // Cada paso con su responsable: la maqueta a quien graba, la edición a
+        // quien cuantiza. Antes las subtareas a mano nacían sin nadie.
+        responsable_id: p.respId ?? (p.resp ? findId(p.resp) : null),
+      })));
+      const { error } = await sb.from("proyecto_subtareas").insert(subRows);
+      if (error) {
+        // Sin la columna de responsable (esquema viejo) se reintenta sin ella:
+        // mejor subtareas sin dueño que temas sin subtareas.
+        await sb.from("proyecto_subtareas").insert(subRows.map(({ responsable_id: _r, ...fila }) => fila));
+      }
+    }
+
+    // Las del disco completo (portada, distribución…) van después de los temas.
+    // Sin plantilla de `ep`/`album` no nace ninguna, que es lo de siempre.
+    await crearTareasDeProyecto(sb, proyectoId, tipo, [], canciones.length);
+  } catch (e) {
+    console.error("crearTareasDeCanciones:", e);
+  }
 }

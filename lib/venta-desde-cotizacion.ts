@@ -1,4 +1,4 @@
-import { resolverEquipo, crearTareasDeProyecto } from "@/lib/produccion-tareas";
+import { resolverEquipo, crearTareasDeProyecto, crearTareasDeCanciones } from "@/lib/produccion-tareas";
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
 import { crearPagosMusicoPendientes } from "@/lib/musicos-sync";
 import { registrarActividad } from "@/lib/actividad";
@@ -26,17 +26,6 @@ import { sincronizarFidelidadVenta } from "@/lib/fidelidad-server";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SB = any;
 
-/** Pipeline de una canción individual — el mismo que un beat personalizado, como subtareas. */
-function pipelineCancion(instrumentos: string[]): string[] {
-  return [
-    "Hacer maqueta",
-    ...instrumentos.map((i) => `Grabar ${i}`),
-    "Editar y cuantizar",
-    "Mezclar",
-    "Masterizar",
-    "Subir a Drive",
-  ];
-}
 
 interface MapaTipo {
   ventaTipo: string;
@@ -244,16 +233,11 @@ export async function crearVentaDesdeCotizacionPagada(
           const { data: eq } = await sb.from("equipo").select("id, nombre");
           const findId = resolverEquipo((eq ?? []) as { id: string; nombre: string }[]);
           const numCanciones = Math.max(1, Number(cot.num_canciones) || 1);
-          const rows = Array.from({ length: numCanciones }, (_, i) => ({
-            proyecto_id: proy.id, titulo: `Canción ${i + 1}`, responsable_id: findId("eliud"), orden: i, hecho: false,
-          }));
-          const { data: ins } = await sb.from("proyecto_tareas").insert(rows).select("id, orden");
-          const pipeline = pipelineCancion(instrumentos);
-          const subRows: { tarea_id: string; titulo: string; orden: number; hecho: boolean }[] = [];
-          for (const r of ins ?? []) {
-            pipeline.forEach((titulo, j) => subRows.push({ tarea_id: r.id as string, titulo, orden: j, hecho: false }));
-          }
-          if (subRows.length) await sb.from("proyecto_subtareas").insert(subRows);
+          // La cotización sabe CUÁNTOS temas, no cómo se llaman: nacen como
+          // "Canción N" y se renombran en el tablero. Antes además nacían sin
+          // `es_cancion`, así que el panel no los trataba como temas.
+          const canciones = Array.from({ length: numCanciones }, (_, i) => `Canción ${i + 1}`);
+          await crearTareasDeCanciones(sb, proy.id, tproy, canciones, instrumentos, findId("eliud"));
         } else {
           await crearTareasDeProyecto(sb, proy.id, tproy, instrumentos);
         }

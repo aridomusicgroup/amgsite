@@ -5,7 +5,7 @@ import { PROY_TO_ORDER } from "@/lib/estado-sync";
 import { registrarActividad, nombresPorId, nombreDeActor } from "@/lib/actividad";
 import { seguimientoAuto, DIAS_TRAS_ENTREGA } from "@/lib/seguimiento-auto";
 import { pushAResponsables } from "@/lib/push";
-import { crearTareasDeProyecto, parseInstrumentos } from "@/lib/produccion-tareas";
+import { crearTareasDeProyecto, crearTareasDeCanciones, parseInstrumentos } from "@/lib/produccion-tareas";
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
 import { papeleraCarpeta } from "@/lib/drive-oauth";
 
@@ -189,13 +189,11 @@ export async function POST(req: NextRequest) {
   }).select("id").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Canciones (EP/Álbum) → una tarea por canción
+  // Canciones (EP/Album): una tarea por tema con sus pasos como subtareas.
+  // El mismo motor que Ventas y que la cotizacion pagada por Stripe.
   if (proy?.id && b.canciones) {
     const canciones = String(b.canciones).split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
-    if (canciones.length) {
-      const rows = canciones.map((titulo, i) => ({ proyecto_id: proy.id, titulo, responsable_id: leadResp, orden: i, es_cancion: true }));
-      await sb.from("proyecto_tareas").insert(rows);
-    }
+    await crearTareasDeCanciones(sb, proy.id, b.tipo, canciones, parseInstrumentos(b.instrumentos), leadResp);
   }
 
   // Plantilla de tareas por tipo (precargadas con responsable + subtareas)
