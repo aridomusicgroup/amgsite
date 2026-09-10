@@ -1,7 +1,7 @@
 "use client";
 import { useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowUp, ArrowDown, Loader2, Lock, X, Radio, Plus, ChevronDown, ChevronRight } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowUp, ArrowDown, Loader2, Lock, X, Radio, Plus, ChevronDown, ChevronRight, User, Users, Wrench } from "lucide-react";
 import { ROLE_MODULES, MODULES, GRUPOS, GRUPO_LABEL, moduleLabel, moduleDef, type Grupo } from "@/lib/modules";
 import { toast } from "@/lib/toast";
 import { MusicosSection } from "./MusicosSection";
@@ -25,6 +25,25 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
     </div>
   );
 }
+
+/**
+ * Las tres áreas de Ajustes.
+ *
+ * Antes era una sola columna con siete tarjetas apiladas, y mezclaba dos cosas
+ * que no se parecen: lo que sólo te cambia a TI (letra, tema, orden del menú) y
+ * lo que le cambia al EQUIPO ENTERO o a cada proyecto nuevo (accesos, plantillas
+ * de tareas y de REAPER). Tocar una plantilla afecta a todo lo que nazca después;
+ * que viviera dos tarjetas abajo del tamaño de letra no ayudaba a notarlo.
+ *
+ * Cada área dice arriba a quién afecta, que es la pregunta que importa antes de
+ * picarle a algo.
+ */
+const SECCIONES = [
+  { id: "cuenta", label: "Tu cuenta", icono: User, quien: "Sólo te cambia a ti. Nadie más lo ve." },
+  { id: "equipo", label: "Equipo", icono: Users, quien: "Quién entra al panel y con quién trabajamos por fuera." },
+  { id: "produccion", label: "Producción", icono: Wrench, quien: "Afecta a cada proyecto NUEVO desde que lo guardas. Los que ya existen no cambian." },
+] as const;
+type SeccionId = (typeof SECCIONES)[number]["id"];
 
 const chip = (active: boolean) =>
   `px-4 py-1.5 rounded-full text-sm transition-colors ${active ? "bg-lgb-red text-white" : "bg-white/5 text-white/50 hover:text-white"}`;
@@ -92,34 +111,80 @@ export function AjustesPanel({ fontSize, theme, moduleOrder, modules, isAdmin, u
     toast("✓ Orden de fábrica");
   };
 
+  // La pestaña se puede pedir por URL (?seccion=produccion), igual que en el
+  // detalle de proyecto: así un aviso o un compañero te manda directo.
+  const pedida = useSearchParams().get("seccion");
+  const visibles = SECCIONES.filter((x) => x.id === "cuenta" || isAdmin);
+  const [seccion, setSeccion] = useState<SeccionId>(
+    visibles.some((x) => x.id === pedida) ? (pedida as SeccionId) : "cuenta",
+  );
+  const elegir = (id: SeccionId) => {
+    setSeccion(id);
+    // replaceState y no router.replace: esta página es force-dynamic y un
+    // replace del router volvería a pedirla entera al servidor sólo por
+    // cambiar de pestaña. Sin entrada nueva en el historial, a propósito.
+    const url = new URL(window.location.href);
+    url.searchParams.set("seccion", id);
+    window.history.replaceState(null, "", url);
+  };
+  const actual = SECCIONES.find((x) => x.id === seccion)!;
+
   return (
-    <div className="space-y-5 max-w-2xl">
-      <Section title="Mi perfil" desc="Cómo te ve el resto del equipo en el panel.">
-        <PerfilSection email={selfEmail} nombre={selfNombre} fotoUrl={selfFoto} />
-      </Section>
+    <div className="max-w-2xl">
+      {/* Sin pestañas si sólo hay una: a quien no es admin le estorbaría una
+          tira con un solo botón. */}
+      {visibles.length > 1 && (
+        <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1">
+          {visibles.map((x) => {
+            const Icono = x.icono;
+            return (
+              <button key={x.id} onClick={() => elegir(x.id)}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                  seccion === x.id ? "bg-lgb-red text-white" : "bg-white/5 text-white/60 hover:text-white"
+                }`}>
+                <Icono size={14} /> {x.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      <Section title="Mi panel" desc="Estos ajustes son solo tuyos: nadie más los ve.">
-        <div className="flex flex-col gap-5">
-          <div>
-            <p className="text-xs text-white/50 mb-2">Tamaño de letra</p>
-            <div className="flex gap-2">
-              {FONTS.map((f) => (
-                <button key={f.k} onClick={() => guardarFont(f.k)} disabled={busy} className={chip(fontSize === f.k)}>{f.label}</button>
-              ))}
-            </div>
-          </div>
+      <p className="text-[11px] text-white/35 mb-4 px-1">{actual.quien}</p>
 
-          <div>
-            <p className="text-xs text-white/50 mb-2">Tema</p>
-            <div className="flex gap-2">
-              <button onClick={() => guardarTema("dark")} disabled={busy} className={chip(theme !== "light")}>🌙 Oscuro</button>
-              <button onClick={() => guardarTema("light")} disabled={busy} className={chip(theme === "light")}>☀️ Claro</button>
-            </div>
-          </div>
+      <div className="space-y-5">
+        {seccion === "cuenta" && (
+          <>
+            <Section title="Mi perfil" desc="Cómo te ve el resto del equipo en el panel.">
+              <PerfilSection email={selfEmail} nombre={selfNombre} fotoUrl={selfFoto} />
+            </Section>
 
+            {/* Antes "Mi panel" juntaba en una sola tarjeta la apariencia y el
+                orden del menú, que es la lista más larga de la página. Separadas
+                se encuentra cada una sin recorrer la otra. */}
+            <Section title="Apariencia" desc="Cómo se ve el panel en esta cuenta.">
+              <div className="flex flex-col gap-5">
+                <div>
+                  <p className="text-xs text-white/50 mb-2">Tamaño de letra</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {FONTS.map((f) => (
+                      <button key={f.k} onClick={() => guardarFont(f.k)} disabled={busy} className={chip(fontSize === f.k)}>{f.label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-white/50 mb-2">Tema</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => guardarTema("dark")} disabled={busy} className={chip(theme !== "light")}>🌙 Oscuro</button>
+                    <button onClick={() => guardarTema("light")} disabled={busy} className={chip(theme === "light")}>☀️ Claro</button>
+                  </div>
+                </div>
+              </div>
+            </Section>
+
+            <Section title="Orden del menú" desc="En qué orden te salen las secciones dentro de cada área.">
           <div>
             <div className="flex items-baseline gap-2 mb-2">
-              <p className="text-xs text-white/50">Orden de tus secciones</p>
+              <p className="text-xs text-white/50">Tus secciones</p>
               {ordenPropio && (
                 <button onClick={restablecerOrden} disabled={busy} className="text-[11px] text-white/30 hover:text-white transition-colors cursor-pointer disabled:opacity-40">
                   restablecer
@@ -152,21 +217,29 @@ export function AjustesPanel({ fontSize, theme, moduleOrder, modules, isAdmin, u
               En escritorio el menú va agrupado por áreas y cada una se abre y cierra con un clic en su título. Las flechas acomodan las secciones dentro de su área; Inicio siempre va hasta arriba.
             </p>
           </div>
-        </div>
-      </Section>
+            </Section>
+          </>
+        )}
 
-      {isAdmin && <EquipoSection usuarios={usuarios} selfEmail={selfEmail} />}
+        {seccion === "equipo" && isAdmin && (
+          <>
+            <EquipoSection usuarios={usuarios} selfEmail={selfEmail} />
+            <MusicosSection />
+          </>
+        )}
 
-      {isAdmin && <MusicosSection />}
-
-      {isAdmin && <TareaPlantillasEditor />}
-      {isAdmin && <ReaperPlantillasSection />}
-      {isAdmin && <InstrumentoPistasSection />}
+        {seccion === "produccion" && isAdmin && (
+          <>
+            <TareaPlantillasEditor />
+            <ReaperPlantillasSection />
+            <InstrumentoPistasSection />
+          </>
+        )}
+      </div>
     </div>
   );
 }
 
-// ── Equipo y accesos: fuente de verdad en la tabla `usuarios` (login + tiempo real) ──
 function EquipoSection({ usuarios, selfEmail }: { usuarios: Usuario[]; selfEmail: string }) {
   const router = useRouter();
   const [nuevo, setNuevo] = useState("");
