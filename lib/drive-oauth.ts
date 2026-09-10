@@ -39,7 +39,11 @@ export async function diagnosticoDrive(): Promise<string | null> {
   const faltan = VARS.filter((k) => !process.env[k]);
   if (faltan.length) return `Faltan variables en Vercel: ${faltan.join(", ")}`;
   if (!(await getAccessToken())) {
-    return "Google rechazó el refresh token (caducó o se revocó el acceso). Reconecta entrando a /api/admin/drive-oauth/start";
+    const f = ultimoFallo;
+    // Se dice el código de Google, no una frase genérica: `invalid_grant` y
+    // `unauthorized_client` se arreglan de formas distintas.
+    const porque = f ? ` [${f.error}${f.detalle ? `: ${f.detalle}` : ""}]` : "";
+    return `Google rechazó el refresh token (caducó o se revocó el acceso)${porque}. Reconecta entrando a /api/admin/drive-oauth/start`;
   }
   return null;
 }
@@ -67,9 +71,38 @@ async function getAccessToken(): Promise<string | null> {
     }),
   });
   const j = await res.json().catch(() => null);
-  if (!j?.access_token) return null;
+  if (!j?.access_token) {
+    // Lo que Google contesta es el ÚNICO dato que dice por qué se cayó, y
+    // hasta hoy se tiraba a la basura: cuando el token murió el 9-sep no había
+    // forma de saber si lo revocaron a mano, si se pasó el límite de tokens
+    // por cuenta, o si tocaron el cliente de OAuth. Se quedó a puras hipótesis.
+    //
+    // `invalid_grant`      → caducó o lo revocaron (lo más común)
+    // `unauthorized_client`→ le movieron al cliente de OAuth o al secreto
+    // `invalid_client`     → el client_id/secret de Vercel ya no cuadra
+    ultimoFallo = {
+      error: String(j?.error ?? `HTTP ${res.status}`),
+      detalle: String(j?.error_description ?? "").slice(0, 200),
+      cuando: new Date().toISOString(),
+    };
+    return null;
+  }
+  ultimoFallo = null;
   cached = { token: j.access_token, exp: now + (j.expires_in || 3600) };
   return j.access_token;
+}
+
+/**
+ * Por qué falló la última vez que se pidió token.
+ *
+ * En memoria del proceso, como el caché: una instancia serverless que acaba de
+ * arrancar no lo tiene, y eso está bien — se vuelve a llenar en cuanto intenta.
+ */
+let ultimoFallo: { error: string; detalle: string; cuando: string } | null = null;
+
+/** El motivo crudo de Google, para el aviso y la bitácora. */
+export function falloDeDrive(): { error: string; detalle: string; cuando: string } | null {
+  return ultimoFallo;
 }
 
 /**
