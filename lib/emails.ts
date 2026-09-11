@@ -988,3 +988,62 @@ export function saldoCierreEmail(d: DatosSaldo): { subject: string; html: string
     html: wrap(content, "Tu material queda guardado. Sin más correos por esto."),
   };
 }
+
+// ── Entrega final ────────────────────────────────────────────────────────────
+//
+// Dos correos, uno por cada lado del candado de pago. Sustituyen a los dos que
+// mandaba `renderListoEmail` (uno de entregables y otro de stems, con minutos de
+// diferencia): una entrega es UNA noticia.
+
+/** Ya está en su cuenta y ya lo puede descargar: liquidó. */
+export function entregaListaEmail(d: {
+  customerName: string | null;
+  concepto: string;
+  conStems: boolean;
+  url: string;
+}): { subject: string; html: string } {
+  const content = `
+    <tr><td>
+      <h1 style="color:#fff;font-size:24px;margin:0 0 6px;">Tus archivos finales están listos 🎉</h1>
+      <p style="color:#999;font-size:14px;line-height:1.6;margin:0 0 16px;">
+        ${d.customerName ? `${escHtml(d.customerName)}, ya` : "Ya"} subimos
+        <b style="color:#fff;">${escHtml(d.concepto)}</b> con la mezcla y el máster finales${d.conStems ? ", y los stems pista por pista" : ""}.
+      </p>
+      <a href="${d.url}" style="display:block;background:#c42f42;color:#fff;text-decoration:none;text-align:center;padding:14px;border-radius:30px;font-size:15px;font-weight:bold;">Descargar mis archivos</a>
+      <p style="color:#666;font-size:12px;margin:14px 0 0;">Entra a tu cuenta y descárgalos desde ahí. Son archivos grandes, mejor desde una computadora.</p>
+    </td></tr>`;
+  return {
+    subject: `🎉 ${d.concepto} — ya puedes descargar tus archivos`,
+    html: wrap(content, "Tu producción terminada ya está en tu cuenta."),
+  };
+}
+
+/**
+ * Ya está terminado, pero se desbloquea al liquidar.
+ *
+ * Es el momento en que más ganas tiene de pagar: su canción existe y está a un
+ * clic. Por eso abre con la buena noticia y el saldo va como el último paso, no
+ * como un reclamo. El botón de pago es opcional (se decide al preparar la
+ * entrega); sin él, el correo invita a responder para coordinar.
+ */
+export function entregaRetenidaEmail(d: DatosSaldo & { conStems: boolean }): { subject: string; html: string } {
+  const content = `
+    <tr><td>
+      <h1 style="color:#fff;font-size:24px;margin:0 0 6px;">Tu producción ya está lista 🎉</h1>
+      <p style="color:#ddd;font-size:14px;line-height:1.6;margin:0 0 16px;">
+        ${d.nombre ? `${escHtml(d.nombre)}, terminamos` : "Terminamos"}
+        <b style="color:#fff;">${escHtml(d.concepto)}</b>: mezcla y máster finales${d.conStems ? ", y los stems pista por pista" : ""}.
+        Ya está guardado en tu cuenta y se desbloquea en cuanto quede liquidado el saldo.
+      </p>
+      ${cuentaHtml(d)}
+      ${d.urlPago ? botonSaldo(d.urlPago, `Pagar ${pesoMx(d.saldo)} y descargar`) : ""}
+      <p style="color:#777;font-size:12px;margin:16px 0 0;line-height:1.6;">
+        ${d.urlPago ? "¿Prefieres transferencia u otro método?" : "Para liquidar,"} respóndenos este correo y te pasamos los datos.
+        ${d.urlPanel ? `<br />Tu proyecto está en <a href="${d.urlPanel}" style="color:#c42f42;text-decoration:none;">tu cuenta</a>.` : ""}
+      </p>
+    </td></tr>`;
+  return {
+    subject: `🎉 ${d.concepto} está listo`,
+    html: wrap(content, `Se desbloquea al liquidar ${pesoMx(d.saldo)}.`),
+  };
+}

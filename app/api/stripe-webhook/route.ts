@@ -22,6 +22,7 @@ import { tramosConEstado, siguientePendiente } from "@/lib/cotizacion-pagos";
 import { esEsquemaValido, type EsquemaPago } from "@/lib/esquema-pago";
 import { crearVentaDesdeCotizacionPagada } from "@/lib/venta-desde-cotizacion";
 import { comisionStripeMxn, registrarComisionStripeEgreso } from "@/lib/stripe-comision";
+import { liberarEntregas } from "@/lib/entrega";
 
 /**
  * Webhook de Stripe (Fase A del Sistema ARIDO):
@@ -527,6 +528,11 @@ async function handleSaldoVenta(stripe: Stripe, session: Stripe.Checkout.Session
       cuerpo: `${venta?.folio ?? "Una venta"} · ${peso(monto)} por Stripe${saldoDespues > 0.5 ? ` · falta ${peso(saldoDespues)}` : " — queda en cero"}`,
       url: "/admin/ventas",
     });
+
+    // Quedó en cero: lo que estaba retenido se le muestra y le llega el correo.
+    if (saldoDespues <= 0.5) {
+      try { await liberarEntregas(sb, ventaId); } catch (e) { console.error("liberar-entregas:", e); }
+    }
 
     return NextResponse.json({ received: true, saldo: saldoDespues });
   } catch (e) {

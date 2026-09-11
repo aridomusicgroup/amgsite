@@ -20,6 +20,8 @@ import { fechaLarga, soloHora, paraInput, sugerenciaInicial, estaVencido, type M
 import { estaAtrasado } from "@/lib/vencimientos";
 import { useDestacar } from "@/lib/useDestacar";
 import { diag } from "@/lib/diag";
+import { avisarSiEntrega } from "@/lib/entrega-cliente";
+import { EntregaEstado } from "@/components/admin/entrega/EntregaEstado";
 
 const peso = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -533,6 +535,8 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
     fetch("/api/admin/proyecto-tareas", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: t.id, hecho: nuevo }) })
       .then((r) => {
         if (!r.ok) throw new Error();
+        // Si con esto ya sólo falta subir a Drive, se abre el cuadro de entrega.
+        void avisarSiEntrega(r);
         if (refreshTimer.current) clearTimeout(refreshTimer.current);
         refreshTimer.current = setTimeout(() => router.refresh(), 900); // reconcilia progreso sin bloquear los clics rápidos
       })
@@ -553,6 +557,8 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
     if (await api("POST", { proyecto_id: p.id, titulo, responsable_id: nuevaTareaResp || null }, "/api/admin/proyecto-tareas")) setNuevaTarea("");
   };
   const modalTarea = modalTareaId ? p.tareas.find((t) => t.id === modalTareaId) ?? null : null;
+  // La entrega que va corriendo, a la vista sin desplegar la tarjeta.
+  const entregaEnCurso = p.tareas.find((t) => t.entrega?.jobs.length)?.entrega ?? null;
 
   // Llegaste aquí desde un aviso: la tarjeta se despliega sola para que la tarea
   // quede a la vista, resaltada y EN SU CONTEXTO.
@@ -613,6 +619,7 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
             </span>
           )}
           {p.tareas.length > 0 && <span className="text-white/40">✓ {hechas}/{p.tareas.length}</span>}
+          {entregaEnCurso && !open && <EntregaEstado e={entregaEnCurso} saldo={isAdmin ? p.ventaSaldo : null} />}
           {p.revisionActual > 0 && (
             <span className="text-amber-300 flex items-center gap-0.5" title={`Ronda de revisión ${p.revisionActual}`}>
               🔄 Rev {p.revisionActual} · {p.tareas.filter((t) => t.revision === p.revisionActual).length} cambios
@@ -736,6 +743,7 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
                               {t.subtareas.length > 0 && <span className="text-white/30 ml-1">({subDone}/{t.subtareas.length})</span>}
                               {t.notas && <span className="text-white/25 ml-1">📝</span>}
                             </button>
+                            {t.entrega && <EntregaEstado e={t.entrega} titulo={t.titulo} saldo={isAdmin ? p.ventaSaldo : null} />}
                             {/* Mi campanita: solo la ve quien puso el recordatorio. */}
                             {recordatorios[t.id] && (
                               <span

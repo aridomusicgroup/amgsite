@@ -1,4 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { saldoDeVenta } from "@/lib/cobranza";
+import { finiquitadoProyecto, liberarEntregas, marcaDe, urlDePago } from "@/lib/entrega";
 
 /**
  * Capa de datos del panel de CLIENTE (/cuenta): elegibilidad de acceso,
@@ -347,6 +349,58 @@ export async function getClienteContratos(email: string): Promise<ClienteContrat
   }
 }
 
+export interface EntregaDelPedido {
+  /** Ya no debe nada: ve sus archivos finales. */
+  finiquitado: boolean;
+  saldo: number;
+  /** Ya hay una entrega en Drive (la vea o no). */
+  listas: boolean;
+  /** El botón "Pagar y descargar", si al preparar la entrega se eligió ponerlo. */
+  urlPago: string | null;
+}
+
+/**
+ * Cómo va la entrega de este pedido, para el aviso de "se desbloquea al liquidar".
+ *
+ * Además LIBERA lo retenido si ya liquidó y nadie lo liberó todavía: el pago
+ * pudo entrar por un camino que no avisa (una transferencia capturada días
+ * después, la conciliación de ventas). Por eso se llama ANTES de
+ * `rendersDelPedido`: así lo recién liberado ya aparece en la misma visita.
+ */
+export async function entregaDelPedido(email: string, orderId: string): Promise<EntregaDelPedido> {
+  const vacio: EntregaDelPedido = { finiquitado: true, saldo: 0, listas: false, urlPago: null };
+  const proy = await proyectoDelPedido(email, orderId);
+  if (!proy) return vacio;
+
+  const sb = supabaseAdmin();
+  try {
+    const { data: p } = await sb.from("proyectos").select("venta_id").eq("id", proy.proyectoId).maybeSingle();
+    const ventaId = (p?.venta_id as string | null) ?? null;
+    const s = ventaId ? await saldoDeVenta(sb, ventaId) : null;
+    const finiquitado = !s || s.saldo <= 0.5;
+
+    const { data: js } = await sb
+      .from("render_jobs")
+      .select("compartir, opciones")
+      .eq("proyecto_id", proy.proyectoId)
+      .in("tipo", ["entregables", "stems"])
+      .eq("estado", "listo");
+    const cerradas = (js ?? []).filter((j) => marcaDe(j)?.cerrado);
+
+    if (finiquitado && ventaId && cerradas.some((j) => !j.compartir)) await liberarEntregas(sb, ventaId);
+
+    const conPago = cerradas.some((j) => marcaDe(j)?.conPago);
+    return {
+      finiquitado,
+      saldo: s?.saldo ?? 0,
+      listas: cerradas.length > 0,
+      urlPago: !finiquitado && conPago ? urlDePago(ventaId) : null,
+    };
+  } catch {
+    return vacio;
+  }
+}
+
 export interface ArchivoRender {
   /** Índice dentro del trabajo — así el navegador nunca ve el id de Drive. */
   idx: number;
@@ -372,14 +426,22 @@ export interface RenderDelPedido {
   previoNum: number | null;
   fecha: string;
   archivos: ArchivoRender[];
+  /** El tema, en un EP/álbum: los previos se agrupan por tema. */
+  tareaId: string | null;
+  tema: string | null;
 }
 
 /**
  * Los renders que el equipo decidió COMPARTIR con este cliente, del más
  * reciente al más viejo.
  *
- * `compartir` es la única puerta: un previo interno (la casilla desmarcada al
- * encolarlo) no existe para el cliente aunque esté subido a Drive.
+ * Dos puertas:
+ *   · `compartir`: un previo interno (la casilla desmarcada al encolarlo) no
+ *     existe para el cliente aunque esté subido a Drive.
+ *   · el saldo: los archivos FINALES (entregables y stems) sólo aparecen si ya
+ *     liquidó. Los previos no se bloquean: son para aprobar, y frenarlos frena
+ *     la producción. El proxy de descarga revisa lo mismo, así que esconderlos
+ *     aquí no es cosmético.
  */
 export async function rendersDelPedido(email: string, orderId: string): Promise<RenderDelPedido[]> {
   const proy = await proyectoDelPedido(email, orderId);
@@ -387,18 +449,30 @@ export async function rendersDelPedido(email: string, orderId: string): Promise<
 
   const sb = supabaseAdmin();
   try {
-    const { data } = await sb
-      .from("render_jobs")
-      .select("id, tipo, previo_num, drive_urls, updated_at")
-      .eq("proyecto_id", proy.proyectoId)
-      .eq("compartir", true)
-      .eq("estado", "listo")
-      .not("drive_urls", "is", null)
-      .order("updated_at", { ascending: false });
+    const [{ data }, finiquitado] = await Promise.all([
+      sb
+        .from("render_jobs")
+        .select("id, tipo, previo_num, drive_urls, updated_at, tarea_id")
+        .eq("proyecto_id", proy.proyectoId)
+        .eq("compartir", true)
+        .eq("estado", "listo")
+        .not("drive_urls", "is", null)
+        .order("updated_at", { ascending: false }),
+      finiquitadoProyecto(sb, proy.proyectoId),
+    ]);
 
-    return (data ?? [])
+    const visibles = (data ?? []).filter((j) => finiquitado || j.tipo === "previo");
+    const idsTema = [...new Set(visibles.map((j) => j.tarea_id as string | null).filter(Boolean))] as string[];
+    const temas = new Map<string, string>();
+    if (idsTema.length) {
+      const { data: ts } = await sb.from("proyecto_tareas").select("id, titulo").in("id", idsTema);
+      for (const t of ts ?? []) temas.set(t.id as string, t.titulo as string);
+    }
+
+    return visibles
       .map((j) => {
         const urls = (j.drive_urls as { archivo: string }[] | null) ?? [];
+        const tareaId = (j.tarea_id as string | null) ?? null;
         return {
           jobId: j.id as string,
           tipo: j.tipo as RenderDelPedido["tipo"],
@@ -409,6 +483,8 @@ export async function rendersDelPedido(email: string, orderId: string): Promise<
             nombre: a.archivo,
             audio: sePuedeOir(j.tipo as string, a.archivo),
           })),
+          tareaId,
+          tema: tareaId ? temas.get(tareaId) ?? null : null,
         };
       })
       .filter((r) => r.archivos.length > 0);

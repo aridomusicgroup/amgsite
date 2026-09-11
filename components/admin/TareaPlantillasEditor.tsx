@@ -4,6 +4,7 @@ import { Loader2, Plus, X, ChevronUp, ChevronDown, Save, Music, AlertTriangle } 
 import { toast } from "@/lib/toast";
 import { TIPO_PROY_LABEL } from "@/lib/erp-data";
 import { TIPO_CANCION, LABEL_CANCION, PASOS_CANCION_FABRICA } from "@/lib/cancion-plantilla";
+import { PASOS, PASO_LABEL, PASO_TITULO, tipoLlevaPasos, type PasoEntrega } from "@/lib/pasos-entrega";
 
 type Item = {
   clase: "tarea" | "instrumentos";
@@ -11,10 +12,12 @@ type Item = {
   resp: string | null;
   responsable_id: string | null;
   subs: string[];
+  /** "Aprobada" / "Subir a Drive": con los dos marcados corre la entrega automática. */
+  paso: PasoEntrega | null;
 };
 type Equipo = { id: string; nombre: string };
 
-const vacio = (): Item => ({ clase: "tarea", titulo: "", resp: null, responsable_id: null, subs: [] });
+const vacio = (): Item => ({ clase: "tarea", titulo: "", resp: null, responsable_id: null, subs: [], paso: null });
 
 /**
  * Qué tareas nacen con cada tipo de proyecto.
@@ -58,12 +61,27 @@ export function TareaPlantillasEditor() {
     // fábrica. Se muestra esa en vez de una lista vacía, para no decir
     // "nace vacío" de algo que no nace vacío.
     if (tipo === TIPO_CANCION && !guardada.length) {
-      setItems(PASOS_CANCION_FABRICA.map((p) => ({ clase: p.clase, titulo: p.titulo, resp: p.resp, responsable_id: null, subs: [] })));
+      setItems(PASOS_CANCION_FABRICA.map((p) => ({ clase: p.clase, titulo: p.titulo, resp: p.resp, responsable_id: null, subs: [], paso: p.paso ?? null })));
       return;
     }
-    setItems(guardada.map((i) => ({ ...i, subs: [...(i.subs ?? [])] })));
+    setItems(guardada.map((i) => ({ ...i, paso: i.paso ?? null, subs: [...(i.subs ?? [])] })));
   };
   const esCancion = sel === TIPO_CANCION;
+
+  /** Marca un renglón como paso de la entrega; si otro ya lo era, se lo quita. */
+  const marcarPaso = (i: number, paso: PasoEntrega | null) =>
+    setItems(items.map((it, k) => (k === i ? { ...it, paso } : paso && it.paso === paso ? { ...it, paso: null } : it)));
+
+  // Un tipo de cliente sin "Aprobada" o sin "Subir a Drive" nunca abre el cuadro
+  // de entrega. Se avisa aquí, donde se arregla, y no proyecto por proyecto.
+  const faltan = sel && tipoLlevaPasos(sel) && items.length > 0
+    ? PASOS.filter((p) => !items.some((it) => it.paso === p))
+    : [];
+  const agregarPasos = () =>
+    setItems([
+      ...items,
+      ...faltan.map((p) => ({ ...vacio(), titulo: PASO_TITULO[p], resp: p === "aprobacion" ? "luis" : null, paso: p })),
+    ]);
 
   const guardar = async () => {
     if (!sel) return;
@@ -178,10 +196,24 @@ export function TareaPlantillasEditor() {
                     <button onClick={() => abrir(TIPO_CANCION)} className="text-white/70 underline mx-1 cursor-pointer">{LABEL_CANCION}</button>.
                   </p>
                 )}
+                {faltan.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap text-[11px] text-amber-200/80 mb-2 rounded-lg border border-amber-400/25 bg-amber-400/[0.06] px-2.5 py-2">
+                    <AlertTriangle size={12} className="text-amber-300 shrink-0" />
+                    <span className="flex-1 min-w-0">
+                      Sin {faltan.map((p) => `“${PASO_TITULO[p]}”`).join(" ni ")} marcado{faltan.length > 1 ? "s" : ""}, la entrega
+                      automática no corre: nadie abre el cuadro de entregables y stems al aprobar.
+                    </span>
+                    <button onClick={agregarPasos}
+                      className="shrink-0 bg-amber-400/15 hover:bg-amber-400/25 text-amber-100 px-2 py-1 rounded-md cursor-pointer">
+                      Agregar {faltan.length > 1 ? "los dos pasos" : "el paso"}
+                    </button>
+                  </div>
+                )}
                 <ul className="space-y-1.5 mb-2">
                   {items.map((it, i) => (
                     <li key={i} className={`rounded-lg border px-2.5 py-2 ${
-                      it.clase === "instrumentos" ? "border-purple-400/30 bg-purple-400/[0.06]" : "border-white/8 bg-white/[0.02]"}`}>
+                      it.clase === "instrumentos" ? "border-purple-400/30 bg-purple-400/[0.06]"
+                        : it.paso ? "border-lgb-red/25 bg-lgb-red/[0.04]" : "border-white/8 bg-white/[0.02]"}`}>
                       <div className="flex items-center gap-1.5">
                         <div className="flex flex-col shrink-0">
                           <button onClick={() => mover(i, -1)} className="text-white/25 hover:text-white cursor-pointer"><ChevronUp size={12} /></button>
@@ -191,6 +223,14 @@ export function TareaPlantillasEditor() {
                         <input value={it.titulo} onChange={(e) => cambiar(i, { titulo: e.target.value })}
                           placeholder={it.clase === "instrumentos" ? "Grabar {instrumento}" : esCancion ? "Paso del tema" : "Título de la tarea"}
                           className={`${inp} flex-1 min-w-0`} />
+                        {it.clase === "tarea" && sel && tipoLlevaPasos(sel) && (
+                          <select value={it.paso ?? ""} onChange={(e) => marcarPaso(i, (e.target.value || null) as PasoEntrega | null)}
+                            title="Si es uno de los dos pasos que mueven la entrega automática"
+                            className={`${inp} w-[7.5rem] cursor-pointer ${it.paso ? "text-lgb-red" : "text-white/35"}`}>
+                            <option value="" className="bg-lgb-dark text-white">— paso normal</option>
+                            {PASOS.map((p) => <option key={p} value={p} className="bg-lgb-dark text-white">{PASO_LABEL[p]}</option>)}
+                          </select>
+                        )}
                         <select value={it.responsable_id ?? ""} onChange={(e) => cambiar(i, { responsable_id: e.target.value || null })}
                           className={`${inp} w-32 cursor-pointer`}>
                           <option value="" className="bg-lgb-dark">{it.resp ? `(${it.resp})` : "— nadie —"}</option>

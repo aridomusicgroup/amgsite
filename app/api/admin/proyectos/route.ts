@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProduccionEmail, getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { PROY_TO_ORDER } from "@/lib/estado-sync";
 import { registrarActividad, nombresPorId, nombreDeActor } from "@/lib/actividad";
-import { seguimientoAuto, DIAS_TRAS_ENTREGA } from "@/lib/seguimiento-auto";
 import { pushAResponsables } from "@/lib/push";
+import { efectosDeCambioDeEstado } from "@/lib/proyecto-estado";
 import { crearTareasDeProyecto, crearTareasDeCanciones, parseInstrumentos } from "@/lib/produccion-tareas";
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
 import { papeleraCarpeta } from "@/lib/drive-oauth";
@@ -46,70 +45,6 @@ async function recalcContacto(sb: any, contactoId: string | null) {
   const patch: Record<string, unknown> = { ltv: sum, updated_at: new Date().toISOString() };
   if (n >= 1) patch.etapa = n > 1 ? "recurrente" : "cliente";
   await sb.from("contactos").update(patch).eq("id", contactoId);
-}
-
-// Al concluir una producción (entregado/cerrado) genera el contrato en BORRADOR
-// con los datos que ya teníamos (contacto + venta). Idempotente: 1 por proyecto.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function autogenerarContrato(sb: any, proyectoId: string, actorEmail: string) {
-  const { data: yaHay } = await sb.from("contratos").select("id").eq("proyecto_id", proyectoId).limit(1);
-  if (yaHay && yaHay.length) return; // ya existe → no duplicar
-
-  const { data: p } = await sb.from("proyectos")
-    .select("id, folio, titulo, tipo, contacto_id, venta_id, cotizacion_id, responsables")
-    .eq("id", proyectoId).single();
-  if (!p) return;
-  // Solo las producciones de BEAT PERSONALIZADO generan contrato automático.
-  // (La exclusiva de la tienda ya emite su contrato al momento de la compra.)
-  if (p.tipo !== "beat_personalizado") return;
-
-  let contacto: { nombre: string | null; email: string | null; telefono: string | null; direccion: string | null } | null = null;
-  if (p.contacto_id) {
-    const { data } = await sb.from("contactos").select("nombre, email, telefono, direccion").eq("id", p.contacto_id).single();
-    contacto = data ?? null;
-  }
-  let venta: { total_mxn: number | null; moneda: string | null; beat_nombre: string | null; cotizacion_id: string | null } | null = null;
-  if (p.venta_id) {
-    const { data } = await sb.from("ventas").select("total_mxn, moneda, beat_nombre, cotizacion_id").eq("id", p.venta_id).single();
-    venta = data ?? null;
-  }
-
-  const tipo = "beat_personalizado";
-  const concepto = venta?.beat_nombre || p.titulo || "Producción";
-  const folio = await nextFolio(sb, "contratos", "CONT-");
-
-  await sb.from("contratos").insert({
-    folio, tipo,
-    cotizacion_id: p.cotizacion_id || venta?.cotizacion_id || null,
-    venta_id: p.venta_id || null,
-    proyecto_id: p.id,
-    contacto_id: p.contacto_id || null,
-    cliente_nombre: contacto?.nombre || null,
-    cliente_email: contacto?.email || null,
-    cliente_telefono: contacto?.telefono || null,
-    cliente_direccion: contacto?.direccion || null,
-    moneda: venta?.moneda || "MXN",
-    monto: Number(venta?.total_mxn) || 0,
-    concepto,
-    estado: "borrador",
-    creado_por: "auto",
-  });
-
-  try {
-    const resp = ((p.responsables as string[] | null) ?? []).filter(Boolean);
-    if (resp.length) {
-      await pushAResponsables(sb, resp, {
-        titulo: "Contrato listo para revisar",
-        cuerpo: `Se generó el contrato de “${concepto}” (${folio}). Revísalo y envíalo.`,
-        url: "/admin/cotizaciones",
-      });
-    }
-    await registrarActividad(sb, {
-      tipo: "contrato_auto",
-      titulo: `Se generó el contrato ${folio} (borrador) al concluir “${concepto}”`,
-      actor: actorEmail, proyecto_id: proyectoId, meta: { folio, tipo },
-    });
-  } catch { /* aviso best-effort */ }
 }
 
 // ── Crear proyecto (producción o tarea interna). Acceso: equipo de producción ──
@@ -305,31 +240,10 @@ export async function PATCH(req: NextRequest) {
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Al concluir la producción, genera el contrato en borrador (una sola vez).
-  if ((patch.estado === "entregado" || patch.estado === "cerrado") && patch.estado !== prev?.estado) {
-    try { await autogenerarContrato(sb, id, email); } catch (e) { console.error("auto-contrato:", e); }
-
-    // Aquí se reanuda el seguimiento del cliente: entregado ya hay de qué
-    // hablar. De este punto en adelante lo toma recompra, cuyo reloj corre
-    // aparte desde la última venta.
-    const { data: proyC } = await sb.from("proyectos").select("contacto_id, titulo").eq("id", id).single();
-    await seguimientoAuto(sb, {
-      contactoId: (proyC?.contacto_id as string | null) ?? null,
-      accion: `Confirmar que quedó conforme con ${(proyC?.titulo as string) || "la entrega"}`,
-      dias: DIAS_TRAS_ENTREGA,
-      motivo: `se entregó ${(proyC?.titulo as string) || "el proyecto"}`,
-      actor: email,
-    });
-  }
-
-  // Sincroniza el estado del pedido del sitio ligado → lo ve el cliente en "Mis compras".
-  if (patch.estado && PROY_TO_ORDER[patch.estado as string]) {
-    try {
-      const { data: proy } = await sb.from("proyectos").select("order_id").eq("id", id).single();
-      const orderId = (proy?.order_id as string | null) ?? null;
-      if (orderId) await sb.from("orders").update({ status: PROY_TO_ORDER[patch.estado as string] }).eq("id", orderId);
-    } catch { /* sin pedido ligado o columna ausente: ignorar */ }
-  }
+  // Contrato en borrador, seguimiento de conformidad y estado del pedido del
+  // cliente. Vive en lib/proyecto-estado.ts porque la entrega automática
+  // también mueve proyectos a Entregado, y tienen que pasar las mismas cosas.
+  if (patch.estado) await efectosDeCambioDeEstado(sb, id, patch.estado as string, prev?.estado as string | undefined, email);
 
   // Bitácora: cambio de etapa y/o de responsables (solo si de verdad cambiaron)
   try {

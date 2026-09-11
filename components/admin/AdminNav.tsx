@@ -9,6 +9,7 @@ import { moduleIcon } from "./module-icons";
 import { createAuthClient } from "@/lib/supabase/auth-client";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { VersionWatcher } from "./VersionWatcher";
+import { EntregaLanzador } from "./entrega/EntregaLanzador";
 import { toast } from "@/lib/toast";
 
 // Dashboard del chatbot (proyecto aparte en Vercel, con su propio login).
@@ -22,6 +23,8 @@ const RT_TABLAS = [
   "cotizaciones", "contratos", "ventas", "pagos", "pagos_musico", "musicos",
   "orders", "order_items", "customers",
   "expenses", "manual_income",
+  // La píldora de la entrega en el tablero: en cola → renderizando → en Drive.
+  "render_jobs",
 ] as const;
 
 /** Los links salen de MODULES (única lista) + su icono. Antes había aquí una
@@ -167,6 +170,10 @@ export function AdminNav({ email, nombre, foto, modules, order, colapsado }: {
     <>
       {/* Aviso de versión nueva (tras inactividad) */}
       <VersionWatcher />
+
+      {/* El cuadro de entrega (Entregables → Stems → aviso). Vive aquí, una vez,
+          para abrirse desde cualquier página del panel. */}
+      <EntregaLanzador />
 
       {/* Sidebar desktop */}
       <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-60 bg-lgb-dark border-r border-white/5 flex-col p-4">

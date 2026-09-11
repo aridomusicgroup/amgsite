@@ -116,6 +116,12 @@ export interface OpcionesRender {
    */
   asignar?: boolean;
   instrumento?: string;
+  /**
+   * Este render es parte de una ENTREGA (Entregables + Stems de un golpe). La
+   * pone el servidor, nunca el navegador: con ella el aviso de fin de subida
+   * palomea "Subir a Drive" y decide si el cliente lo ve (ver lib/entrega.ts).
+   */
+  entrega?: { lote: string; avisar: boolean; conPago: boolean; cerrado?: string };
 }
 
 /** Un músico de sesión al que se le puede mandar un previo. */

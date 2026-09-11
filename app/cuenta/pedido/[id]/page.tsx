@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Image from "next/image";
-import { ArrowLeft, Clock, FolderDown } from "lucide-react";
+import { ArrowLeft, Clock, FolderDown, Lock } from "lucide-react";
 import { getCustomerEmail } from "@/lib/cuenta-auth";
-import { getPedidoDetalle, rendersDelPedido } from "@/lib/cuenta-cliente";
+import { getPedidoDetalle, rendersDelPedido, entregaDelPedido } from "@/lib/cuenta-cliente";
 import { acuerdosPendientes } from "@/lib/acuerdos/server";
 import { PedidoProgreso, EntregaChip } from "@/components/cuenta/PedidoProgreso";
 import { SubirArchivos } from "@/components/cuenta/SubirArchivos";
@@ -33,12 +33,17 @@ export default async function PedidoPage({ params }: Props) {
   const d = await getPedidoDetalle(email, id);
   if (!d) redirect("/cuenta");
 
+  // Primero la entrega: si ya liquidó y algo seguía retenido, aquí se libera, y
+  // así los archivos aparecen abajo en esta misma visita.
+  const ent = await entregaDelPedido(email, id);
   // Previos y entregables que el equipo marcó para compartirle.
   const renders = await rendersDelPedido(email, id);
 
   const entregado = d.total > 0 && d.hechas >= d.total;
-  // Solo enlaces http(s) (evita esquemas peligrosos como javascript:).
-  const entregable = d.entregableUrl && /^https?:\/\//i.test(d.entregableUrl.trim()) ? d.entregableUrl.trim() : null;
+  // Solo enlaces http(s) (evita esquemas peligrosos como javascript:). Y sólo
+  // si ya liquidó: es la carpeta de los archivos finales.
+  const entregable = ent.finiquitado && d.entregableUrl && /^https?:\/\//i.test(d.entregableUrl.trim()) ? d.entregableUrl.trim() : null;
+  const saldoTxt = `$${Math.round(ent.saldo).toLocaleString("es-MX")}`;
 
   return (
     <main className="min-h-screen bg-lgb-black text-white">
@@ -94,6 +99,35 @@ export default async function PedidoPage({ params }: Props) {
                 cliente merece verla desde el primer día. */}
             <div className="pp-chips justify-center">
               <EntregaChip entregado={false} fechaEntrega={d.fechaEntrega} fechaEntregaReal={d.fechaEntregaReal} />
+            </div>
+          </div>
+        )}
+
+        {/* Ya está en Drive pero debe saldo: la buena noticia primero, y el
+            saldo como el último paso — no como un reclamo. */}
+        {!ent.finiquitado && ent.listas && (
+          <div className="mt-6 rounded-2xl border border-amber-400/30 bg-amber-400/[0.07] p-5">
+            <div className="flex items-start gap-3">
+              <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-400/15 text-amber-300 shrink-0">
+                <Lock size={18} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-white">Tus archivos finales ya están listos 🎉</p>
+                <p className="text-white/55 text-xs mt-1 leading-relaxed">
+                  Se desbloquean en cuanto quede liquidado el saldo de <b className="text-white">{saldoTxt}</b>.
+                  Tus previos siguen aquí abajo para escucharlos.
+                </p>
+                {ent.urlPago ? (
+                  <a
+                    href={ent.urlPago}
+                    className="inline-flex items-center gap-2 mt-3 bg-lgb-red text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-red-700 transition-colors"
+                  >
+                    Pagar {saldoTxt} y descargar
+                  </a>
+                ) : (
+                  <p className="text-white/40 text-xs mt-3">Escríbenos por WhatsApp y coordinamos el pago.</p>
+                )}
+              </div>
             </div>
           </div>
         )}

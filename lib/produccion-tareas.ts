@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { PASOS_CANCION_FABRICA, TIPO_CANCION } from "@/lib/cancion-plantilla";
+import { esPaso, pasoDeTitulo, type PasoEntrega } from "@/lib/pasos-entrega";
 
 /**
  * Motor de plantillas de tareas de producción — COMPARTIDO.
@@ -16,6 +17,8 @@ export type TplTarea = {
   subs?: string[];
   /** El instrumento que generó esta tarea, si salió del hueco de instrumentos. */
   instrumento?: string;
+  /** "Aprobada" o "Subir a Drive": los dos pasos que mueven la entrega automática. */
+  paso?: PasoEntrega | null;
 };
 
 const SUBS_EDITAR = [
@@ -28,6 +31,13 @@ export const DISTRIBUCION = [
   "Subir a BeatStars", "Portada de YouTube", "Portada de BeatStars",
   "Subir archivos a Drive", "Actualizar catálogo",
 ];
+
+/**
+ * El cierre de toda producción de cliente: alguien la aprueba y se sube.
+ * Con estos dos marcados, palomear la aprobación abre el cuadro de entrega.
+ */
+const APROBADA: TplTarea = { titulo: "Aprobada", resp: "luis", paso: "aprobacion" };
+const SUBIR = (resp: string): TplTarea => ({ titulo: "Subir a Drive", resp, paso: "entrega" });
 
 /**
  * Plantilla de FÁBRICA, según el tipo de proyecto y los instrumentos elegidos.
@@ -60,10 +70,11 @@ function plantillaTareas(tipo: string | undefined, instrumentos: string[]): TplT
       return [
         ...grabar,
         { titulo: "Editar y cuantizar", resp: "diego", subs: SUBS_EDITAR },
-        { titulo: "Subir archivos a Drive", resp: "diego" },
+        APROBADA,
+        { ...SUBIR("diego"), titulo: "Subir archivos a Drive" },
       ];
     case "mezcla_master":
-      return [{ titulo: "Editar y cuantizar", resp: "diego", subs: SUBS_EDITAR }];
+      return [{ titulo: "Editar y cuantizar", resp: "diego", subs: SUBS_EDITAR }, APROBADA, SUBIR("luis")];
     case "beat_personalizado":
       return [
         { titulo: "Hacer maqueta", resp: "eliud" },
@@ -71,7 +82,8 @@ function plantillaTareas(tipo: string | undefined, instrumentos: string[]): TplT
         { titulo: "Editar y cuantizar", resp: "diego", subs: SUBS_EDITAR },
         { titulo: "Mezclar", resp: "luis" },
         { titulo: "Masterizar", resp: "luis" },
-        { titulo: "Subir a Drive", resp: "luis" },
+        APROBADA,
+        SUBIR("luis"),
       ];
     default:
       return [];
@@ -102,6 +114,29 @@ interface FilaPlantilla {
   resp: string | null;
   responsable_id: string | null;
   subs: string[] | null;
+  paso?: string | null;
+}
+
+/**
+ * Inserta filas; si la base todavía no tiene una columna nueva (`paso`, o
+ * `responsable_id` en subtareas de esquemas viejos), reintenta sin ella.
+ * Mejor tareas sin la marca que un proyecto que nace sin tareas.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function insertarTolerante(sb: SupabaseClient, tabla: string, filas: Record<string, unknown>[], select?: string): Promise<{ data: any[] | null; error: unknown }> {
+  const intento = (fs: Record<string, unknown>[]) =>
+    select ? sb.from(tabla).insert(fs).select(select) : sb.from(tabla).insert(fs);
+  let actuales = filas;
+  let r = await intento(actuales);
+  for (const col of ["paso", "responsable_id"]) {
+    if (!r.error) break;
+    actuales = actuales.map((f) => {
+      const { [col]: _fuera, ...resto } = f;
+      return resto;
+    });
+    r = await intento(actuales);
+  }
+  return { data: (r.data as unknown[] | null) as never, error: r.error };
 }
 
 /**
@@ -119,11 +154,11 @@ async function plantillaDeBase(
 ): Promise<TplTarea[] | null> {
   if (!tipo) return null;
   try {
-    const { data, error } = await sb
-      .from("tarea_plantilla_items")
-      .select("orden, clase, titulo, resp, responsable_id, subs")
-      .eq("tipo", tipo)
-      .order("orden", { ascending: true });
+    const consulta = (cols: string) =>
+      sb.from("tarea_plantilla_items").select(cols).eq("tipo", tipo).order("orden", { ascending: true });
+    // `paso` es columna nueva: sin la migración se pide sin ella.
+    let { data, error } = await consulta("orden, clase, titulo, resp, responsable_id, subs, paso");
+    if (error) ({ data, error } = await consulta("orden, clase, titulo, resp, responsable_id, subs"));
     if (error || !data || !data.length) return null;
 
     const out: TplTarea[] = [];
@@ -146,6 +181,7 @@ async function plantillaDeBase(
         resp: f.resp ?? undefined,
         respId: f.responsable_id,
         subs: f.subs ?? undefined,
+        paso: esPaso(f.paso) ? f.paso : pasoDeTitulo(f.titulo),
       });
     }
     return out;
@@ -192,20 +228,23 @@ export async function crearTareasDeProyecto(
     responsable_id: t.respId ?? (t.resp ? findId(t.resp) : null),
     orden: ordenBase + i,
     hecho: false,
+    paso: t.paso ?? pasoDeTitulo(t.titulo),
   }));
-  const { data: ins } = await sb.from("proyecto_tareas").insert(rows).select("id, orden");
+  const { data: ins } = await insertarTolerante(sb, "proyecto_tareas", rows, "id, orden");
 
   const ordenToId = new Map<number, string>();
   for (const r of ins ?? []) ordenToId.set(Number(r.orden), r.id as string);
 
-  const subRows: { tarea_id: string; titulo: string; orden: number; hecho: boolean }[] = [];
+  const subRows: Record<string, unknown>[] = [];
   tpl.forEach((t, i) => {
     const tid = ordenToId.get(ordenBase + i);
     if (!tid) return;
     if (t.instrumento) porInstrumento.set(t.instrumento, tid);
-    if (t.subs?.length) t.subs.forEach((st, j) => subRows.push({ tarea_id: tid, titulo: st, orden: j, hecho: false }));
+    if (t.subs?.length) {
+      t.subs.forEach((st, j) => subRows.push({ tarea_id: tid, titulo: st, orden: j, hecho: false, paso: pasoDeTitulo(st) }));
+    }
   });
-  if (subRows.length) await sb.from("proyecto_subtareas").insert(subRows);
+  if (subRows.length) await insertarTolerante(sb, "proyecto_subtareas", subRows);
 
   return porInstrumento;
 }
@@ -224,7 +263,7 @@ async function pasosDeCancion(sb: SupabaseClient, instrumentos: string[]): Promi
         out.push({ titulo: p.titulo.replace(/\{instrumento\}/gi, i), resp: p.resp ?? undefined, instrumento: i });
       }
     } else {
-      out.push({ titulo: p.titulo, resp: p.resp ?? undefined });
+      out.push({ titulo: p.titulo, resp: p.resp ?? undefined, paso: p.paso ?? null });
     }
   }
   return out;
@@ -280,13 +319,11 @@ export async function crearTareasDeCanciones(
         // Cada paso con su responsable: la maqueta a quien graba, la edición a
         // quien cuantiza. Antes las subtareas a mano nacían sin nadie.
         responsable_id: p.respId ?? (p.resp ? findId(p.resp) : null),
+        // "Aprobada" y "Subir a Drive" de cada tema: con ellos, aprobar un tema
+        // abre su propio cuadro de entrega.
+        paso: p.paso ?? pasoDeTitulo(p.titulo),
       })));
-      const { error } = await sb.from("proyecto_subtareas").insert(subRows);
-      if (error) {
-        // Sin la columna de responsable (esquema viejo) se reintenta sin ella:
-        // mejor subtareas sin dueño que temas sin subtareas.
-        await sb.from("proyecto_subtareas").insert(subRows.map(({ responsable_id: _r, ...fila }) => fila));
-      }
+      await insertarTolerante(sb, "proyecto_subtareas", subRows);
     }
 
     // Las del disco completo (portada, distribución…) van después de los temas.

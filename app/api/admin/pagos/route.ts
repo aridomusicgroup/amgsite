@@ -3,6 +3,7 @@ import { getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
 import { sincronizarFidelidadVenta } from "@/lib/fidelidad-server";
+import { liberarEntregas } from "@/lib/entrega";
 
 export const dynamic = "force-dynamic";
 
@@ -100,6 +101,11 @@ export async function POST(req: NextRequest) {
   const saldo = Math.max(0, saldoAntes - monto);
   await sincronizarFidelidadVenta(sb, ventaId);
 
+  // Si con esto quedó liquidada, lo que estaba retenido se le muestra ya.
+  if (saldo <= 0.5) {
+    try { await liberarEntregas(sb, ventaId); } catch (e) { console.error("liberar-entregas:", e); }
+  }
+
   try {
     const quien = await nombreDeActor(sb, actor);
     const { data: v } = await sb.from("ventas").select("folio, beat_nombre").eq("id", ventaId).single();
@@ -159,6 +165,9 @@ export async function PATCH(req: NextRequest) {
 
   const saldo = Math.max(0, total - (otros + montoNuevo));
   await sincronizarFidelidadVenta(sb, ventaId);
+  if (saldo <= 0.5) {
+    try { await liberarEntregas(sb, ventaId); } catch (e) { console.error("liberar-entregas:", e); }
+  }
 
   try {
     const quien = await nombreDeActor(sb, actor);

@@ -3,6 +3,8 @@ import { getProduccionEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad, nombresPorId, nombreDeActor } from "@/lib/actividad";
 import { pushAResponsables, contextoProyecto, conProyecto, destinoTarea } from "@/lib/push";
+import { pasoDeTitulo } from "@/lib/pasos-entrega";
+import { entregaTrasPalomear, entregaParaQuienPalomeo, type EntregaLista } from "@/lib/entrega";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +42,12 @@ export async function POST(req: NextRequest) {
   const { data: ult } = await sb.from("proyecto_subtareas").select("orden").eq("tarea_id", tareaId).order("orden", { ascending: false }).limit(1);
   const orden = (Number(ult?.[0]?.orden) || 0) + 1;
 
-  const { error } = await sb.from("proyecto_subtareas").insert({ tarea_id: tareaId, titulo, hecho: false, orden, responsable_id: responsableId });
+  const fila: Record<string, unknown> = { tarea_id: tareaId, titulo, hecho: false, orden, responsable_id: responsableId };
+  // Un paso de tema escrito a mano ("Aprobada", "Subir a Drive") también cuenta
+  // para la entrega. Sin la columna `paso` se guarda igual, sin la marca.
+  const paso = pasoDeTitulo(titulo);
+  let { error } = await sb.from("proyecto_subtareas").insert(paso ? { ...fila, paso } : fila);
+  if (error && paso) ({ error } = await sb.from("proyecto_subtareas").insert(fila));
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Bitácora: solo si la subtarea nace con responsable asignado
@@ -93,9 +100,15 @@ export async function PATCH(req: NextRequest) {
   const sb = supabaseAdmin();
   // Estado previo: registrar SOLO reasignación de responsable
   const { data: prev } = await sb.from("proyecto_subtareas")
-    .select("titulo, responsable_id, tarea_id").eq("id", id).single();
+    .select("titulo, responsable_id, tarea_id, hecho").eq("id", id).single();
   const { error } = await sb.from("proyecto_subtareas").update(patch).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // En un tema de EP: ¿con esto ya sólo falta subirlo a Drive?
+  let entrega: EntregaLista | null = null;
+  if (patch.hecho === true && !prev?.hecho) {
+    entrega = await entregaParaQuienPalomeo(sb, await entregaTrasPalomear(sb, { subtareaId: id }));
+  }
 
   // Bitácora: solo asignación de subtarea (no el marcar/desmarcar hecho → sería ruido)
   try {
@@ -122,7 +135,7 @@ export async function PATCH(req: NextRequest) {
     }
   } catch { /* bitácora best-effort */ }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, entrega });
 }
 
 // ── Borrar subtarea ──

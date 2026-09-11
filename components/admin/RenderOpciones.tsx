@@ -48,13 +48,27 @@ function cuando(ms: number): string {
   return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirmar }: {
+export function RenderOpciones({
+  p, tipo, musicos, enviando, onCerrar, onConfirmar,
+  encabezado, etiquetaConfirmar, ocultarAviso, onSaltar, etiquetaSaltar,
+}: {
   p: Renderizable;
   tipo: TipoRender;
   musicos: MusicoLite[];
   enviando: boolean;
   onCerrar: () => void;
   onConfirmar: (op: OpcionesRender) => void;
+  /**
+   * Lo demás es para cuando el cuadro va dentro de la ENTREGA (Entregables →
+   * Stems → aviso): el mismo cuadro, con su renglón de "paso 1 de 3", el botón
+   * diciendo a dónde sigue, y sin la casilla de avisar — ese aviso lo decide
+   * el paso 3, según si el cliente ya liquidó.
+   */
+  encabezado?: string;
+  etiquetaConfirmar?: string;
+  ocultarAviso?: boolean;
+  onSaltar?: () => void;
+  etiquetaSaltar?: string;
 }) {
   const esMusico = tipo === "musico";
   // Sólo se puede mandar a quien tenga correo registrado.
@@ -198,6 +212,7 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
       >
         <div className="flex items-start justify-between gap-3 p-5 pb-3">
           <div className="min-w-0">
+            {encabezado && <p className="text-[10px] uppercase tracking-wider text-lgb-red/80 mb-0.5">{encabezado}</p>}
             <p className="font-coolvetica text-lg truncate">
               {TITULO[tipo]} · {p.titulo}
             </p>
@@ -450,7 +465,7 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
                     </div>
                   )}
                 </Seccion>
-              ) : (
+              ) : ocultarAviso ? null : (
               <Seccion titulo="Cliente">
                 <label
                   className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
@@ -495,13 +510,18 @@ export function RenderOpciones({ p, tipo, musicos, enviando, onCerrar, onConfirm
             <button onClick={onCerrar} className="px-4 py-2 rounded-xl text-sm text-white/60 hover:text-white cursor-pointer">
               Cancelar
             </button>
+            {onSaltar && (
+              <button onClick={onSaltar} className="px-3 py-2 rounded-xl text-sm text-white/70 hover:text-white border border-white/10 hover:border-white/25 cursor-pointer">
+                {etiquetaSaltar ?? "Saltar"}
+              </button>
+            )}
             <button
               onClick={confirmar}
               disabled={!listo}
               className="flex items-center gap-2 bg-lgb-red hover:bg-lgb-red/85 text-white px-4 py-2 rounded-xl text-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {enviando && <Loader2 size={14} className="animate-spin" />}
-              Renderizar
+              {etiquetaConfirmar ?? "Renderizar"}
             </button>
           </div>
         </div>

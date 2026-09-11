@@ -15,6 +15,8 @@ import type { Equipo } from "@/components/admin/tareas/estilos";
 import type { MusicoLite } from "@/components/admin/tareas/AsignarMusico";
 import { soloHora, estaVencido, fechaLarga, type MiRecordatorio } from "@/lib/recordatorios";
 import type { ProyectoDetalle, ProyectoTarea } from "@/lib/erp-data";
+import { avisarSiEntrega } from "@/lib/entrega-cliente";
+import { EntregaEstado } from "@/components/admin/entrega/EntregaEstado";
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 const fechaCorta = (s: string | null) =>
@@ -76,6 +78,8 @@ export function TareasTab({ proyecto, equipo, recordatorios, miId, musicos }: {
     fetch(T, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: t.id, hecho: nuevo }) })
       .then((r) => {
         if (!r.ok) throw new Error();
+        // Si con esto ya sólo falta subir a Drive, se abre el cuadro de entrega.
+        void avisarSiEntrega(r);
         if (refreshTimer.current) clearTimeout(refreshTimer.current);
         refreshTimer.current = setTimeout(() => router.refresh(), 900); // reconcilia el avance sin frenar los clics rápidos
       })
@@ -180,6 +184,8 @@ export function TareasTab({ proyecto, equipo, recordatorios, miId, musicos }: {
                         {t.subtareas.length > 0 && <span className="text-white/30 ml-1">({subDone}/{t.subtareas.length})</span>}
                         {t.notas && <span className="text-white/25 ml-1" title="Tiene notas">📝</span>}
                       </button>
+
+                      {t.entrega && <EntregaEstado e={t.entrega} titulo={t.titulo} />}
 
                       {/* Mi campanita: solo la ve quien puso el recordatorio */}
                       {rec && (

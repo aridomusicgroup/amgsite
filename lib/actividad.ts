@@ -12,6 +12,7 @@ export type ActividadTipo =
   | "musico_asignado" | "musico_archivo" | "musico_previo_compartido"
   | "render_compartido" | "edicion_enviada" | "edicion_revision"
   | "subtarea_asignada" | "contrato_auto"
+  | "entrega_preparada" | "entrega_subida" | "entrega_liberada"
   // Dinero
   | "venta_creada" | "venta_editada" | "venta_eliminada"
   | "pago_registrado" | "pago_editado" | "pago_eliminado"

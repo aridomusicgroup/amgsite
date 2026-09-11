@@ -5,6 +5,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad, nombresPorId, nombreDeActor } from "@/lib/actividad";
 import { pushAResponsables, contextoProyecto, conProyecto, destinoTarea } from "@/lib/push";
 import { progresoTareaEmail } from "@/lib/emails";
+import { pasoDeTitulo } from "@/lib/pasos-entrega";
+import { entregaTrasPalomear, entregaParaQuienPalomeo, type EntregaLista } from "@/lib/entrega";
 
 export const dynamic = "force-dynamic";
 
@@ -73,9 +75,14 @@ export async function POST(req: NextRequest) {
   const { data: proy } = await sb.from("proyectos").select("estado, revision_actual").eq("id", proyectoId).single();
   const revision = proy?.estado === "revision" ? Number(proy?.revision_actual) || 0 : 0;
 
-  const { data: ins, error } = await sb.from("proyecto_tareas").insert({
+  const fila: Record<string, unknown> = {
     proyecto_id: proyectoId, titulo, responsable_id: b.responsable_id || null, fecha: b.fecha || null, hecho: false, orden, revision,
-  }).select("id").single();
+  };
+  // "Subir a Drive" escrito a mano también es el paso de entrega. Sin la
+  // columna `paso` (SQL sin correr) se guarda igual, sin la marca.
+  const paso = pasoDeTitulo(titulo);
+  let { data: ins, error } = await sb.from("proyecto_tareas").insert(paso ? { ...fila, paso } : fila).select("id").single();
+  if (error && paso) ({ data: ins, error } = await sb.from("proyecto_tareas").insert(fila).select("id").single());
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Bitácora: tarea agregada (con responsable si lo trae)
@@ -146,6 +153,14 @@ export async function PATCH(req: NextRequest) {
     await sb.from("proyecto_subtareas").update({ hecho: true }).eq("tarea_id", id).eq("hecho", false);
   }
 
+  // ¿Con esto ya sólo falta subir a Drive? Entonces el navegador abre el cuadro
+  // de entrega (Entregables + Stems). Se revisa con CUALQUIER palomeo, no sólo
+  // el de "Aprobada": la última tarea pendiente puede ser otra.
+  let entrega: EntregaLista | null = null;
+  if (patch.hecho === true && !prev?.hecho) {
+    entrega = await entregaParaQuienPalomeo(sb, await entregaTrasPalomear(sb, { tareaId: id }));
+  }
+
   // Bitácora: asignación y completado/reapertura (ignora ediciones de notas)
   try {
     const tareaTitulo = (patch.titulo as string) || (prev?.titulo as string) || "tarea";
@@ -188,7 +203,7 @@ export async function PATCH(req: NextRequest) {
     catch (e) { console.error("notify-cliente:", e); }
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, entrega });
 }
 
 // ── Borrar una tarea ──

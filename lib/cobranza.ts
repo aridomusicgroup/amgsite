@@ -171,6 +171,44 @@ export async function deudores(sb: SB): Promise<Deudor[]> {
   });
 }
 
+export interface SaldoVenta {
+  total: number;
+  cobrado: number;
+  saldo: number;
+  /** Sin ningún pago la venta cuenta como cobrada (regla de todo el panel). */
+  tienePagos: boolean;
+  folio: string;
+  concepto: string;
+}
+
+/**
+ * Cuánto falta de UNA venta. La misma cuenta que usa todo el panel:
+ * `total − Σ pagos`, y una venta sin ningún pago cuenta como cobrada al 100%.
+ *
+ * Una sola función para que el candado de la entrega, el link de saldo y la
+ * pantalla de cobranza no puedan decir números distintos.
+ */
+export async function saldoDeVenta(sb: SB, ventaId: string): Promise<SaldoVenta | null> {
+  const [{ data: v }, { data: pagos }] = await Promise.all([
+    sb.from("ventas").select("id, folio, total_mxn, beat_nombre, tipo").eq("id", ventaId).maybeSingle(),
+    sb.from("pagos").select("monto_mxn").eq("venta_id", ventaId),
+  ]);
+  if (!v) return null;
+  const total = Number(v.total_mxn) || 0;
+  const tienePagos = (pagos ?? []).length > 0;
+  const cobrado = tienePagos
+    ? (pagos ?? []).reduce((a: number, p: { monto_mxn: number }) => a + (Number(p.monto_mxn) || 0), 0)
+    : total;
+  return {
+    total,
+    cobrado,
+    saldo: Math.max(0, Math.round((total - cobrado) * 100) / 100),
+    tienePagos,
+    folio: (v.folio as string) || "Venta",
+    concepto: String(v.beat_nombre || v.tipo || "tu producción"),
+  };
+}
+
 /**
  * Link de Stripe por el saldo EXACTO de una venta.
  *

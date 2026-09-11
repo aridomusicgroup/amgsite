@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { esPaso, pasoDeTitulo, PASO_LABEL } from "@/lib/pasos-entrega";
 
 export const dynamic = "force-dynamic";
 
@@ -25,18 +26,22 @@ interface ItemEntrada {
   resp?: string | null;
   responsable_id?: string | null;
   subs?: unknown;
+  paso?: unknown;
 }
 
 export async function GET() {
   if (!(await getFullAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   const sb = supabaseAdmin();
 
-  const [itemsRes, eqRes] = await Promise.all([
-    sb.from("tarea_plantilla_items")
-      .select("tipo, orden, clase, titulo, resp, responsable_id, subs")
-      .order("tipo").order("orden"),
+  const items = (cols: string) => sb.from("tarea_plantilla_items").select(cols).order("tipo").order("orden");
+  const [itemsConPaso, eqRes] = await Promise.all([
+    items("tipo, orden, clase, titulo, resp, responsable_id, subs, paso"),
     sb.from("equipo").select("id, nombre").eq("activo", true).order("nombre"),
   ]);
+  // `paso` es columna nueva (supabase-pasos-entrega.sql): sin ella se pide sin ella.
+  const itemsRes = itemsConPaso.error
+    ? await items("tipo, orden, clase, titulo, resp, responsable_id, subs")
+    : itemsConPaso;
 
   // La migración la corre una persona a mano. Sin tabla, la pantalla dice que
   // todo sigue usando la plantilla de fábrica; no se rompe.
@@ -45,7 +50,7 @@ export async function GET() {
   }
 
   const plantillas: Record<string, ItemEntrada[]> = {};
-  for (const f of itemsRes.data ?? []) {
+  for (const f of (itemsRes.data ?? []) as unknown as Record<string, unknown>[]) {
     const t = f.tipo as string;
     (plantillas[t] ??= []).push({
       clase: (f.clase as string) ?? "tarea",
@@ -53,6 +58,8 @@ export async function GET() {
       resp: (f.resp as string | null) ?? null,
       responsable_id: (f.responsable_id as string | null) ?? null,
       subs: (f.subs as string[] | null) ?? [],
+      // Sin marca guardada (antes de la migración), se reconoce por el título.
+      paso: esPaso(f.paso) ? f.paso : pasoDeTitulo(f.titulo as string),
     });
   }
 
@@ -72,8 +79,17 @@ export async function POST(req: NextRequest) {
 
   const items: ItemEntrada[] = [];
   let huecos = 0;
+  const pasosVistos = new Set<string>();
   for (const raw of b.items as ItemEntrada[]) {
     const clase = raw?.clase === "instrumentos" ? "instrumentos" : "tarea";
+    const paso = clase === "tarea" && esPaso(raw?.paso) ? raw.paso : null;
+    if (paso) {
+      // Dos "Subir a Drive" marcados: ¿cuál palomea la entrega? Mejor decirlo.
+      if (pasosVistos.has(paso)) {
+        return NextResponse.json({ error: `Sólo puede haber un paso de ${PASO_LABEL[paso]}.` }, { status: 400 });
+      }
+      pasosVistos.add(paso);
+    }
     const titulo = String(raw?.titulo ?? "").trim().slice(0, MAX_TEXTO);
     if (clase === "instrumentos") {
       huecos += 1;
@@ -94,6 +110,7 @@ export async function POST(req: NextRequest) {
       resp: String(raw?.resp ?? "").trim() || null,
       responsable_id: String(raw?.responsable_id ?? "").trim() || null,
       subs,
+      paso,
     });
   }
   // Dos huecos duplicarían cada tarea "Grabar X" en el proyecto.

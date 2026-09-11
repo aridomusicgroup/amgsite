@@ -10,6 +10,8 @@ import { fechaLarga, paraInput, sugerenciaInicial, estaVencido, type MiRecordato
 import { SortableTarea } from "./SortableTarea";
 import { inp, lblS, type Equipo } from "./estilos";
 import { AsignarMusico, type MusicoLite } from "./AsignarMusico";
+import { avisarSiEntrega } from "@/lib/entrega-cliente";
+import { EntregaEstado } from "@/components/admin/entrega/EntregaEstado";
 
 // ── Ventana grande: detalle de una tarea (notas, responsable, subtareas) ──────
 export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId, proyectoId, musicos, onClose, onAction }: {
@@ -82,12 +84,24 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [titulo, notas, resp, fecha, linkPost]);
   const cerrar = async () => { await guardar(); router.refresh(); onClose(); };
-  const toggleHecho = () => onAction("PATCH", { id: tarea.id, hecho: !tarea.hecho }, T);
+  // Directo y no por onAction: hay que leer la respuesta, que dice si con esto
+  // ya sólo falta subir a Drive (y entonces se abre el cuadro de entrega).
+  const toggleHecho = () => {
+    fetch(T, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: tarea.id, hecho: !tarea.hecho }) })
+      .then((r) => {
+        if (!r.ok) throw new Error();
+        void avisarSiEntrega(r);
+        router.refresh();
+      })
+      .catch(() => toast("⚠️ No se pudo guardar"));
+  };
   const addSub = async () => { const t = nuevaSub.trim(); if (t && await onAction("POST", { tarea_id: tarea.id, titulo: t, responsable_id: nuevaSubResp || null }, S)) { setNuevaSub(""); setNuevaSubResp(""); } };
   const toggleSub = (id: string, hecho: boolean) => {
     const nuevo = !hecho;
     setOptSub((o) => ({ ...o, [id]: nuevo })); // instantáneo; se reconcilia al cerrar la ventana
     fetch(S, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, hecho: nuevo }) })
+      // En un tema de EP, aprobarlo puede dejar sólo "Subir a Drive": ahí se abre la entrega.
+      .then((r) => { if (r.ok) void avisarSiEntrega(r); })
       .catch(() => setOptSub((o) => ({ ...o, [id]: hecho })));
   };
   const setSubResp = (id: string, rid: string) => onAction("PATCH", { id, responsable_id: rid || null }, S);
@@ -175,6 +189,7 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
                           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
                           className={`text-sm flex-1 min-w-0 bg-transparent focus:outline-none border-b border-transparent focus:border-white/20 ${subDoneOf(s) ? "text-white/30 line-through" : "text-white/70"}`}
                         />
+                        {s.paso === "entrega" && tarea.entrega && <EntregaEstado e={tarea.entrega} titulo={tarea.titulo} />}
                         <select value={s.responsable_id ?? ""} onChange={(e) => setSubResp(s.id, e.target.value)} disabled={busy}
                           title="Responsable de la subtarea"
                           className={`shrink-0 max-w-[7.5rem] bg-white/5 border rounded-md px-1.5 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-lgb-red ${s.responsable_id ? "border-lgb-red/40 text-white/80" : "border-white/10 text-white/35"}`}>

@@ -14,11 +14,15 @@ export const TIPO_CANCION = "_cancion";
 
 export const LABEL_CANCION = "Cada tema de EP / Álbum";
 
+import type { PasoEntrega } from "@/lib/pasos-entrega";
+
 export interface PasoCancion {
   clase: "tarea" | "instrumentos";
   titulo: string;
   /** Alias que entiende `resolverEquipo` (eliud|diego|luis|tozi). */
   resp: string | null;
+  /** Los dos pasos que mueven la entrega automática de cada tema. */
+  paso?: PasoEntrega | null;
 }
 
 /**
@@ -39,6 +43,6 @@ export const PASOS_CANCION_FABRICA: PasoCancion[] = [
   { clase: "tarea", titulo: "Editar y cuantizar", resp: "diego" },
   { clase: "tarea", titulo: "Mezclar", resp: "luis" },
   { clase: "tarea", titulo: "Masterizar", resp: "luis" },
-  { clase: "tarea", titulo: "Aprobada", resp: "luis" },
-  { clase: "tarea", titulo: "Subir a Drive", resp: null },
+  { clase: "tarea", titulo: "Aprobada", resp: "luis", paso: "aprobacion" },
+  { clase: "tarea", titulo: "Subir a Drive", resp: null, paso: "entrega" },
 ];

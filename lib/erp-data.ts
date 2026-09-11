@@ -3,8 +3,61 @@ import { extraerShortcode } from "@/lib/shortcode";
 import { esProyectoDeCliente } from "@/lib/pedido-sync";
 import { ESTADOS_NO_ABIERTOS, calcEntregas, type DashProyecto, type EntregasResumen } from "@/lib/entregas";
 import { ENTIDADES_SENSIBLES } from "@/lib/actividad-modulos";
+import { pasoDe, type EstadoEntrega, type PasoEntrega } from "@/lib/pasos-entrega";
+import { mapaDeEntregas, claveUnidad, type ResumenEntrega } from "@/lib/entrega-estado";
 
 export type { DashProyecto };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type FilaLibre = Record<string, any>;
+
+/**
+ * `paso` es columna nueva (supabase-pasos-entrega.sql). Una columna que no
+ * existe no deja el dato vacío: VACÍA LA PANTALLA ENTERA. Así que se pide con
+ * ella y, si falla, sin ella.
+ */
+async function conRespaldo(
+  a: () => PromiseLike<{ data: unknown; error: unknown }>,
+  b: () => PromiseLike<{ data: unknown; error: unknown }>,
+): Promise<{ data: FilaLibre[] }> {
+  const r = await a();
+  if (!r.error) return { data: (r.data as FilaLibre[] | null) ?? [] };
+  return { data: ((await b()).data as FilaLibre[] | null) ?? [] };
+}
+
+const COLS_TAREA = "id, proyecto_id, titulo, hecho, responsable_id, notas, fecha, orden, link_post, visible_cliente, revision, es_cancion";
+const COLS_SUB = "id, tarea_id, titulo, hecho, responsable_id, orden";
+const EN_VUELO_RENDER = ["pendiente", "renderizando", "subiendo"];
+const ACTIVOS_ENTREGA = ["cola", "produccion", "revision"];
+
+/**
+ * Cuelga el estado de la entrega de la tarea donde se ve: "Subir a Drive" en
+ * una producción normal, o el TEMA en un EP (su "Subir a Drive" es subtarea).
+ * Sólo en proyectos de cliente: lo interno no se entrega.
+ */
+function adjuntarEntregas(
+  p: { id: string; clase?: string | null; tipo?: string | null; estado?: string | null },
+  tareas: ProyectoTarea[],
+  mapa: Map<string, ResumenEntrega>,
+): void {
+  if (!esProyectoDeCliente(p)) return;
+  // Un proyecto ya entregado o en pausa no ofrece "Preparar entrega": el
+  // cuadro no lo encontraría para renderizar.
+  const activo = ACTIVOS_ENTREGA.includes(String(p.estado ?? ""));
+  const vacio: ResumenEntrega = { jobs: [], retenido: false, compartido: false };
+  for (const t of tareas) {
+    if (t.es_cancion) {
+      const sub = t.subtareas.find((s) => s.paso === "entrega");
+      const m = mapa.get(claveUnidad(p.id, t.id));
+      if (sub || m) {
+        const e: EstadoEntrega = { proyectoId: p.id, tareaId: t.id, abierto: activo && !!sub && !sub.hecho && !t.hecho, ...(m ?? vacio) };
+        t.entrega = e;
+      }
+    } else if (t.paso === "entrega") {
+      t.entrega = { proyectoId: p.id, tareaId: null, abierto: activo && !t.hecho, ...(mapa.get(claveUnidad(p.id, null)) ?? vacio) };
+    }
+  }
+}
 
 // ─── CRM: contactos ──────────────────────────────────────────────────────────
 export interface Contacto {
@@ -673,7 +726,11 @@ export interface PostMetricas {
   likes: number; comentarios: number; guardados: number; compartidos: number;
   alcance: number; reproducciones: number; interacciones: number;
 }
-export interface SubTarea { id: string; titulo: string; hecho: boolean; orden: number; responsable: string | null; responsable_id: string | null }
+export interface SubTarea {
+  id: string; titulo: string; hecho: boolean; orden: number; responsable: string | null; responsable_id: string | null;
+  /** "Aprobada" / "Subir a Drive" de un tema de EP. */
+  paso: PasoEntrega | null;
+}
 export interface ProyectoTarea {
   id: string; titulo: string; hecho: boolean;
   responsable: string | null; responsable_id: string | null; orden: number;
@@ -682,6 +739,12 @@ export interface ProyectoTarea {
   visible_cliente: boolean;
   /** Ronda de revisión: 0 = producción original; 1+ = tarea de esa ronda de cambios. */
   revision: number;
+  /** Un tema de EP/álbum: sus pasos son las subtareas. */
+  es_cancion: boolean;
+  /** "Aprobada" / "Subir a Drive": los dos pasos que mueven la entrega automática. */
+  paso: PasoEntrega | null;
+  /** Cómo va la entrega, en la tarea donde se pinta la píldora (ver adjuntarEntregas). */
+  entrega: EstadoEntrega | null;
   subtareas: SubTarea[];
 }
 export interface Proyecto {
@@ -725,15 +788,27 @@ export async function getEquipoActivo(): Promise<{ id: string; nombre: string; e
 
 export async function getProyectos(): Promise<Proyecto[]> {
   const sb = supabaseAdmin();
-  const [provRes, tareasRes, equipoRes, ventasRes, pagosRes, subtareasRes, postsRes] = await Promise.all([
+  const [provRes, tareasRes, equipoRes, ventasRes, pagosRes, subtareasRes, postsRes, entregaRes, colaRes] = await Promise.all([
     sb.from("proyectos").select("*, contactos(nombre)").order("created_at", { ascending: false }).limit(1000),
-    sb.from("proyecto_tareas").select("id, proyecto_id, titulo, hecho, responsable_id, notas, fecha, orden, link_post, visible_cliente, revision").order("orden", { ascending: true }),
+    conRespaldo(
+      () => sb.from("proyecto_tareas").select(`${COLS_TAREA}, paso`).order("orden", { ascending: true }),
+      () => sb.from("proyecto_tareas").select(COLS_TAREA).order("orden", { ascending: true }),
+    ),
     sb.from("equipo").select("id, nombre"),
     sb.from("ventas").select("id, total_mxn, fecha"),
     sb.from("pagos").select("venta_id, monto_mxn"),
-    sb.from("proyecto_subtareas").select("id, tarea_id, titulo, hecho, responsable_id, orden").order("orden", { ascending: true }),
+    conRespaldo(
+      () => sb.from("proyecto_subtareas").select(`${COLS_SUB}, paso`).order("orden", { ascending: true }),
+      () => sb.from("proyecto_subtareas").select(COLS_SUB).order("orden", { ascending: true }),
+    ),
     sb.from("social_posts").select("media_id, permalink, likes, comentarios, guardados, compartidos, alcance, reproducciones"),
+    // Para la píldora de la entrega: los renders de entrega, y toda la cola (un
+    // previo de otro proyecto también va antes).
+    sb.from("render_jobs").select("id, proyecto_id, tarea_id, tipo, estado, compartir, drive_urls, opciones, created_at")
+      .in("tipo", ["entregables", "stems"]).not("opciones", "is", null).order("created_at", { ascending: false }).limit(1000),
+    sb.from("render_jobs").select("id, estado, created_at").in("estado", EN_VUELO_RENDER),
   ]);
+  const mapaEntregas = mapaDeEntregas(entregaRes.data ?? [], colaRes.data ?? []);
 
   // Mapa shortcode -> métricas reales, para ligar cada pieza de contenido a su post.
   const metricasPorCode = new Map<string, PostMetricas>();
@@ -761,6 +836,7 @@ export async function getProyectos(): Promise<Proyecto[]> {
     arr.push({
       id: s.id as string, titulo: s.titulo as string, hecho: Boolean(s.hecho), orden: Number(s.orden) || 0,
       responsable_id: srid, responsable: srid ? equipoMap.get(srid) ?? null : null,
+      paso: pasoDe(s as { paso?: unknown; titulo?: string }),
     });
     subtareasPorTarea.set(tid, arr);
   }
@@ -793,6 +869,9 @@ export async function getProyectos(): Promise<Proyecto[]> {
       metricas: metricasPorCode.get(extraerShortcode(t.link_post as string | null) ?? "") ?? null,
       visible_cliente: t.visible_cliente !== false,
       revision: Number(t.revision) || 0,
+      es_cancion: Boolean(t.es_cancion),
+      paso: pasoDe(t as { paso?: unknown; titulo?: string }),
+      entrega: null,
       subtareas: subtareasPorTarea.get(t.id as string) ?? [],
     });
     tareasPorProyecto.set(pid, arr);
@@ -807,6 +886,7 @@ export async function getProyectos(): Promise<Proyecto[]> {
     const respNombres = respIds.map((id) => equipoMap.get(id)).filter((n): n is string => !!n);
     // Avance ponderado: cada tarea vale igual; las que tienen subtareas aportan su fracción.
     const tareas = tareasPorProyecto.get(p.id as string) ?? [];
+    adjuntarEntregas(p as { id: string; clase: string; tipo: string; estado: string }, tareas, mapaEntregas);
     let progreso = 0;
     if (tareas.length) {
       const sum = tareas.reduce((a, t) =>
@@ -948,7 +1028,10 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
   const cotizacionId = (p.cotizacion_id as string | null) ?? null;
 
   const [tareasRes, equipoRes, ventaRes, contratosRes, cotizacionRes, renderJobsRes, renderInvRes, actividadRes, postsRes, referencia] = await Promise.all([
-    sb.from("proyecto_tareas").select("id, proyecto_id, titulo, hecho, responsable_id, notas, fecha, orden, link_post, visible_cliente, revision").eq("proyecto_id", id).order("orden", { ascending: true }),
+    conRespaldo(
+      () => sb.from("proyecto_tareas").select(`${COLS_TAREA}, paso`).eq("proyecto_id", id).order("orden", { ascending: true }),
+      () => sb.from("proyecto_tareas").select(COLS_TAREA).eq("proyecto_id", id).order("orden", { ascending: true }),
+    ),
     sb.from("equipo").select("id, nombre"),
     ventaId
       ? sb.from("ventas").select("id, total_mxn, fecha, moneda").eq("id", ventaId).single()
@@ -975,13 +1058,18 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
   ]);
 
   const tareaIds = (tareasRes.data ?? []).map((t) => t.id as string);
-  const [subtareasRes, pagosRes] = await Promise.all([
+  const [subtareasRes, pagosRes, colaRes] = await Promise.all([
     tareaIds.length
-      ? sb.from("proyecto_subtareas").select("id, tarea_id, titulo, hecho, responsable_id, orden").in("tarea_id", tareaIds).order("orden", { ascending: true })
-      : Promise.resolve({ data: [] as { id: string; tarea_id: string; titulo: string; hecho: boolean; responsable_id: string | null; orden: number }[] }),
+      ? conRespaldo(
+          () => sb.from("proyecto_subtareas").select(`${COLS_SUB}, paso`).in("tarea_id", tareaIds).order("orden", { ascending: true }),
+          () => sb.from("proyecto_subtareas").select(COLS_SUB).in("tarea_id", tareaIds).order("orden", { ascending: true }),
+        )
+      : Promise.resolve({ data: [] as FilaLibre[] }),
     ventaId
       ? sb.from("pagos").select("id, fecha, monto_mxn, medio_pago, tipo").eq("venta_id", ventaId).order("fecha", { ascending: false })
       : Promise.resolve({ data: [] as { id: string; fecha: string; monto_mxn: number; medio_pago: string | null; tipo: string | null }[] }),
+    // Toda la cola de renders, para decir "en cola · 2 antes" en la píldora.
+    sb.from("render_jobs").select("id, estado, created_at").in("estado", EN_VUELO_RENDER),
   ]);
 
   const equipoMap = new Map<string, string>();
@@ -1009,6 +1097,7 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
     arr.push({
       id: s.id as string, titulo: s.titulo as string, hecho: Boolean(s.hecho), orden: Number(s.orden) || 0,
       responsable_id: srid, responsable: srid ? equipoMap.get(srid) ?? null : null,
+      paso: pasoDe(s as { paso?: unknown; titulo?: string }),
     });
     subtareasPorTarea.set(tid, arr);
   }
@@ -1023,9 +1112,21 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
       metricas: metricasPorCode.get(extraerShortcode(t.link_post as string | null) ?? "") ?? null,
       visible_cliente: t.visible_cliente !== false,
       revision: Number(t.revision) || 0,
+      es_cancion: Boolean(t.es_cancion),
+      paso: pasoDe(t as { paso?: unknown; titulo?: string }),
+      entrega: null,
       subtareas: subtareasPorTarea.get(t.id as string) ?? [],
     };
   });
+
+  adjuntarEntregas(
+    p as { id: string; clase: string; tipo: string; estado: string },
+    tareas,
+    mapaDeEntregas(
+      (renderJobsRes.data ?? []).filter((j) => j.tipo === "entregables" || j.tipo === "stems").map((j) => ({ ...j, proyecto_id: id })),
+      colaRes.data ?? [],
+    ),
+  );
 
   let progreso = 0;
   if (tareas.length) {
