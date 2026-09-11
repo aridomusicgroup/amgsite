@@ -10,7 +10,7 @@ import { fechaLarga, paraInput, sugerenciaInicial, estaVencido, type MiRecordato
 import { SortableTarea } from "./SortableTarea";
 import { inp, lblS, type Equipo } from "./estilos";
 import { AsignarMusico, type MusicoLite } from "./AsignarMusico";
-import { avisarSiEntrega } from "@/lib/entrega-cliente";
+import { atenderRespuesta, preguntarCarpeta } from "@/lib/entrega-cliente";
 import { EntregaEstado } from "@/components/admin/entrega/EntregaEstado";
 
 // ── Ventana grande: detalle de una tarea (notas, responsable, subtareas) ──────
@@ -83,14 +83,27 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [titulo, notas, resp, fecha, linkPost]);
-  const cerrar = async () => { await guardar(); router.refresh(); onClose(); };
+  const cerrar = async () => {
+    await guardar();
+    // Un tema de EP renombrado: el título se guardó letra por letra mientras se
+    // escribía, así que la pregunta de la carpeta de REAPER se hace aquí, una vez.
+    if (tarea.es_cancion && titulo.trim() && titulo.trim() !== tarea.titulo.trim()) {
+      try {
+        const r = await fetch(`/api/admin/reaper-carpeta?tabla=proyecto_tareas&id=${tarea.id}`, { cache: "no-store" });
+        const d = await r.json().catch(() => ({}));
+        if (d?.carpeta) preguntarCarpeta(d.carpeta);
+      } catch { /* la carpeta ya quedó anclada; preguntar es lo de menos */ }
+    }
+    router.refresh();
+    onClose();
+  };
   // Directo y no por onAction: hay que leer la respuesta, que dice si con esto
   // ya sólo falta subir a Drive (y entonces se abre el cuadro de entrega).
   const toggleHecho = () => {
     fetch(T, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: tarea.id, hecho: !tarea.hecho }) })
       .then((r) => {
         if (!r.ok) throw new Error();
-        void avisarSiEntrega(r);
+        void atenderRespuesta(r);
         router.refresh();
       })
       .catch(() => toast("⚠️ No se pudo guardar"));
@@ -101,7 +114,7 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
     setOptSub((o) => ({ ...o, [id]: nuevo })); // instantáneo; se reconcilia al cerrar la ventana
     fetch(S, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, hecho: nuevo }) })
       // En un tema de EP, aprobarlo puede dejar sólo "Subir a Drive": ahí se abre la entrega.
-      .then((r) => { if (r.ok) void avisarSiEntrega(r); })
+      .then((r) => { if (r.ok) void atenderRespuesta(r); })
       .catch(() => setOptSub((o) => ({ ...o, [id]: hecho })));
   };
   const setSubResp = (id: string, rid: string) => onAction("PATCH", { id, responsable_id: rid || null }, S);

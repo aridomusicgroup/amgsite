@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { saldoDeVenta } from "@/lib/cobranza";
-import { finiquitadoProyecto, liberarEntregas, marcaDe, urlDePago } from "@/lib/entrega";
+import { finiquitadoProyecto, liberarEntregas, marcaDe, urlDePago, ventaLiquidada, cuentaCobro } from "@/lib/entrega";
 
 /**
  * Capa de datos del panel de CLIENTE (/cuenta): elegibilidad de acceso,
@@ -377,7 +377,8 @@ export async function entregaDelPedido(email: string, orderId: string): Promise<
     const { data: p } = await sb.from("proyectos").select("venta_id").eq("id", proy.proyectoId).maybeSingle();
     const ventaId = (p?.venta_id as string | null) ?? null;
     const s = ventaId ? await saldoDeVenta(sb, ventaId) : null;
-    const finiquitado = !s || s.saldo <= 0.5;
+    // Misma regla que el candado de la entrega: sin pagos registrados no cuenta como pagada.
+    const finiquitado = ventaLiquidada(s);
 
     const { data: js } = await sb
       .from("render_jobs")
@@ -392,7 +393,7 @@ export async function entregaDelPedido(email: string, orderId: string): Promise<
     const conPago = cerradas.some((j) => marcaDe(j)?.conPago);
     return {
       finiquitado,
-      saldo: s?.saldo ?? 0,
+      saldo: s ? cuentaCobro(s).saldo : 0,
       listas: cerradas.length > 0,
       urlPago: !finiquitado && conPago ? urlDePago(ventaId) : null,
     };

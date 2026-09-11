@@ -7,6 +7,8 @@ import { pushAResponsables, contextoProyecto, conProyecto, destinoTarea } from "
 import { progresoTareaEmail } from "@/lib/emails";
 import { pasoDeTitulo } from "@/lib/pasos-entrega";
 import { entregaTrasPalomear, entregaParaQuienPalomeo, type EntregaLista } from "@/lib/entrega";
+import { avanzarEstadoPorTareas } from "@/lib/estado-auto";
+import { anclarCarpeta } from "@/lib/carpeta-reaper";
 
 export const dynamic = "force-dynamic";
 
@@ -145,6 +147,12 @@ export async function PATCH(req: NextRequest) {
   // Estado previo: para registrar SOLO asignación/completado (no el autoguardado de notas)
   const { data: prev } = await sb.from("proyecto_tareas")
     .select("titulo, responsable_id, hecho, proyecto_id, visible_cliente").eq("id", id).single();
+  // Un TEMA de EP con carpeta en disco: anclarla antes de renombrarlo, o el
+  // script del estudio la pierde. La pregunta de si se renombra la hace la
+  // ventana de la tarea al cerrarse (aquí llega cada 0.7 s mientras se escribe).
+  if (patch.titulo && String(patch.titulo).trim() !== String(prev?.titulo ?? "").trim()) {
+    await anclarCarpeta(sb, "proyecto_tareas", id, prev?.titulo as string, patch.titulo as string);
+  }
   const { error } = await sb.from("proyecto_tareas").update(patch).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -157,7 +165,10 @@ export async function PATCH(req: NextRequest) {
   // de entrega (Entregables + Stems). Se revisa con CUALQUIER palomeo, no sólo
   // el de "Aprobada": la última tarea pendiente puede ser otra.
   let entrega: EntregaLista | null = null;
+  let estado: string | null = null;
   if (patch.hecho === true && !prev?.hecho) {
+    // Primero la columna (Cola → Producción → En revisión), luego la entrega.
+    if (prev?.proyecto_id) estado = await avanzarEstadoPorTareas(sb, prev.proyecto_id as string, email);
     entrega = await entregaParaQuienPalomeo(sb, await entregaTrasPalomear(sb, { tareaId: id }));
   }
 
@@ -203,7 +214,7 @@ export async function PATCH(req: NextRequest) {
     catch (e) { console.error("notify-cliente:", e); }
   }
 
-  return NextResponse.json({ ok: true, entrega });
+  return NextResponse.json({ ok: true, entrega, estado });
 }
 
 // ── Borrar una tarea ──

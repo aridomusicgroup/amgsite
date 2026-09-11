@@ -4,6 +4,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad, nombresPorId, nombreDeActor } from "@/lib/actividad";
 import { pushAResponsables } from "@/lib/push";
 import { efectosDeCambioDeEstado } from "@/lib/proyecto-estado";
+import { propagarNombre } from "@/lib/nombre-sync";
+import { anclarCarpeta } from "@/lib/carpeta-reaper";
 import { crearTareasDeProyecto, crearTareasDeCanciones, parseInstrumentos } from "@/lib/produccion-tareas";
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
 import { papeleraCarpeta } from "@/lib/drive-oauth";
@@ -232,6 +234,10 @@ export async function PATCH(req: NextRequest) {
 
   const sb = supabaseAdmin();
   const { data: prev } = await sb.from("proyectos").select("titulo, estado, responsables").eq("id", id).single();
+  const renombrado = Boolean(patch.titulo && String(patch.titulo).trim() !== String(prev?.titulo ?? "").trim());
+  // Antes de guardar el título nuevo: anclar su carpeta de REAPER al nombre de
+  // siempre, para que el script del estudio no la pierda (ver carpeta-reaper.ts).
+  const carpeta = renombrado ? await anclarCarpeta(sb, "proyectos", id, prev?.titulo as string, patch.titulo as string) : null;
   let { error } = await sb.from("proyectos").update(patch).eq("id", id);
   if (error && "limite_almacenamiento_mb" in patch) {
     // Probablemente falta la columna (SQL de almacenamiento sin correr) — reintenta sin ella.
@@ -244,6 +250,10 @@ export async function PATCH(req: NextRequest) {
   // cliente. Vive en lib/proyecto-estado.ts porque la entrega automática
   // también mueve proyectos a Entregado, y tienen que pasar las mismas cosas.
   if (patch.estado) await efectosDeCambioDeEstado(sb, id, patch.estado as string, prev?.estado as string | undefined, email);
+
+  // Renombrarlo aquí lo renombra en la venta y el pedido ligados. Sólo si el
+  // nombre CAMBIÓ: el formulario manda el título en cada guardado.
+  const sincronizado = renombrado ? (await propagarNombre(sb, "proyecto", id, patch.titulo as string, email)).en : [];
 
   // Bitácora: cambio de etapa y/o de responsables (solo si de verdad cambiaron)
   try {
@@ -282,7 +292,7 @@ export async function PATCH(req: NextRequest) {
     }
   } catch { /* bitácora best-effort */ }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, sincronizado, carpeta });
 }
 
 // ── Eliminar proyecto (SOLO admin total) ── tareas/subtareas/recordatorios/

@@ -5,6 +5,7 @@ import { WhatsappIcon } from "@/components/shared/BrandIcons";
 import { money } from "@/components/admin/ui";
 import { ORDER_STATUSES, STATUS_LABEL, type OrderRow } from "@/lib/admin-data";
 import { toast } from "@/lib/toast";
+import { atenderRespuesta } from "@/lib/entrega-cliente";
 
 const STATUS_COLOR: Record<string, string> = {
   nuevo: "bg-blue-500/15 text-blue-300 border-blue-500/30",
@@ -56,6 +57,8 @@ export function OrdersList({ initialOrders, isAdmin = false }: { initialOrders: 
         body: JSON.stringify({ id, ...patch }),
       });
       if (!res.ok) { setOrders(prev); const d = await res.json().catch(() => ({})); return d.error || "No se pudo guardar."; }
+      // Dice si el nombre se propagó al proyecto y pregunta por su carpeta de REAPER.
+      void atenderRespuesta(res);
       toast("✓ Guardado");
       return null;
     } catch {

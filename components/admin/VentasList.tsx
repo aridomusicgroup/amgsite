@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Search, Loader2, Pencil, Trash2, MoreHorizontal } from "lucide-react";
 import type { Venta } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
+import { atenderRespuesta } from "@/lib/entrega-cliente";
 import { PagosMusicoSection } from "./PagosMusicoSection";
 import { PagosClienteSection } from "./PagosClienteSection";
 
@@ -149,6 +150,8 @@ export function VentasList({ ventas }: { ventas: Venta[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, ...ef }),
       });
+      // Antes de leer el cuerpo: dice si el nombre se propagó y pregunta por la carpeta de REAPER.
+      if (r.ok) void atenderRespuesta(r);
       const d = await r.json();
       if (!r.ok) setEditErr(d.error || "No se pudo guardar.");
       else { setEditingId(null); router.refresh(); toast("✓ Guardado"); }

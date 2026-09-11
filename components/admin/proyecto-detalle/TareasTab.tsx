@@ -15,7 +15,7 @@ import type { Equipo } from "@/components/admin/tareas/estilos";
 import type { MusicoLite } from "@/components/admin/tareas/AsignarMusico";
 import { soloHora, estaVencido, fechaLarga, type MiRecordatorio } from "@/lib/recordatorios";
 import type { ProyectoDetalle, ProyectoTarea } from "@/lib/erp-data";
-import { avisarSiEntrega } from "@/lib/entrega-cliente";
+import { atenderRespuesta } from "@/lib/entrega-cliente";
 import { EntregaEstado } from "@/components/admin/entrega/EntregaEstado";
 
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -79,7 +79,7 @@ export function TareasTab({ proyecto, equipo, recordatorios, miId, musicos }: {
       .then((r) => {
         if (!r.ok) throw new Error();
         // Si con esto ya sólo falta subir a Drive, se abre el cuadro de entrega.
-        void avisarSiEntrega(r);
+        void atenderRespuesta(r);
         if (refreshTimer.current) clearTimeout(refreshTimer.current);
         refreshTimer.current = setTimeout(() => router.refresh(), 900); // reconcilia el avance sin frenar los clics rápidos
       })

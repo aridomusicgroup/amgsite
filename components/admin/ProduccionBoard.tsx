@@ -20,7 +20,7 @@ import { fechaLarga, soloHora, paraInput, sugerenciaInicial, estaVencido, type M
 import { estaAtrasado } from "@/lib/vencimientos";
 import { useDestacar } from "@/lib/useDestacar";
 import { diag } from "@/lib/diag";
-import { avisarSiEntrega } from "@/lib/entrega-cliente";
+import { atenderRespuesta } from "@/lib/entrega-cliente";
 import { EntregaEstado } from "@/components/admin/entrega/EntregaEstado";
 
 const peso = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
@@ -517,7 +517,11 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
     setBusy(true);
     try {
       const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (r.ok) router.refresh();
+      if (r.ok) {
+        // Al editar: dice si el nombre se propagó y pregunta por la carpeta de REAPER.
+        void atenderRespuesta(r);
+        router.refresh();
+      }
       return r.ok;
     } catch { return false; }
     finally { setBusy(false); }
@@ -536,7 +540,7 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
       .then((r) => {
         if (!r.ok) throw new Error();
         // Si con esto ya sólo falta subir a Drive, se abre el cuadro de entrega.
-        void avisarSiEntrega(r);
+        void atenderRespuesta(r);
         if (refreshTimer.current) clearTimeout(refreshTimer.current);
         refreshTimer.current = setTimeout(() => router.refresh(), 900); // reconcilia progreso sin bloquear los clics rápidos
       })

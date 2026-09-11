@@ -5,6 +5,7 @@ import { registrarActividad, nombresPorId, nombreDeActor } from "@/lib/actividad
 import { pushAResponsables, contextoProyecto, conProyecto, destinoTarea } from "@/lib/push";
 import { pasoDeTitulo } from "@/lib/pasos-entrega";
 import { entregaTrasPalomear, entregaParaQuienPalomeo, type EntregaLista } from "@/lib/entrega";
+import { avanzarEstadoPorTareas } from "@/lib/estado-auto";
 
 export const dynamic = "force-dynamic";
 
@@ -106,7 +107,11 @@ export async function PATCH(req: NextRequest) {
 
   // En un tema de EP: ¿con esto ya sólo falta subirlo a Drive?
   let entrega: EntregaLista | null = null;
+  let estado: string | null = null;
   if (patch.hecho === true && !prev?.hecho) {
+    // En un EP los pasos de cada tema mueven la columna del proyecto.
+    const proyId = prev?.tarea_id ? await proyectoDeTarea(sb, prev.tarea_id as string) : null;
+    if (proyId) estado = await avanzarEstadoPorTareas(sb, proyId, email);
     entrega = await entregaParaQuienPalomeo(sb, await entregaTrasPalomear(sb, { subtareaId: id }));
   }
 
@@ -135,7 +140,7 @@ export async function PATCH(req: NextRequest) {
     }
   } catch { /* bitácora best-effort */ }
 
-  return NextResponse.json({ ok: true, entrega });
+  return NextResponse.json({ ok: true, entrega, estado });
 }
 
 // ── Borrar subtarea ──

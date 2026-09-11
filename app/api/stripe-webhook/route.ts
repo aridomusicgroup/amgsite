@@ -599,6 +599,9 @@ async function handleCotizacionPago(stripe: Stripe, session: Stripe.Checkout.Ses
     const resultado = await crearVentaDesdeCotizacionPagada(sb, cotizacionId, monto, comisionMxn);
     if (resultado) {
       await registrarComisionStripeEgreso(sb, resultado.ventaId, resultado.ventaFolio, new Date().toISOString().slice(0, 10), comisionMxn, meta.tramo_label || null);
+      // Si con este tramo quedó liquidada y había archivos retenidos, se le
+      // muestran y le llega el correo. `liberarEntregas` revisa el saldo sola.
+      try { await liberarEntregas(sb, resultado.ventaId); } catch (e) { console.error("liberar-entregas:", e); }
     }
 
     if (resultado && !resultado.yaExistia) {

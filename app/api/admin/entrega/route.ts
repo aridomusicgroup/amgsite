@@ -4,7 +4,7 @@ import { moduloPermitido } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { renderizables, encolarRender } from "@/lib/render-jobs";
 import { leerOpciones } from "@/lib/render-opciones";
-import { saldoDelProyecto, type MarcaEntrega } from "@/lib/entrega";
+import { saldoDelProyecto, cuentaCobro, type MarcaEntrega } from "@/lib/entrega";
 import { entregaListaEmail, entregaRetenidaEmail } from "@/lib/emails";
 import { registrarActividad } from "@/lib/actividad";
 
@@ -41,9 +41,11 @@ export async function GET(req: NextRequest) {
   const nombre = (((p.contactos as any)?.nombre as string | null) ?? null)?.split(" ")[0] ?? null;
 
   // Vista previa: exactamente lo que le va a llegar, con el botón apuntando a "#".
-  const retenida = (urlPago: string | null) => s
+  // Sin pagos registrados cuenta como que falta todo (ver `ventaLiquidada`).
+  const cc = s ? cuentaCobro(s) : null;
+  const retenida = (urlPago: string | null) => s && cc
     ? entregaRetenidaEmail({
-        nombre, concepto: tema, folio: s.folio, total: s.total, cobrado: s.cobrado, saldo: s.saldo,
+        nombre, concepto: tema, folio: s.folio, ...cc,
         urlPago, urlPanel: "#", conStems: true,
       }).html
     : null;
@@ -51,7 +53,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     p: r,
     titulo: tema,
-    saldo: s ? { total: s.total, cobrado: s.cobrado, saldo: s.saldo } : null,
+    saldo: cc,
     previews: {
       lista: entregaListaEmail({ customerName: nombre, concepto: tema, conStems: true, url: "#" }).html,
       retenidaConPago: retenida("#"),

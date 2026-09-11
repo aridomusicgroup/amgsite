@@ -6,6 +6,7 @@ import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
 import { crearPagosMusicoPendientes } from "@/lib/musicos-sync";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
 import { seguimientoDeCobranza } from "@/lib/seguimiento-auto";
+import { propagarNombre } from "@/lib/nombre-sync";
 import { esPagoDeContado } from "@/lib/fidelidad";
 import { registrarPagoDeContado, revertirFidelidadDeVenta, sincronizarFidelidadVenta } from "@/lib/fidelidad-server";
 
@@ -283,8 +284,15 @@ export async function PATCH(req: NextRequest) {
   if (Object.keys(patch).length === 0) return NextResponse.json({ error: "Nada que actualizar." }, { status: 400 });
 
   const sb = supabaseAdmin();
+  // El nombre de antes, para saber si de verdad cambió (el formulario lo manda siempre).
+  const { data: antes } = await sb.from("ventas").select("beat_nombre").eq("id", id).maybeSingle();
   const { data: updated, error } = await sb.from("ventas").update(patch).eq("id", id).select("contacto_id, folio").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Renombrar la venta renombra su proyecto y el pedido que ve el cliente.
+  const nombre = patch.beat_nombre && String(patch.beat_nombre).trim() !== String(antes?.beat_nombre ?? "").trim()
+    ? await propagarNombre(sb, "venta", id, String(patch.beat_nombre), await getFullAdminEmail())
+    : { en: [], carpeta: null };
 
   // Si cambió el total, puede que lo ya cobrado ahora sí (o ya no) lo cubra
   // por completo — revisa si hay que sumar o revertir fidelidad.
@@ -303,7 +311,7 @@ export async function PATCH(req: NextRequest) {
   } catch { /* bitácora best-effort */ }
 
   await recalcContacto(sb, (updated?.contacto_id as string) ?? null);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, sincronizado: nombre.en, carpeta: nombre.carpeta });
 }
 
 // ── Eliminar una venta (solo admin total) ──

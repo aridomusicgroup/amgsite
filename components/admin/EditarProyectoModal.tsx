@@ -9,6 +9,7 @@ import {
 } from "@/components/admin/ProduccionBoard";
 import { TIPO_PROY_LABEL, PRIORIDAD_LABEL, type ProyectoDetalle } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
+import { atenderRespuesta } from "@/lib/entrega-cliente";
 
 /**
  * Mismo formulario que la edición inline de la tarjeta en el kanban (Producción),
@@ -43,7 +44,7 @@ export function EditarProyectoModal({ open, proyecto, equipo, ventas, isAdmin, o
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: proyecto.id, ...ef }),
       });
-      if (r.ok) { toast("✓ Guardado"); router.refresh(); onClose(); }
+      if (r.ok) { void atenderRespuesta(r); toast("✓ Guardado"); router.refresh(); onClose(); }
       else toast("⚠️ No se pudo guardar");
     } finally {
       setBusy(false);

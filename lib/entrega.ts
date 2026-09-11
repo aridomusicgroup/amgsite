@@ -64,7 +64,7 @@ export function marcaDe(j: { opciones?: unknown } | null | undefined): MarcaEntr
 }
 
 /** `paso` es columna nueva: sin la migración, pedirla tumba la consulta entera. */
-async function conRespaldo(
+export async function conRespaldo(
   a: () => PromiseLike<{ data: unknown; error: unknown }>,
   b: () => PromiseLike<{ data: unknown; error: unknown }>,
 ): Promise<Fila[]> {
@@ -126,8 +126,25 @@ export async function saldoDelProyecto(sb: SB, p: { venta_id?: string | null }):
   return p.venta_id ? saldoDeVenta(sb, p.venta_id) : null;
 }
 
-/** Sin venta no hay nada que cobrar; sin pagos la venta cuenta como cobrada. */
-const liquidado = (s: SaldoVenta | null) => !s || s.saldo <= 0.5;
+/**
+ * ¿Ya puede ver sus archivos finales?
+ *
+ * Sin venta no hay nada que cobrar. Pero una venta SIN NINGÚN pago registrado
+ * NO cuenta como pagada aquí, aunque en el resto del panel (Finanzas,
+ * cobranza) sí: esa regla existe para no cobrarle dos veces a alguien cuyo
+ * pago nunca se capturó, y aquí haría lo contrario — entregarle todo a quien
+ * quizá no ha pagado nada. Para liberarla basta registrar el pago, o marcarla
+ * "Se pagó completa" en Conciliar.
+ */
+export const ventaLiquidada = (s: SaldoVenta | null) => !s || (s.tienePagos && s.saldo <= 0.5);
+const liquidado = ventaLiquidada;
+
+/** Lo que se le dice al cliente que falta. Sin pagos registrados, falta todo. */
+export function cuentaCobro(s: SaldoVenta): { total: number; cobrado: number; saldo: number } {
+  return s.tienePagos
+    ? { total: s.total, cobrado: s.cobrado, saldo: s.saldo }
+    : { total: s.total, cobrado: 0, saldo: s.total };
+}
 
 /** ¿El cliente ya puede ver sus archivos finales? */
 export async function finiquitadoProyecto(sb: SB, proyectoId: string): Promise<boolean> {
@@ -290,6 +307,7 @@ export async function cerrarEntrega(sb: SB, jobId: string): Promise<{ ok: true; 
   const conStems = lote.some((j) => j.tipo === "stems");
   const s = await saldoDelProyecto(sb, p);
   const pagado = liquidado(s);
+  const cc = s ? cuentaCobro(s) : null;
   const c = cliente(p);
 
   let avisado: string | null = null;
@@ -298,25 +316,25 @@ export async function cerrarEntrega(sb: SB, jobId: string): Promise<{ ok: true; 
     if (marca.avisar && c.panel) {
       avisado = await mandar(c.correo, entregaListaEmail({ customerName: c.nombre, concepto: tema, conStems, url: c.panel }));
     }
-  } else if (marca.avisar && s) {
+  } else if (marca.avisar && s && cc) {
     avisado = await mandar(c.correo, entregaRetenidaEmail({
       nombre: c.nombre, concepto: tema, folio: s.folio,
-      total: s.total, cobrado: s.cobrado, saldo: s.saldo,
+      total: cc.total, cobrado: cc.cobrado, saldo: cc.saldo,
       urlPago: marca.conPago ? urlDePago(p.venta_id) : null,
       urlPanel: c.panel, conStems,
     }));
   }
 
-  const estadoTxt = pagado ? "✓ ya se le mostró al cliente" : `🔒 retenido hasta que liquide ${peso(s?.saldo ?? 0)}`;
+  const estadoTxt = pagado ? "✓ ya se le mostró al cliente" : `🔒 retenido hasta que liquide ${peso(cc?.saldo ?? 0)}`;
   await registrarActividad(sb, {
     tipo: "entrega_subida",
     titulo: `☁️ ${tema} ya está en Drive — ${estadoTxt}${avisado ? " · se le avisó por correo" : ""}`,
     actor: ACTOR, proyecto_id: p.id, tarea_id: job.tarea_id ?? null,
-    meta: { lote: marca.lote, pagado, saldo: s?.saldo ?? 0, avisado, conStems },
+    meta: { lote: marca.lote, pagado, saldo: cc?.saldo ?? 0, avisado, conStems },
   });
   await pushAEmails(sb, [...new Set([...adminEmails(), ...crmEmails()])], {
     titulo: "☁️ Ya está en Drive",
-    cuerpo: `${p.folio ?? ""} ${tema} — ${pagado ? "✓ se le mostró al cliente" : `🔒 debe ${peso(s?.saldo ?? 0)}`}`.trim(),
+    cuerpo: `${p.folio ?? ""} ${tema} — ${pagado ? "✓ se le mostró al cliente" : `🔒 debe ${peso(cc?.saldo ?? 0)}`}`.trim(),
     url: destinoProyecto(p.id),
   });
 

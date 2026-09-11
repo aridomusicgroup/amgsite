@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { corregirCorreoDeOrder } from "@/lib/cliente-correo";
+import { propagarNombre } from "@/lib/nombre-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +29,16 @@ export async function PATCH(req: NextRequest) {
   if (["beat", "servicio"].includes(b.type)) patch.type = b.type;
   if (Object.keys(patch).length === 0) return NextResponse.json({ ok: true }); // solo se pidió corregir el correo
 
+  // El nombre de antes, para saber si de verdad cambió (el formulario lo manda siempre).
+  const { data: antes } = await sb.from("orders").select("summary").eq("id", id).maybeSingle();
   const { error } = await sb.from("orders").update(patch).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+
+  // Renombrar el pedido renombra su proyecto y su venta.
+  const nombre = patch.summary && String(patch.summary).trim() !== String(antes?.summary ?? "").trim()
+    ? await propagarNombre(sb, "pedido", id, String(patch.summary), actor)
+    : { en: [], carpeta: null };
+  return NextResponse.json({ ok: true, sincronizado: nombre.en, carpeta: nombre.carpeta });
 }
 
 // ── Eliminar un pedido (solo admin total) ──

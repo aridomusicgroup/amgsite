@@ -103,6 +103,7 @@ export const DOT_ACTIVIDAD: Record<string, string> = {
   entrega_preparada: "bg-blue-400",
   entrega_subida: "bg-green-400",
   entrega_liberada: "bg-green-400",
+  nombre_sincronizado: "bg-blue-400",
   edicion_enviada: "bg-blue-400",
   edicion_revision: "bg-green-400",
   tarea_reabierta: "bg-white/40",
