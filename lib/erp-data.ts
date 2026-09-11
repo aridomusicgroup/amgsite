@@ -452,6 +452,10 @@ export async function getFinanzasERP() {
     egresos.push(row);
     if (e.fecha) {
       if (row.es_capex) capexTot += row.total_mxn;
+      // Sueldos capturados como egreso antes de que existiera la tabla
+      // `nomina` (abr–jun 2026): son nómina, no gasto operativo. La utilidad
+      // no cambia; cambia en qué renglón se ven.
+      else if (row.categoria === "Nómina") { ensureQ(e.fecha).nomina += row.total_mxn; nominaTot += row.total_mxn; }
       else { ensureQ(e.fecha).gastosOperativos += row.total_mxn; gastosTot += row.total_mxn; }
     }
   }

@@ -9,11 +9,43 @@ const instrumentoDe = (nota: string | null): string => {
   return m ? m[1].trim() : "";
 };
 
+function Fila({ p }: { p: PagoMusicoRow }) {
+  const instrumento = instrumentoDe(p.nota);
+  const detalle = [p.venta, p.beat, p.cliente].filter(Boolean).join(" · ");
+  return (
+    <li className="bg-white/[0.03] border border-white/8 rounded-xl px-4 py-2.5">
+      <div className="flex items-center gap-3 text-sm">
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${p.pagado ? "bg-green-500/15 text-green-300" : "bg-amber-500/15 text-amber-300"}`}>
+          {p.pagado ? "Pagado" : "Pendiente"}
+        </span>
+        <span className="text-white/85 min-w-0 truncate">{p.musico || "Músico"}</span>
+        {instrumento && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-lgb-red/15 text-red-200 shrink-0">{instrumento}</span>}
+        <span className="text-white/35 text-xs shrink-0">{fechaCorta(p.fecha)}</span>
+        <span className="ml-auto text-white font-medium shrink-0">{peso(p.monto)}</span>
+      </div>
+      {(detalle || p.proyecto) && (
+        <p className="text-white/35 text-[11px] mt-1 truncate">
+          {detalle}
+          {p.proyecto && <span className="text-white/45"> · 🎬 {p.proyecto}</span>}
+        </p>
+      )}
+    </li>
+  );
+}
+
 /**
  * Vista de solo lectura de los pagos a músicos (COGS). Se editan desde cada
  * venta (Ventas → ⋯ → Pagos a músicos). Aquí solo se ven, con total y pendiente.
+ *
+ * Lo pendiente va arriba y lo ya pagado se pliega: de 31 renglones, los que
+ * piden algo eran 8, y quedaban revueltos con los otros 23.
  */
-export function PagosMusicoResumen({ pagos, total, pendiente }: { pagos: PagoMusicoRow[]; total: number; pendiente: number }) {
+export function PagosMusicoResumen({ pagos, total, pendiente, pendientes }: {
+  pagos: PagoMusicoRow[]; total: number; pendiente: number; pendientes: number;
+}) {
+  const porPagar = pagos.filter((p) => !p.pagado);
+  const pagados = pagos.filter((p) => p.pagado);
+
   return (
     <div>
       <div className="flex items-end justify-between gap-3 mb-3 flex-wrap">
@@ -23,38 +55,28 @@ export function PagosMusicoResumen({ pagos, total, pendiente }: { pagos: PagoMus
         </div>
         <p className="text-sm text-right">
           <span className="text-white/50">Total </span><span className="text-white/85 font-medium">{peso(total)}</span>
-          {pendiente > 0 && <><br /><span className="text-amber-300 text-xs">{peso(pendiente)} pendiente por pagar</span></>}
+          {pendiente > 0 && <><br /><span className="text-amber-300 text-xs">{peso(pendiente)} pendiente por pagar ({pendientes})</span></>}
         </p>
       </div>
 
       {pagos.length === 0 ? (
         <p className="text-white/30 text-sm py-4">Aún no hay pagos a músicos registrados.</p>
       ) : (
-        <ul className="space-y-1.5">
-          {pagos.map((p) => {
-            const instrumento = instrumentoDe(p.nota);
-            const detalle = [p.venta, p.beat, p.cliente].filter(Boolean).join(" · ");
-            return (
-              <li key={p.id} className="bg-white/[0.03] border border-white/8 rounded-xl px-4 py-2.5">
-                <div className="flex items-center gap-3 text-sm">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${p.pagado ? "bg-green-500/15 text-green-300" : "bg-amber-500/15 text-amber-300"}`}>
-                    {p.pagado ? "Pagado" : "Pendiente"}
-                  </span>
-                  <span className="text-white/85 min-w-0 truncate">{p.musico || "Músico"}</span>
-                  {instrumento && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-lgb-red/15 text-red-200 shrink-0">{instrumento}</span>}
-                  <span className="text-white/35 text-xs shrink-0">{fechaCorta(p.fecha)}</span>
-                  <span className="ml-auto text-white font-medium shrink-0">{peso(p.monto)}</span>
-                </div>
-                {(detalle || p.proyecto) && (
-                  <p className="text-white/35 text-[11px] mt-1 truncate">
-                    {detalle}
-                    {p.proyecto && <span className="text-white/45"> · 🎬 {p.proyecto}</span>}
-                  </p>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          {porPagar.length > 0 ? (
+            <ul className="space-y-1.5">{porPagar.map((p) => <Fila key={p.id} p={p} />)}</ul>
+          ) : (
+            <p className="text-green-300/70 text-sm py-2">✓ No se le debe nada a ningún músico.</p>
+          )}
+          {pagados.length > 0 && (
+            <details className="mt-3 group">
+              <summary className="text-xs text-white/40 hover:text-white cursor-pointer select-none">
+                {pagados.length} ya pagado{pagados.length === 1 ? "" : "s"}
+              </summary>
+              <ul className="space-y-1.5 mt-2">{pagados.map((p) => <Fila key={p.id} p={p} />)}</ul>
+            </details>
+          )}
+        </>
       )}
     </div>
   );

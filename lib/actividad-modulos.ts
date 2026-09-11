@@ -75,13 +75,14 @@ export function destinoDe(it: ItemActividad): string {
     case "cotizacion":
     case "contrato":
       return "/admin/cotizaciones";
-    // Egresos/ingresos viven en una lista sin anclas propias todavía: se abre
-    // el módulo, sin resplandor.
+    // Finanzas no tiene anclas por renglón todavía: se abre la pestaña donde
+    // vive la cosa, sin resplandor.
     case "egreso":
     case "ingreso":
+      return "/admin/finanzas?seccion=movimientos";
     case "gasto_recurrente":
     case "musico":
-      return "/admin/finanzas";
+      return "/admin/finanzas?seccion=pagos";
     default:
       return "/admin/actividad";
   }

@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
     }
   } catch { /* bitácora best-effort */ }
 
-  await pushAEmails(sb, correos, { titulo, cuerpo, url: `${SITE}/admin/finanzas` });
+  await pushAEmails(sb, correos, { titulo, cuerpo, url: `${SITE}/admin/finanzas?seccion=pagos` });
 
   return NextResponse.json({ ok: true, pendientes: pendientes.length, totalMonto, avisados: correos.length });
 }

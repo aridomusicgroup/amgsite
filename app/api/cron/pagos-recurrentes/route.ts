@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
       cuerpo: vencido
         ? `${peso(p.montoEstimado)} · debió pagarse el ${cuando} y no aparece registrado todavía.`
         : `${peso(p.montoEstimado)} el ${cuando} (según lo que se ha pagado antes).`,
-      url: `${SITE}/admin/finanzas`,
+      url: `${SITE}/admin/finanzas?seccion=pagos`,
     });
   }
 
