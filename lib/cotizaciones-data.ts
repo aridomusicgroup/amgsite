@@ -47,6 +47,8 @@ export interface Cotizacion {
   credito_aplicado: number;
   /** El staff apagó el descuento a propósito para esta cotización (aunque el esquema/tipo/nivel calificaran). */
   sin_descuento_fidelidad: boolean;
+  /** Quién toca cada instrumento (elegido al cotizar). Vacío = el titular del catálogo. */
+  musicos: { instrumento: string; musico_id: string }[];
   /** Comisión de PayPal que se le cobra al cliente. 0 = no paga por PayPal. */
   comision_pct: number;
   /** En la moneda del documento, con comisión ya incluida. */
@@ -126,6 +128,9 @@ export async function getCotizaciones(): Promise<Cotizacion[]> {
     descuento_fidelidad: Number(c.descuento_fidelidad) || 0,
     credito_aplicado: Number(c.credito_aplicado) || 0,
     sin_descuento_fidelidad: !!c.sin_descuento_fidelidad,
+    musicos: (Array.isArray(c.musicos) ? c.musicos : [])
+      .map((e: { instrumento?: unknown; musico_id?: unknown }) => ({ instrumento: String(e?.instrumento ?? ""), musico_id: String(e?.musico_id ?? "") }))
+      .filter((e: { instrumento: string; musico_id: string }) => e.instrumento && e.musico_id),
     comision_pct: Number(c.comision_pct) || 0,
     total: Number(c.total) || 0,
     total_mxn: Number(c.total_mxn) > 0 ? Number(c.total_mxn) : null,

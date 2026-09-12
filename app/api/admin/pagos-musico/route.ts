@@ -21,6 +21,17 @@ async function recomputeCostoExtra(sb: SB, ventaId: string): Promise<number> {
   return sum;
 }
 
+const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/\s+/g, " ").trim().toLowerCase();
+
+/** El músico del catálogo con ese nombre, y su instrumento si toca uno solo. */
+async function delCatalogo(sb: SB, nombre: string): Promise<{ id: string; instrumento: string | null } | null> {
+  const { data } = await sb.from("musicos").select("id, nombre, instrumentos");
+  const m = (data ?? []).find((x: { nombre: string }) => norm(String(x.nombre)) === norm(nombre));
+  if (!m) return null;
+  const inst = (m.instrumentos as string[] | null) ?? [];
+  return { id: m.id as string, instrumento: inst.length === 1 ? inst[0] : null };
+}
+
 async function folioDeVenta(sb: SB, ventaId: string): Promise<string> {
   const { data: v } = await sb.from("ventas").select("folio, beat_nombre").eq("id", ventaId).single();
   return (v?.folio as string) || (v?.beat_nombre as string) || "venta";
@@ -64,15 +75,27 @@ export async function POST(req: NextRequest) {
   if (!ventaId || !(monto > 0)) return NextResponse.json({ error: "Faltan datos (venta o monto)." }, { status: 400 });
 
   const sb = supabaseAdmin();
-  const { error } = await sb.from("pagos_musico").insert({
+  const nombre = String(b.musico || "").trim() || null;
+  // Se liga al catálogo. Capturado sólo con el nombre, "Asignar a un músico" no
+  // lo reconocía como contratado ni sabía qué instrumento tocaba (pasó en I0085).
+  const cat = nombre ? await delCatalogo(sb, nombre) : null;
+  const fila = {
     venta_id: ventaId,
-    musico: (b.musico || "").trim() || null,
+    musico: nombre,
+    musico_id: cat?.id ?? null,
+    instrumento: String(b.instrumento || "").trim() || cat?.instrumento || null,
     monto,
     fecha: b.fecha || null,
     medio_pago: (b.medio_pago || "").trim() || null,
     pagado: b.pagado === undefined ? true : Boolean(b.pagado),
     nota: (b.nota || "").trim() || null,
-  });
+  };
+  let { error } = await sb.from("pagos_musico").insert(fila);
+  if (error && /schema cache/i.test(error.message)) {
+    const { musico_id: _i, instrumento: _n, ...viejo } = fila;
+    void _i; void _n;
+    ({ error } = await sb.from("pagos_musico").insert(viejo));
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const total = await recomputeCostoExtra(sb, ventaId);

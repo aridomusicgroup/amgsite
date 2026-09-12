@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2, Pencil, Check, X, KeyRound, Send } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, Check, X, KeyRound, Send, Star } from "lucide-react";
 import { toast } from "@/lib/toast";
 
 interface Musico {
@@ -14,6 +14,8 @@ interface Musico {
   activo: boolean;
   nota: string | null;
   portal_activo?: boolean;
+  /** El que va por defecto en su instrumento cuando hay más de uno. */
+  titular?: boolean;
 }
 
 const peso = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
@@ -98,6 +100,25 @@ export function MusicosSection() {
   };
 
   /**
+   * Titular = el que va solo en su instrumento cuando hay más de uno (dos
+   * tololoches, dos trombones). Lo usa la venta que se crea sola al pagar por
+   * Stripe, y viene preelegido en los formularios. Uno por instrumento: marcar
+   * a uno le quita la marca al otro.
+   */
+  const toggleTitular = async (m: Musico) => {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/admin/musicos", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: m.id, titular: !m.titular }),
+      });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); toast(d.error || "No se pudo guardar"); return; }
+      await cargar();
+      toast(m.titular ? "✓ Ya no es titular" : `✓ ${m.nombre} es el titular de ${m.instrumentos.join(", ") || "su instrumento"}`);
+    } catch { toast("Error de red"); } finally { setBusy(false); }
+  };
+
+  /**
    * Mandarle su enlace de entrada.
    *
    * El portal del músico NO tiene contraseña: el enlace es la única puerta. Sin
@@ -169,6 +190,18 @@ export function MusicosSection() {
                   {m.email && <span className="text-white/40 text-xs truncate">· {m.email}</span>}
                   {m.telefono && <span className="text-white/40 text-xs">· {m.telefono}</span>}
                   <div className="ml-auto flex items-center gap-1">
+                    <button
+                      onClick={() => toggleTitular(m)}
+                      disabled={busy}
+                      title={m.titular
+                        ? "Titular: va solo en su instrumento cuando hay más de uno en el catálogo"
+                        : "Marcar como titular de su instrumento (el que va por defecto)"}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] transition-colors cursor-pointer disabled:opacity-40 ${
+                        m.titular ? "bg-amber-400/15 text-amber-300 hover:bg-amber-400/25" : "bg-white/5 text-white/35 hover:text-white/60"
+                      }`}
+                    >
+                      <Star size={10} className={m.titular ? "fill-current" : ""} /> {m.titular ? "Titular" : "Suplente"}
+                    </button>
                     <button
                       onClick={() => togglePortal(m)}
                       disabled={busy}

@@ -705,6 +705,10 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
   const [comisionPct, setComisionPct] = useState(initial?.comision_pct ?? 0);
   const [vigencia, setVigencia] = useState(initial?.vigencia_dias ?? 15);
   const [notas, setNotas] = useState(initial?.notas ?? "");
+  // Quién toca cada instrumento cotizado. La venta que se crea sola al pagar por
+  // Stripe no tiene a quién preguntarle: lo toma de aquí (si no, del titular).
+  const [musicos, setMusicos] = useState<{ instrumento: string; musico_id: string }[]>(initial?.musicos ?? []);
+  const instrumentosCot = useMemo(() => inferirInstrumentos(items.map((i) => i.label)).join(", "), [items]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -777,6 +781,7 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
       // aplicarlo, nunca un monto (eso sería confiar en el navegador).
       aplicar_credito: fidelidadAplica && aplicarCreditoChk,
       sin_descuento_fidelidad: fidelidadElegible && sinDescuentoFidelidad,
+      musicos,
     };
     try {
       await api("/api/admin/cotizaciones", initial ? "PATCH" : "POST", body);
@@ -825,6 +830,15 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
       <div className="mt-2"><label className="text-white/60 text-xs">Conceptos</label>
         <div className="mt-1"><ItemsEditor items={items} onChange={setItems} moneda={moneda} /></div>
       </div>
+      {instrumentosCot && (
+        <div className="mt-2">
+          <label className="text-white/60 text-xs">Quién toca <span className="text-white/30">(la venta los toma de aquí; si no eliges, va el titular)</span></label>
+          <div className="mt-1">
+            <InstrumentosPicker soloMusicos value={instrumentosCot} onChange={() => { /* los instrumentos salen de los conceptos */ }}
+              inicial={initial?.musicos} onMusicos={setMusicos} />
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 mt-3">
         <Field label="Descuento"><input type="number" min={0} value={descuento} onChange={(e) => setDescuento(Number(e.target.value) || 0)} className="input" /></Field>
         <Field label="Vigencia (días)"><input type="number" min={1} value={vigencia} onChange={(e) => setVigencia(Number(e.target.value) || 15)} className="input" /></Field>
@@ -1377,7 +1391,7 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
               <span className="text-white/60 text-xs">
                 Instrumentos <span className="text-white/30">(inferidos del paquete · ajústalos)</span>
               </span>
-              <div className="mt-1"><InstrumentosPicker value={extras} onChange={setExtras} onMusicos={setMusicosElegidos} /></div>
+              <div className="mt-1"><InstrumentosPicker value={extras} onChange={setExtras} onMusicos={setMusicosElegidos} inicial={c.musicos} /></div>
             </>
           ) : (
             <>

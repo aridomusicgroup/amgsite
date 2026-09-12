@@ -20,13 +20,16 @@ function parseInstrumentos(v: unknown): string[] {
 // pedirla haría fallar la consulta entera y dejaría la sección vacía.
 const SEL = "id, nombre, instrumentos, tarifa, telefono, email, activo, nota, portal_activo";
 const SEL_VIEJO = "id, nombre, instrumentos, tarifa, telefono, email, activo, nota";
+// `titular` también es nueva (supabase-musicos-titular.sql).
+const SEL_TIT = `${SEL}, titular`;
 
 // ── GET: catálogo de músicos (todos; el cliente filtra activos si quiere) ──
 export async function GET() {
   if (!(await getFullAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   const sb = supabaseAdmin();
   const consulta = (cols: string) => sb.from("musicos").select(cols).order("nombre", { ascending: true });
-  let { data, error } = await consulta(SEL);
+  let { data, error } = await consulta(SEL_TIT);
+  if (error) ({ data, error } = await consulta(SEL));
   if (error) ({ data, error } = await consulta(SEL_VIEJO));
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ musicos: data ?? [] });
@@ -69,12 +72,23 @@ export async function PATCH(req: NextRequest) {
   if ("nota" in b) patch.nota = b.nota ? String(b.nota).trim() : null;
   if ("activo" in b) patch.activo = Boolean(b.activo);
   if ("portal_activo" in b) patch.portal_activo = Boolean(b.portal_activo);
+  if ("titular" in b) patch.titular = Boolean(b.titular);
 
   const sb = supabaseAdmin();
   const guardar = (cols: string) => sb.from("musicos").update(patch).eq("id", id).select(cols).single();
-  let { data, error } = await guardar(SEL);
-  if (error && !("portal_activo" in patch)) ({ data, error } = await guardar(SEL_VIEJO));
+  let { data, error } = await guardar(SEL_TIT);
+  if (error && !("titular" in patch)) ({ data, error } = await guardar(SEL));
+  if (error && !("portal_activo" in patch) && !("titular" in patch)) ({ data, error } = await guardar(SEL_VIEJO));
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Un solo titular por instrumento: si hubiera dos, la venta automática no
+  // sabría a cuál poner y no pondría a nadie.
+  if (patch.titular === true) {
+    const suyos = (((data as { instrumentos?: string[] } | null)?.instrumentos) ?? []).map((i) => i.toLowerCase());
+    const { data: otros } = await sb.from("musicos").select("id, instrumentos").eq("titular", true).neq("id", id);
+    const choca = (otros ?? []).filter((o) => ((o.instrumentos as string[] | null) ?? []).some((i) => suyos.includes(i.toLowerCase())));
+    if (choca.length) await sb.from("musicos").update({ titular: false }).in("id", choca.map((o) => o.id));
+  }
   return NextResponse.json({ ok: true, musico: data });
 }
 

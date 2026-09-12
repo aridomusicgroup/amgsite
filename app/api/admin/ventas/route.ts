@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { crearTareasDeProyecto, crearTareasDeCanciones, parseInstrumentos } from "@/lib/produccion-tareas";
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
 import { crearPagosMusicoPendientes } from "@/lib/musicos-sync";
+import { habilitarPortal as habilitarPortalDe } from "@/lib/musico-asignar";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
 import { seguimientoDeCobranza } from "@/lib/seguimiento-auto";
 import { propagarNombre } from "@/lib/nombre-sync";
@@ -380,55 +381,9 @@ async function habilitarPortal(
   sb: any,
   proyectoId: string,
   elegidos: { instrumento: string; musico_id: string }[],
-  /**
-   * Qué tarea quedó para cada instrumento, tal como las acaba de crear
-   * `crearTareasDeProyecto`. Es la vía buena: buscar la tarea por su título
-   * dejó de ser confiable desde que las plantillas se editan desde el panel y
-   * el patrón "Grabar {instrumento}" se puede cambiar.
-   */
+  /** Qué tarea quedó para cada instrumento, tal como las acaba de crear `crearTareasDeProyecto`. */
   tareaDeInstrumento?: Map<string, string>,
 ): Promise<void> {
-  try {
-    const { data: musicos } = await sb.from("musicos")
-      .select("id, portal_activo")
-      .in("id", elegidos.map((e) => e.musico_id));
-    const conPortal = new Set(
-      (musicos ?? []).filter((m: { portal_activo?: boolean }) => m.portal_activo)
-        .map((m: { id: string }) => m.id),
-    );
-    if (!conPortal.size) return;
-
-    // Respaldo por título, sólo para los caminos que no traen el mapa (una venta
-    // de EP, o tareas libres). Se deja porque es mejor que nada, pero el mapa es
-    // la vía buena: esta depende de que el título siga diciendo "Grabar X".
-    const { data: tareas } = await sb.from("proyecto_tareas")
-      .select("id, titulo").eq("proyecto_id", proyectoId);
-    const clave = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
-    const tareaDe = (inst: string) =>
-      tareaDeInstrumento?.get(inst) ??
-      (tareas ?? []).find((t: { titulo: string }) => clave(t.titulo) === clave(`Grabar ${inst}`))?.id ??
-      null;
-
-    for (const e of elegidos) {
-      if (!conPortal.has(e.musico_id)) continue;
-      const tareaId = tareaDe(e.instrumento);
-      // El índice único es (musico_id, tarea_id) y Postgres trata cada NULL como
-      // distinto, así que sin esta consulta un proyecto sin tarea admitiría
-      // asignaciones repetidas.
-      const q = sb.from("musico_asignaciones").select("id")
-        .eq("musico_id", e.musico_id).eq("proyecto_id", proyectoId);
-      const { data: ya } = await (tareaId ? q.eq("tarea_id", tareaId) : q.is("tarea_id", null)).maybeSingle();
-      if (ya) continue;
-
-      await sb.from("musico_asignaciones").insert({
-        musico_id: e.musico_id,
-        proyecto_id: proyectoId,
-        tarea_id: tareaId,
-        instrumento: e.instrumento,
-        creado_por: "venta",
-      });
-    }
-  } catch {
-    /* best-effort */
-  }
+  // Vive en lib/musico-asignar: la venta automática de Stripe hace lo mismo.
+  await habilitarPortalDe(sb, proyectoId, elegidos, tareaDeInstrumento, "venta");
 }

@@ -23,9 +23,9 @@ export async function GET(req: NextRequest) {
   if (!instrumentos.length) return NextResponse.json({ candidatos: {} });
 
   const mapa = await candidatosPorInstrumento(supabaseAdmin(), instrumentos);
-  const candidatos: Record<string, { id: string; nombre: string; portal: boolean }[]> = {};
+  const candidatos: Record<string, { id: string; nombre: string; portal: boolean; titular: boolean }[]> = {};
   for (const [inst, lista] of Object.entries(mapa)) {
-    candidatos[inst] = lista.map((m) => ({ id: m.id, nombre: m.nombre, portal: m.portal }));
+    candidatos[inst] = lista.map((m) => ({ id: m.id, nombre: m.nombre, portal: m.portal, titular: m.titular }));
   }
   return NextResponse.json({ candidatos });
 }

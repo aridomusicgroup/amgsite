@@ -30,6 +30,18 @@ function parseItems(v: unknown): { label: string; qty: number; unitPrice: number
     .filter((i) => i.label);
 }
 
+/** Quién toca cada instrumento: [{instrumento, musico_id}] limpio. */
+function parseMusicos(v: unknown): { instrumento: string; musico_id: string }[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((e: { instrumento?: unknown; musico_id?: unknown }) => ({
+      instrumento: String(e?.instrumento ?? "").trim().slice(0, 60),
+      musico_id: String(e?.musico_id ?? "").trim(),
+    }))
+    .filter((e) => e.instrumento && /^[0-9a-f-]{36}$/i.test(e.musico_id))
+    .slice(0, 30);
+}
+
 // El total (con comisión de PayPal si aplica) vive en `lib/comision.ts`, no aquí:
 // lo tienen que calcular igual el formulario, esta ruta y el PDF que firma el
 // cliente.
@@ -117,6 +129,7 @@ export async function POST(req: NextRequest) {
     descuento_fidelidad: d.descuentoFidelidad,
     credito_aplicado: creditoAUsar,
     sin_descuento_fidelidad: sinDescuentoFidelidad,
+    musicos: parseMusicos(b.musicos),
     total,
     // Espejo en pesos: es lo que leen el Dashboard y Finanzas, que reportan
     // todo en MXN. Se guarda calculado (y no se recalcula al vuelo) para que la
@@ -134,8 +147,8 @@ export async function POST(req: NextRequest) {
   // ellas para no dejar el flujo principal roto mientras tanto.
   let { data, error } = await sb.from("cotizaciones").insert(row).select("id, folio").single();
   if (error && /schema cache/i.test(error.message)) {
-    const { tipo: _t, esquema_pago: _e, num_canciones: _n, descuento_fidelidad: _f, credito_aplicado: _c, ep_album_formato: _ea, sin_descuento_fidelidad: _s, ...sinNuevas } = row;
-    void _t; void _e; void _n; void _f; void _c; void _ea; void _s;
+    const { tipo: _t, esquema_pago: _e, num_canciones: _n, descuento_fidelidad: _f, credito_aplicado: _c, ep_album_formato: _ea, sin_descuento_fidelidad: _s, musicos: _m, ...sinNuevas } = row;
+    void _t; void _e; void _n; void _f; void _c; void _ea; void _s; void _m;
     ({ data, error } = await sb.from("cotizaciones").insert(sinNuevas).select("id, folio").single());
   }
 
@@ -193,6 +206,7 @@ export async function PATCH(req: NextRequest) {
     patch.ep_album_formato = b.ep_album_formato === "ep" || b.ep_album_formato === "album" ? b.ep_album_formato : null;
   }
   if ("sin_descuento_fidelidad" in b) patch.sin_descuento_fidelidad = !!b.sin_descuento_fidelidad;
+  if ("musicos" in b) patch.musicos = parseMusicos(b.musicos);
 
   const sb = supabaseAdmin();
 
@@ -237,8 +251,8 @@ export async function PATCH(req: NextRequest) {
 
   let { error } = await sb.from("cotizaciones").update(patch).eq("id", id);
   if (error && /schema cache/i.test(error.message)) {
-    const { tipo: _t, esquema_pago: _e, num_canciones: _n, descuento_fidelidad: _f, credito_aplicado: _c, ep_album_formato: _ea, sin_descuento_fidelidad: _s, ...sinNuevas } = patch;
-    void _t; void _e; void _n; void _f; void _c; void _ea; void _s;
+    const { tipo: _t, esquema_pago: _e, num_canciones: _n, descuento_fidelidad: _f, credito_aplicado: _c, ep_album_formato: _ea, sin_descuento_fidelidad: _s, musicos: _m, ...sinNuevas } = patch;
+    void _t; void _e; void _n; void _f; void _c; void _ea; void _s; void _m;
     ({ error } = await sb.from("cotizaciones").update(sinNuevas).eq("id", id));
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

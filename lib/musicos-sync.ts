@@ -18,7 +18,24 @@ interface MusicoCat {
   instrumentos: string[] | null;
   tarifa: unknown;
   activo: boolean | null;
+  /** El que va por defecto cuando su instrumento tiene más de un candidato. */
+  titular?: boolean | null;
 }
+
+/** `titular` es columna nueva (supabase-musicos-titular.sql): sin ella, el catálogo sin titulares. */
+async function catalogo(sb: SB, cols: string): Promise<MusicoCat[]> {
+  const r = await sb.from("musicos").select(`${cols}, titular`);
+  if (!r.error) return (r.data ?? []) as MusicoCat[];
+  const v = await sb.from("musicos").select(cols);
+  return (v.data ?? []) as MusicoCat[];
+}
+
+/** De los que tocan un instrumento: el único, o el titular si hay exactamente uno. */
+const elegirDe = (cands: MusicoCat[]): MusicoCat | null => {
+  if (cands.length === 1) return cands[0];
+  const tit = cands.filter((m) => m.titular);
+  return tit.length === 1 ? tit[0] : null;
+};
 
 /**
  * ¿Este músico toca ese instrumento?
@@ -47,9 +64,10 @@ const toca = (m: MusicoCat, inst: string): boolean => {
  * Ahora:
  *  - Con `elegidos` (lo normal, viene del formulario): un pago por entrada, con
  *    el músico y el instrumento que una persona escogió.
- *  - Sin `elegidos` (el webhook de Stripe, que no tiene a nadie a quién
- *    preguntarle): si el instrumento tiene UN candidato se crea su pago; si
- *    tiene dos o más NO se crea ninguno. Un pago de menos se ve —
+ *  - Sin `elegidos`: si el instrumento tiene UN candidato se crea su pago; si
+ *    tiene dos o más, el del TITULAR del catálogo; sin titular NO se crea
+ *    ninguno. (La venta automática de Stripe ya manda sus `elegidos`, ver
+ *    `resolverElegidos`.) Un pago de menos se ve —
  *    `PagosMusicoSection` sigue mostrando las sugerencias por instrumento— y
  *    uno de más es silencioso y descuadra el reparto.
  *
@@ -67,9 +85,8 @@ export async function crearPagosMusicoPendientes(
   try {
     if (!ventaId) return;
 
-    const { data: musicos } = await sb.from("musicos").select("id, nombre, instrumentos, tarifa, activo");
-    if (!musicos || !musicos.length) return;
-    const cat = musicos as MusicoCat[];
+    const cat = await catalogo(sb, "id, nombre, instrumentos, tarifa, activo");
+    if (!cat.length) return;
 
     // Quién ya tiene pago aquí: no se le crea otro.
     const { data: previos } = await sb.from("pagos_musico").select("musico").eq("venta_id", ventaId);
@@ -102,9 +119,9 @@ export async function crearPagosMusicoPendientes(
       }
     } else {
       for (const inst of parseInstrumentos(extras)) {
-        const candidatos = cat.filter((m) => m.activo !== false && toca(m, inst));
-        // Ambiguo: mejor ninguno que el equivocado o los dos.
-        if (candidatos.length === 1) agregar(candidatos[0], inst);
+        // Ambiguo y sin titular: mejor ninguno que el equivocado o los dos.
+        const m = elegirDe(cat.filter((x) => x.activo !== false && toca(x, inst)));
+        if (m) agregar(m, inst);
       }
     }
 
@@ -129,11 +146,10 @@ export async function crearPagosMusicoPendientes(
 export async function candidatosPorInstrumento(
   sb: SB,
   instrumentos: string[],
-): Promise<Record<string, { id: string; nombre: string; tarifa: number; portal: boolean }[]>> {
-  const salida: Record<string, { id: string; nombre: string; tarifa: number; portal: boolean }[]> = {};
+): Promise<Record<string, { id: string; nombre: string; tarifa: number; portal: boolean; titular: boolean }[]>> {
+  const salida: Record<string, { id: string; nombre: string; tarifa: number; portal: boolean; titular: boolean }[]> = {};
   try {
-    const { data } = await sb.from("musicos").select("id, nombre, instrumentos, tarifa, activo, portal_activo");
-    const cat = (data ?? []) as (MusicoCat & { portal_activo?: boolean })[];
+    const cat = (await catalogo(sb, "id, nombre, instrumentos, tarifa, activo, portal_activo")) as (MusicoCat & { portal_activo?: boolean })[];
     for (const inst of instrumentos) {
       salida[inst] = cat
         .filter((m) => m.activo !== false && toca(m, inst))
@@ -142,10 +158,41 @@ export async function candidatosPorInstrumento(
           nombre: m.nombre,
           tarifa: Number(m.tarifa) || 0,
           portal: Boolean(m.portal_activo),
+          titular: Boolean(m.titular),
         }));
     }
   } catch {
     /* sin catálogo: el formulario simplemente no ofrece a nadie */
   }
   return salida;
+}
+
+/**
+ * Quién toca cada instrumento en una venta que nadie llenó a mano (la que se
+ * crea sola al pagarse una cotización por Stripe).
+ *
+ * Lo que se eligió EN LA COTIZACIÓN manda; si ahí no dice nada, el único que
+ * lo toca o el titular del catálogo. Sin eso, en Alto Nivel (I0085) el
+ * tololoche y el trombón se quedaron sin nadie: cada uno tiene dos candidatos.
+ */
+export async function resolverElegidos(sb: SB, instrumentos: string[], deCotizacion?: unknown): Promise<MusicoElegido[]> {
+  try {
+    const cat = (await catalogo(sb, "id, nombre, instrumentos, tarifa, activo")).filter((m) => m.activo !== false);
+    const cot = (Array.isArray(deCotizacion) ? deCotizacion : [])
+      .map((e: { instrumento?: unknown; musico_id?: unknown }) => ({
+        instrumento: String(e?.instrumento ?? "").trim().toLowerCase(),
+        musico_id: String(e?.musico_id ?? "").trim(),
+      }))
+      .filter((e) => e.instrumento && e.musico_id);
+
+    const out: MusicoElegido[] = [];
+    for (const inst of instrumentos) {
+      const pedido = cot.find((e) => e.instrumento === inst.toLowerCase());
+      const m = (pedido && cat.find((x) => x.id === pedido.musico_id)) || elegirDe(cat.filter((x) => toca(x, inst)));
+      if (m) out.push({ instrumento: inst, musico_id: m.id });
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }

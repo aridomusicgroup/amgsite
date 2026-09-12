@@ -1,6 +1,7 @@
 import { resolverEquipo, crearTareasDeProyecto, crearTareasDeCanciones } from "@/lib/produccion-tareas";
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
-import { crearPagosMusicoPendientes } from "@/lib/musicos-sync";
+import { crearPagosMusicoPendientes, resolverElegidos } from "@/lib/musicos-sync";
+import { habilitarPortal } from "@/lib/musico-asignar";
 import { registrarActividad } from "@/lib/actividad";
 import { seguimientoDeCobranza } from "@/lib/seguimiento-auto";
 import { inferirInstrumentos } from "@/lib/servicios";
@@ -111,11 +112,12 @@ export async function crearVentaDesdeCotizacionPagada(
   montoTramoNativo: number,
   comisionTramoMxn: number | null = null,
 ): Promise<ResultadoVentaAutomatica | null> {
-  const { data: cot } = await sb
-    .from("cotizaciones")
-    .select("id, folio, tipo, contacto_id, cliente_nombre, cliente_email, cliente_telefono, moneda, tipo_cambio, items, total, total_mxn, num_canciones, ep_album_formato")
-    .eq("id", cotizacionId)
-    .single();
+  // `musicos` es columna nueva (supabase-musicos-titular.sql): sin ella, la
+  // consulta entera fallaría y el pago se quedaría sin venta.
+  const COLS = "id, folio, tipo, contacto_id, cliente_nombre, cliente_email, cliente_telefono, moneda, tipo_cambio, items, total, total_mxn, num_canciones, ep_album_formato";
+  const leer = (cols: string) => sb.from("cotizaciones").select(cols).eq("id", cotizacionId).single();
+  let { data: cot } = await leer(`${COLS}, musicos`);
+  if (!cot) ({ data: cot } = await leer(COLS));
   if (!cot) return null;
 
   const totalNativo = Number(cot.total) || 0;
@@ -132,6 +134,8 @@ export async function crearVentaDesdeCotizacionPagada(
   const items: { label: string }[] = Array.isArray(cot.items) ? cot.items : [];
   const instrumentos = inferirInstrumentos(items.map((i) => i.label));
   const extrasStr = instrumentos.length ? instrumentos.join(", ") : null;
+  // Quién toca qué: lo elegido en la cotización, o el titular del catálogo.
+  const elegidos = await resolverElegidos(sb, instrumentos, cot.musicos);
 
   // ── Resuelve tipo de venta + tipo de proyecto ──
   let ventaTipo: string;
@@ -173,13 +177,15 @@ export async function crearVentaDesdeCotizacionPagada(
       total_mxn: Number(cot.total_mxn) || 0,
       medio_pago: "Stripe",
       quien_cerro: "Automático (Stripe)",
+      // Igual que la venta manual: "Pagos a músicos" sugiere a partir de aquí.
+      extras: extrasStr,
     })
     .select("id")
     .single();
   if (ventaErr || !ventaRow) return null;
   const ventaId = ventaRow.id as string;
 
-  if (extrasStr) await crearPagosMusicoPendientes(sb, ventaId, extrasStr);
+  if (extrasStr) await crearPagosMusicoPendientes(sb, ventaId, extrasStr, elegidos);
 
   try {
     await registrarActividad(sb, {
@@ -238,8 +244,11 @@ export async function crearVentaDesdeCotizacionPagada(
           // `es_cancion`, así que el panel no los trataba como temas.
           const canciones = Array.from({ length: numCanciones }, (_, i) => `Canción ${i + 1}`);
           await crearTareasDeCanciones(sb, proy.id, tproy, canciones, instrumentos, findId("eliud"));
+          if (elegidos.length) await habilitarPortal(sb, proy.id, elegidos, undefined, "stripe");
         } else {
-          await crearTareasDeProyecto(sb, proy.id, tproy, instrumentos);
+          // Cada músico con portal queda colgado de SU tarea "Grabar X", con fecha.
+          const porInstrumento = await crearTareasDeProyecto(sb, proy.id, tproy, instrumentos);
+          if (elegidos.length) await habilitarPortal(sb, proy.id, elegidos, porInstrumento, "stripe");
         }
         try { await crearPedidoDeProyecto(sb, proy.id); } catch { /* pedido-sync best-effort */ }
         proyectoFolio = proyectoFolioGen;
