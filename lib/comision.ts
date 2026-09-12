@@ -15,7 +15,9 @@
  * Comisión por pago internacional (Stripe o PayPal; se llamaba "PayPal" hasta
  * el 12-sep). Se guarda por documento, así que cambiarlo aquí no toca lo ya cotizado.
  */
-export const COMISION_PAYPAL = 6;
+// 7% desde el 12-sep: Stripe se quedó 5.0% en un cobro en pesos y 6.9–7.1% en
+// los pagados en dólares (I0071, I0073, beat del sitio). Con 6% se perdía un punto.
+export const COMISION_PAYPAL = 7;
 
 export interface LineaCotizacion {
   qty: number;
