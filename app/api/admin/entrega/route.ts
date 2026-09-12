@@ -4,7 +4,7 @@ import { moduloPermitido } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { renderizables, encolarRender } from "@/lib/render-jobs";
 import { leerOpciones } from "@/lib/render-opciones";
-import { saldoDelProyecto, cuentaCobro, type MarcaEntrega } from "@/lib/entrega";
+import { saldoDelProyecto, cuentaCobro, porQueNoEntregar, type MarcaEntrega } from "@/lib/entrega";
 import { entregaListaEmail, entregaRetenidaEmail } from "@/lib/emails";
 import { registrarActividad } from "@/lib/actividad";
 
@@ -33,6 +33,8 @@ export async function GET(req: NextRequest) {
     sb.from("proyectos").select("id, titulo, venta_id, contactos(nombre)").eq("id", proyectoId).maybeSingle(),
   ]);
   if (!p) return NextResponse.json({ error: "Ese proyecto ya no existe." }, { status: 404 });
+  const espera = await porQueNoEntregar(sb, proyectoId, tareaId);
+  if (espera) return NextResponse.json({ error: espera }, { status: 409 });
 
   const r = lista.find((x) => x.proyectoId === proyectoId && (x.tareaId ?? null) === tareaId) ?? null;
   const s = await saldoDelProyecto(sb, p);
@@ -71,6 +73,8 @@ export async function POST(req: NextRequest) {
   const proyectoId = String(b.proyectoId || "").trim();
   const tareaId = b.tareaId ? String(b.tareaId).trim() : null;
   if (!proyectoId) return NextResponse.json({ error: "Falta el proyecto." }, { status: 400 });
+  const espera = await porQueNoEntregar(supabaseAdmin(), proyectoId, tareaId);
+  if (espera) return NextResponse.json({ error: espera }, { status: 409 });
 
   const ent = leerOpciones(b.entregables);
   if (!ent.ok) return NextResponse.json({ error: ent.error }, { status: 400 });

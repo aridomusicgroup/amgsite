@@ -49,6 +49,15 @@ export function EntregaEstado({ e, saldo, titulo }: {
 
   if (!e.jobs.length) {
     if (!e.abierto) return null;
+    // Todavía no está en revisión: se ve, pero apagado, y dice por qué.
+    if (!e.habilitado) {
+      return (
+        <span title={e.porQue ?? undefined} onClick={(ev) => ev.stopPropagation()}
+          className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/25 cursor-not-allowed">
+          <PackageCheck size={10} /> Preparar entrega
+        </span>
+      );
+    }
     return (
       <button onClick={abrir} title="Sacar entregables y stems y subirlos a Drive"
         className="shrink-0 inline-flex items-center gap-1 rounded-full border border-lgb-red/30 bg-lgb-red/10 px-2 py-0.5 text-[10px] text-lgb-red hover:bg-lgb-red/20 transition-colors cursor-pointer">

@@ -66,6 +66,10 @@ export function tipoLlevaPasos(tipo: string | null | undefined): boolean {
 
 // ── Estado de una entrega, para la píldora del tablero ──────────────────────
 
+/** Por qué "Preparar entrega" sigue apagado (tablero y API dicen lo mismo). */
+export const ESPERA_PROYECTO = "Se habilita cuando el proyecto pase a En revisión.";
+export const ESPERA_TEMA = "Se habilita cuando el tema tenga todo listo menos Aprobada y Subir a Drive.";
+
 export interface JobEntrega {
   id: string;
   tipo: "entregables" | "stems";
@@ -81,6 +85,10 @@ export interface EstadoEntrega {
   tareaId: string | null;
   /** "Subir a Drive" sigue sin palomear. */
   abierto: boolean;
+  /** Ya se puede preparar: el proyecto está En revisión (o, en un EP, el tema). */
+  habilitado: boolean;
+  /** Por qué todavía no, para el tooltip del botón apagado. */
+  porQue: string | null;
   /** Los trabajos del último lote de entrega (vacío si nunca se preparó). */
   jobs: JobEntrega[];
   /** Ya subió todo, pero el cliente no lo ve porque debe saldo. */

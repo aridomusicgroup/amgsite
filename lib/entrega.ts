@@ -7,7 +7,7 @@ import { esProyectoDeCliente } from "@/lib/pedido-sync";
 import { saldoDeVenta, type SaldoVenta } from "@/lib/cobranza";
 import { entregaListaEmail, entregaRetenidaEmail } from "@/lib/emails";
 import { tokenDePago } from "@/lib/pago-token";
-import { pasoDe, type PasoEntrega } from "@/lib/pasos-entrega";
+import { pasoDe, ESPERA_PROYECTO, ESPERA_TEMA, type PasoEntrega } from "@/lib/pasos-entrega";
 import { moverAEntregado } from "@/lib/proyecto-estado";
 
 /**
@@ -152,6 +152,24 @@ export async function finiquitadoProyecto(sb: SB, proyectoId: string): Promise<b
   return liquidado(await saldoDelProyecto(sb, p ?? {}));
 }
 
+/**
+ * Candado de "Preparar entrega": null = se puede; si no, por qué todavía no.
+ *
+ * Una producción normal tiene que estar En revisión. En un EP la revisión es
+ * del TEMA (todos sus pasos hechos menos Aprobada y Subir a Drive): el EP entero
+ * sólo cae a revisión cuando TODOS los temas acaban, y esperar eso anularía la
+ * entrega tema por tema. El tablero apaga el botón con la misma regla
+ * (erp-data `adjuntarEntregas`); esto es la puerta de verdad.
+ */
+export async function porQueNoEntregar(sb: SB, proyectoId: string, tareaId: string | null): Promise<string | null> {
+  const p = await proyectoDe(sb, proyectoId);
+  if (!p) return "Ese proyecto ya no existe.";
+  if (!tareaId) return p.estado === "revision" ? null : ESPERA_PROYECTO;
+  if (!ACTIVOS.includes(p.estado)) return "El proyecto no está activo.";
+  const items = await itemsDeUnidad(sb, proyectoId, tareaId);
+  return items.every((i) => i.paso || i.hecho) ? null : ESPERA_TEMA;
+}
+
 // ── 1. ¿Ya sólo falta subir? ────────────────────────────────────────────────
 
 /**
@@ -165,6 +183,8 @@ export async function unidadLista(sb: SB, proyectoId: string, tareaId: string | 
   if (!p || !esProyectoDeCliente(p) || !ACTIVOS.includes(p.estado) || !p.venta_id) return null;
   // Un EP no se entrega entero: se entrega tema por tema.
   if (!tareaId && TIPOS_ALBUM.includes(String(p.tipo ?? ""))) return null;
+  // Sólo en revisión (ver porQueNoEntregar). Un tema ya lo cumple con lo de abajo.
+  if (!tareaId && p.estado !== "revision") return null;
 
   const items = await itemsDeUnidad(sb, proyectoId, tareaId);
   const aprobacion = items.find((i) => i.paso === "aprobacion");

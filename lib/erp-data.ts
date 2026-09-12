@@ -3,7 +3,7 @@ import { extraerShortcode } from "@/lib/shortcode";
 import { esProyectoDeCliente } from "@/lib/pedido-sync";
 import { ESTADOS_NO_ABIERTOS, calcEntregas, type DashProyecto, type EntregasResumen } from "@/lib/entregas";
 import { ENTIDADES_SENSIBLES } from "@/lib/actividad-modulos";
-import { pasoDe, type EstadoEntrega, type PasoEntrega } from "@/lib/pasos-entrega";
+import { pasoDe, ESPERA_PROYECTO, ESPERA_TEMA, type EstadoEntrega, type PasoEntrega } from "@/lib/pasos-entrega";
 import { mapaDeEntregas, claveUnidad, type ResumenEntrega } from "@/lib/entrega-estado";
 
 export type { DashProyecto };
@@ -45,16 +45,27 @@ function adjuntarEntregas(
   // cuadro no lo encontraría para renderizar.
   const activo = ACTIVOS_ENTREGA.includes(String(p.estado ?? ""));
   const vacio: ResumenEntrega = { jobs: [], retenido: false, compartido: false };
+  // "Preparar entrega" sólo se habilita en revisión (ver `porQueNoEntregar`).
+  const enRevision = p.estado === "revision";
   for (const t of tareas) {
     if (t.es_cancion) {
       const sub = t.subtareas.find((s) => s.paso === "entrega");
       const m = mapa.get(claveUnidad(p.id, t.id));
       if (sub || m) {
-        const e: EstadoEntrega = { proyectoId: p.id, tareaId: t.id, abierto: activo && !!sub && !sub.hecho && !t.hecho, ...(m ?? vacio) };
+        // En un EP la revisión es del TEMA: todos sus pasos hechos menos los dos de entrega.
+        const temaListo = t.subtareas.every((s) => s.paso || s.hecho);
+        const e: EstadoEntrega = {
+          proyectoId: p.id, tareaId: t.id, abierto: activo && !!sub && !sub.hecho && !t.hecho,
+          habilitado: temaListo, porQue: temaListo ? null : ESPERA_TEMA, ...(m ?? vacio),
+        };
         t.entrega = e;
       }
     } else if (t.paso === "entrega") {
-      t.entrega = { proyectoId: p.id, tareaId: null, abierto: activo && !t.hecho, ...(mapa.get(claveUnidad(p.id, null)) ?? vacio) };
+      t.entrega = {
+        proyectoId: p.id, tareaId: null, abierto: activo && !t.hecho,
+        habilitado: enRevision, porQue: enRevision ? null : ESPERA_PROYECTO,
+        ...(mapa.get(claveUnidad(p.id, null)) ?? vacio),
+      };
     }
   }
 }
