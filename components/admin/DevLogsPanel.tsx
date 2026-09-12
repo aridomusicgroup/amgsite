@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Music4, Package, Layers, Loader2, Cloud, Music2 } from "lucide-react";
+import Link from "next/link";
+import { Music4, Package, Layers, Loader2, Cloud, Music2, ArrowUpRight } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { toast } from "@/lib/toast";
 import { RenderOpciones } from "./RenderOpciones";
@@ -180,10 +181,19 @@ function RenderList({ proyectos, onAbrir }: {
                 se partía letra por letra. */}
             <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
               <div className="min-w-0 sm:flex-1">
-                <p className="text-sm font-medium break-words">
-                  {p.album && <span className="text-white/40">{p.album} · </span>}
-                  {p.titulo}
-                </p>
+                {/* Lleva al tablero de Producción con la tarjeta abierta y
+                    resaltada; si es un tema de EP, abre la tarea de ese tema. */}
+                <Link
+                  href={`/admin/produccion?destacar=${p.tareaId ?? p.proyectoId}`}
+                  title="Abrir en Producción"
+                  className="group inline-flex items-start gap-1 text-sm font-medium break-words hover:text-lgb-red transition-colors"
+                >
+                  <span>
+                    {p.album && <span className="text-white/40 group-hover:text-lgb-red/60">{p.album} · </span>}
+                    {p.titulo}
+                  </span>
+                  <ArrowUpRight size={14} className="mt-0.5 shrink-0 opacity-30 group-hover:opacity-100 transition-opacity" />
+                </Link>
                 <p className="text-white/40 text-xs mt-1 flex items-center gap-1.5 flex-wrap">
                   <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${ESTADO_PROY_COLOR[p.estado] ?? "bg-white/10 text-white/50"}`}>
                     {ESTADO_PROY_LABEL[p.estado] ?? p.estado}
