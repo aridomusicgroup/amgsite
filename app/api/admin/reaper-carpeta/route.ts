@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
  */
 
 const tablaDe = (v: unknown): TablaCarpeta | null =>
-  v === "proyectos" || v === "proyecto_tareas" ? v : null;
+  v === "contactos" || v === "proyectos" || v === "proyecto_tareas" ? v : null;
 
 export async function GET(req: NextRequest) {
   if (!(await getProduccionEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -42,7 +42,9 @@ export async function POST(req: NextRequest) {
 
   const proyectoId = tabla === "proyectos"
     ? id
-    : ((await sb.from("proyecto_tareas").select("proyecto_id").eq("id", id).maybeSingle()).data?.proyecto_id as string | undefined) ?? null;
+    : tabla === "proyecto_tareas"
+      ? ((await sb.from("proyecto_tareas").select("proyecto_id").eq("id", id).maybeSingle()).data?.proyecto_id as string | undefined) ?? null
+      : null;
   await registrarActividad(sb, {
     tipo: "nombre_sincronizado",
     titulo: `Se pidió renombrar la carpeta de REAPER a “${String(b.nueva ?? "").slice(0, 120)}”`,

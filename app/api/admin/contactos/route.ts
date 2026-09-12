@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
+import { anclarCarpeta, type CarpetaPendiente } from "@/lib/carpeta-reaper";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,17 @@ export async function PATCH(req: NextRequest) {
   patch.updated_at = new Date().toISOString();
 
   const sb = supabaseAdmin();
+  // Renombrar al cliente cambia la ruta de TODAS sus carpetas de REAPER
+  // (RAÍZ / CLIENTE / PROYECTO). Antes de guardar: anclar la de siempre y
+  // preguntar si también se renombra. Sólo si el nombre CAMBIÓ de verdad: el
+  // formulario lo manda en cada guardado.
+  let carpeta: CarpetaPendiente | null = null;
+  if (patch.nombre) {
+    const { data: antes } = await sb.from("contactos").select("nombre").eq("id", id).maybeSingle();
+    if (String(antes?.nombre ?? "").trim() !== String(patch.nombre).trim()) {
+      carpeta = await anclarCarpeta(sb, "contactos", id, antes?.nombre as string, patch.nombre as string);
+    }
+  }
   const { data: upd, error } = await sb.from("contactos").update(patch).eq("id", id).select("nombre, email").single();
   if (!error) {
     try {
@@ -42,7 +54,7 @@ export async function PATCH(req: NextRequest) {
     } catch { /* bitácora best-effort */ }
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, carpeta });
 }
 
 // ── Eliminar un contacto (solo admin total) ──

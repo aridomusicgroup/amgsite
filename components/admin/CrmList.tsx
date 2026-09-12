@@ -5,6 +5,7 @@ import { Search, Phone, Mail, TrendingUp, Merge, Download, Loader2, Pencil, Tras
 import type { Contacto } from "@/lib/erp-data";
 import { ETAPA_LABEL } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
+import { atenderRespuesta } from "@/lib/entrega-cliente";
 import { ClienteCorreosExtra } from "./ClienteCorreosExtra";
 import { AvisoCorreoPedido } from "./AvisoCorreoPedido";
 import { CrmTimeline } from "./CrmTimeline";
@@ -237,6 +238,8 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, ...ef }),
       });
+      // Antes de leer el cuerpo: si se renombró al cliente, pregunta por su carpeta de REAPER.
+      if (r.ok) void atenderRespuesta(r);
       const d = await r.json();
       if (!r.ok) setEditErr(d.error || "No se pudo guardar.");
       else { setEditingId(null); router.refresh(); toast("✓ Guardado"); }

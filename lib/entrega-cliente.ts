@@ -19,7 +19,7 @@ export interface PedidoEntrega {
 
 /** Lo que manda el servidor cuando algo renombrado ya tiene carpeta en disco. */
 export interface PedidoCarpeta {
-  tabla: "proyectos" | "proyecto_tareas";
+  tabla: "contactos" | "proyectos" | "proyecto_tareas";
   id: string;
   actual: string;
   nueva: string;

@@ -56,7 +56,11 @@ export function CarpetaLanzador() {
             <p className="font-coolvetica text-lg leading-tight">
               ¿Renombrar también la carpeta de REAPER?
             </p>
-            <p className="text-white/40 text-xs mt-0.5">{c.tabla === "proyecto_tareas" ? "La del tema, dentro del disco" : "La del proyecto, en la computadora del estudio"}</p>
+            <p className="text-white/40 text-xs mt-0.5">
+              {c.tabla === "proyecto_tareas" ? "La del tema, dentro del disco"
+                : c.tabla === "contactos" ? "La del cliente, con todos sus proyectos adentro"
+                : "La del proyecto, en la computadora del estudio"}
+            </p>
           </div>
         </div>
 
