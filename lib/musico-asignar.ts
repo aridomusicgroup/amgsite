@@ -82,8 +82,13 @@ export async function asignarEnPortal(
 }
 
 /**
- * Al crear la venta, le habilita el proyecto en `/musico` a quien tenga portal,
- * colgado de su tarea "Grabar {instrumento}" para que vea la fecha límite.
+ * Al crear la venta, liga a cada músico con su tarea "Grabar {instrumento}".
+ *
+ * A TODOS, tengan o no portal: la asignación es lo que dice en la tarea quién
+ * la graba. El portal sólo decide si además lo ve en línea, y eso lo comprueba
+ * `musico-data` en cada lectura (`portal_activo`), así que la fila de alguien
+ * sin portal no le abre nada. Antes sólo se ligaba a quien tenía portal y en
+ * Alto Nivel "Grabar Tololoche" se quedó sin decir que era de Adal.
  *
  * NO se les manda correo aquí: el aviso sale cuando se les manda su previo
  * desde REAPER, que es cuando ya tienen sobre qué grabar.
@@ -99,15 +104,56 @@ export async function habilitarPortal(
   actor = "venta",
 ): Promise<void> {
   try {
-    const { data: musicos } = await sb.from("musicos").select("id, portal_activo").in("id", elegidos.map((e) => e.musico_id));
-    const conPortal = new Set(
-      (musicos ?? []).filter((m: { portal_activo?: boolean }) => m.portal_activo).map((m: { id: string }) => m.id),
-    );
     for (const e of elegidos) {
-      if (!conPortal.has(e.musico_id)) continue;
       await asignarEnPortal(sb, proyectoId, porInstrumento?.get(e.instrumento) ?? null, e.musico_id, e.instrumento, actor);
     }
   } catch {
     /* best-effort: la venta y el proyecto ya quedaron; se asigna a mano desde la tarea */
   }
+}
+
+/**
+ * Cambiaron al músico de un instrumento en la venta: se lleva a sus tareas.
+ *
+ * En cada proyecto de la venta, las asignaciones del anterior (para ese
+ * instrumento) pasan al nuevo. Si el anterior ya mandó su pista no se toca —
+ * eso ya se grabó y moverlo perdería el rastro — y se cuenta para decirlo. Si
+ * no había asignación, se crea la del nuevo en su "Grabar {instrumento}".
+ */
+export async function cambiarMusicoDeVenta(
+  sb: SB,
+  ventaId: string,
+  anteriorId: string | null,
+  nuevoId: string,
+  instrumento: string,
+  actor: string,
+): Promise<{ movidas: number; yaGrabadas: number }> {
+  const out = { movidas: 0, yaGrabadas: 0 };
+  try {
+    const { data: proys } = await sb.from("proyectos").select("id").eq("venta_id", ventaId);
+    const inst = clave(instrumento);
+    for (const p of proys ?? []) {
+      const { data: rows } = await sb.from("musico_asignaciones")
+        .select("id, musico_id, tarea_id, estado, instrumento").eq("proyecto_id", p.id);
+      const todas = (rows ?? []) as { id: string; musico_id: string; tarea_id: string | null; estado: string | null; instrumento: string | null }[];
+      const mismoInst = (r: { instrumento: string | null }) => !inst || clave(String(r.instrumento ?? "")) === inst;
+      const suyas = todas.filter((r) => r.musico_id !== nuevoId && mismoInst(r) && (anteriorId ? r.musico_id === anteriorId : !!inst));
+
+      if (!suyas.length) {
+        if (instrumento.trim() && (await asignarEnPortal(sb, p.id, null, nuevoId, instrumento, actor))) out.movidas++;
+        continue;
+      }
+      for (const r of suyas) {
+        if (r.estado && r.estado !== "pendiente") { out.yaGrabadas++; continue; }
+        const dup = todas.some((x) => x.musico_id === nuevoId && x.tarea_id === r.tarea_id);
+        const { error } = dup
+          ? await sb.from("musico_asignaciones").delete().eq("id", r.id)
+          : await sb.from("musico_asignaciones").update({ musico_id: nuevoId, instrumento: instrumento || r.instrumento }).eq("id", r.id);
+        if (!error) out.movidas++;
+      }
+    }
+  } catch {
+    /* best-effort: el pago ya cambió; la tarea se corrige a mano si hiciera falta */
+  }
+  return out;
 }

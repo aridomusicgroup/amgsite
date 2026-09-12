@@ -2,12 +2,14 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, Trash2, Check, Clock, ChevronUp, X } from "lucide-react";
+import { Loader2, Plus, Trash2, Check, Clock, ChevronUp, X, Pencil } from "lucide-react";
 import { toast } from "@/lib/toast";
 
 interface PagoMusico {
   id: string;
   musico: string | null;
+  musico_id?: string | null;
+  instrumento?: string | null;
   monto: number;
   fecha: string | null;
   medio_pago: string | null;
@@ -23,7 +25,7 @@ const hoy = () => new Date().toISOString().slice(0, 10);
  * servidor recalcula `ventas.costo_extra` (= suma) → el reparto entre socios se
  * ajusta solo, sin doble conteo. Solo admin llega a esta pantalla (Ventas).
  */
-interface MusicoCat { nombre: string; instrumentos: string[]; tarifa: number; activo: boolean }
+interface MusicoCat { id: string; nombre: string; instrumentos: string[]; tarifa: number; activo: boolean }
 
 export function PagosMusicoSection({ ventaId, extras }: { ventaId: string; extras?: string | null }) {
   const router = useRouter();
@@ -35,6 +37,8 @@ export function PagosMusicoSection({ ventaId, extras }: { ventaId: string; extra
   const [f, setF] = useState({ musico: "", monto: "", fecha: hoy(), medio_pago: "" });
   const [pagandoId, setPagandoId] = useState<string | null>(null); // fila capturando su medio de pago
   const [medioPago, setMedioPago] = useState("");
+  const [editId, setEditId] = useState<string | null>(null); // fila cambiando de músico
+  const [nuevoMusico, setNuevoMusico] = useState("");
   const listId = `musicos-${ventaId}`;
   const inp = "bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-lgb-red";
 
@@ -99,6 +103,7 @@ export function PagosMusicoSection({ ventaId, extras }: { ventaId: string; extra
   // Instrumento que toca un músico en esta venta: del catálogo (cruzado con los
   // instrumentos de la venta) o, si no está, de la nota "Auto: tololoche".
   const instrumentoDe = (p: PagoMusico): string => {
+    if (p.instrumento) return p.instrumento;
     const m = catalogo.find((c) => c.nombre.toLowerCase() === (p.musico || "").toLowerCase());
     if (m) {
       const enVenta = (m.instrumentos || []).filter((x) =>
@@ -159,6 +164,38 @@ export function PagosMusicoSection({ ventaId, extras }: { ventaId: string; extra
     } catch { toast("Error de red"); }
   };
 
+  // Para cambiar de músico: primero los que tocan el instrumento de ese pago.
+  const opcionesPara = (p: PagoMusico): MusicoCat[] => {
+    const inst = instrumentoDe(p).toLowerCase();
+    const activos = catalogo.filter((m) => m.activo !== false);
+    const tocan = activos.filter((m) => inst && (m.instrumentos || []).some((x) => {
+      const xl = String(x).toLowerCase();
+      return xl === inst || inst.includes(xl) || xl.includes(inst);
+    }));
+    return [...tocan, ...activos.filter((m) => !tocan.includes(m))];
+  };
+
+  /** Cambia el músico del pago; el servidor lo lleva también a su tarea y a su portal. */
+  const cambiarMusico = async (p: PagoMusico) => {
+    if (!nuevoMusico) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/admin/pagos-musico", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: p.id, musico_id: nuevoMusico }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { toast(`⚠️ ${d.error || "No se pudo cambiar"}`); return; }
+      setEditId(null); setNuevoMusico("");
+      await cargar();
+      router.refresh();
+      const mv = d.movido as { movidas: number; yaGrabadas: number } | null;
+      toast(mv?.yaGrabadas
+        ? `✓ Cambiado · ${mv.yaGrabadas} tarea(s) ya tenía su pista y se dejó como estaba`
+        : `✓ Cambiado${mv?.movidas ? " — también en su tarea" : ""}`);
+    } catch { toast("Error de red"); } finally { setBusy(false); }
+  };
+
   const borrar = async (id: string) => {
     try {
       const r = await fetch("/api/admin/pagos-musico", {
@@ -203,10 +240,31 @@ export function PagosMusicoSection({ ventaId, extras }: { ventaId: string; extra
                   {p.fecha && <span className="text-white/35 text-[10px] shrink-0 hidden sm:inline">{p.fecha.slice(5)}</span>}
                 </div>
                 <span className="text-white font-medium shrink-0">{peso(p.monto)}</span>
+                <button onClick={() => { setEditId(editId === p.id ? null : p.id); setNuevoMusico(p.musico_id || ""); }}
+                  className="text-white/25 hover:text-white shrink-0 p-1" title="Cambiar de músico">
+                  <Pencil size={12} />
+                </button>
                 <button onClick={() => borrar(p.id)} className="text-white/25 hover:text-red-300 shrink-0 p-1" title="Eliminar">
                   <Trash2 size={13} />
                 </button>
               </div>
+              {editId === p.id && (
+                <div className="mt-2 flex items-center gap-1.5">
+                  <select autoFocus value={nuevoMusico} onChange={(e) => setNuevoMusico(e.target.value)} className={`${inp} flex-1 min-w-0 cursor-pointer`}>
+                    <option value="" className="bg-lgb-dark">— ¿quién lo toca? —</option>
+                    {opcionesPara(p).map((m) => (
+                      <option key={m.id} value={m.id} className="bg-lgb-dark">
+                        {m.nombre}{m.instrumentos?.length ? ` — ${m.instrumentos.join(", ")}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button onClick={() => cambiarMusico(p)} disabled={busy || !nuevoMusico || nuevoMusico === p.musico_id}
+                    className="shrink-0 bg-lgb-red hover:bg-red-700 text-white text-[11px] px-2.5 py-1.5 rounded-lg font-medium disabled:opacity-40">
+                    {busy ? <Loader2 size={12} className="animate-spin" /> : "Cambiar"}
+                  </button>
+                  <button onClick={() => setEditId(null)} className="text-white/40 hover:text-white shrink-0 p-1"><X size={13} /></button>
+                </div>
+              )}
               {pagandoId === p.id && (
                 <div className="mt-2 flex items-center gap-1.5">
                   <input

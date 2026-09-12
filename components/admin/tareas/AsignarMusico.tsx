@@ -75,10 +75,14 @@ export function AsignarMusico({ proyectoId, tareaId, tituloTarea, musicos }: {
     let vivo = true;
     fetch(`/api/admin/musicos-de-venta?proyecto_id=${proyectoId}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : { musicos: [] }))
-      .then((d) => { if (vivo) setDeVenta((d.musicos ?? []).filter((m: { tienePortal: boolean }) => m.tienePortal)); })
+      // Todos los contratados, con o sin portal: sin portal sólo queda anotado quién graba.
+      .then((d) => { if (vivo) setDeVenta(d.musicos ?? []); })
       .catch(() => { /* se sigue con el catálogo completo */ });
     return () => { vivo = false; };
   }, [proyectoId]);
+
+  // Contratado en la venta pero sin portal: se anota en la tarea, sin correo.
+  const sinPortal = !!musicoId && deVenta.some((x) => x.id === musicoId && !x.tienePortal);
 
   const asignar = async () => {
     if (!musicoId) { toast("⚠️ Elige a quién"); return; }
@@ -86,11 +90,12 @@ export function AsignarMusico({ proyectoId, tareaId, tituloTarea, musicos }: {
     try {
       const r = await fetch("/api/admin/musico-asignaciones", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ musico_id: musicoId, proyecto_id: proyectoId, tarea_id: tareaId, instrumento, nota, avisar }),
+        body: JSON.stringify({ musico_id: musicoId, proyecto_id: proyectoId, tarea_id: tareaId, instrumento, nota, avisar: avisar && !sinPortal }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { toast(`⚠️ ${d.error || "No se pudo asignar"}`); return; }
-      toast(d.avisado ? `✓ Asignado — le llegó el enlace a ${d.avisado}` : "✓ Asignado (sin correo)");
+      toast(d.sinPortal ? "✓ Anotado en la tarea (sin portal: no lo ve en línea)"
+        : d.avisado ? `✓ Asignado — le llegó el enlace a ${d.avisado}` : "✓ Asignado (sin correo)");
       setAbierto(false); setMusicoId(""); setNota("");
       await cargar();
       router.refresh();
@@ -132,7 +137,7 @@ export function AsignarMusico({ proyectoId, tareaId, tituloTarea, musicos }: {
       )}
 
       {!abierto ? (
-        musicos.length === 0 ? (
+        musicos.length === 0 && deVenta.length === 0 ? (
           <p className="text-[11px] text-white/25">
             Nadie tiene el portal prendido todavía. Se activa por músico en Ajustes → Músicos.
           </p>
@@ -163,7 +168,7 @@ export function AsignarMusico({ proyectoId, tareaId, tituloTarea, musicos }: {
                   <optgroup label="Contratados en esta venta" className="bg-lgb-dark">
                     {deVenta.map((m) => (
                       <option key={m.id} value={m.id} className="bg-lgb-dark">
-                        {m.nombre}{m.instrumento ? ` — ${m.instrumento}` : ""}
+                        {m.nombre}{m.instrumento ? ` — ${m.instrumento}` : ""}{m.tienePortal ? "" : " (sin portal)"}
                       </option>
                     ))}
                   </optgroup>
@@ -191,10 +196,16 @@ export function AsignarMusico({ proyectoId, tareaId, tituloTarea, musicos }: {
               placeholder="Entra en el segundo coro, deja aire en los versos…" className={inp} />
           </div>
 
-          <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer">
-            <input type="checkbox" checked={avisar} onChange={(e) => setAvisar(e.target.checked)} className="accent-lgb-red" />
-            Mandarle el enlace por correo ahora
-          </label>
+          {sinPortal ? (
+            <p className="text-[11px] text-amber-300/70">
+              No tiene portal: queda anotado que él graba esta tarea, pero no le llega correo ni lo ve en línea.
+            </p>
+          ) : (
+            <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer">
+              <input type="checkbox" checked={avisar} onChange={(e) => setAvisar(e.target.checked)} className="accent-lgb-red" />
+              Mandarle el enlace por correo ahora
+            </label>
+          )}
 
           <div className="flex gap-2">
             <button onClick={asignar} disabled={busy || !musicoId || !instrumento.trim()}

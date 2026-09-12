@@ -138,10 +138,12 @@ export async function POST(req: NextRequest) {
     .select("nombre, email, portal_activo, activo")
     .eq("id", musicoId).maybeSingle();
   if (!m) return NextResponse.json({ error: "Ese músico ya no existe." }, { status: 409 });
-  if (!m.activo || !m.portal_activo) {
-    return NextResponse.json({ error: `${m.nombre} no tiene el portal prendido. Actívaselo en Ajustes → Músicos.` }, { status: 409 });
-  }
-  if (avisar && !String(m.email || "").trim()) {
+  if (!m.activo) return NextResponse.json({ error: `${m.nombre} está dado de baja en Ajustes → Músicos.` }, { status: 409 });
+  // Sin portal igual se anota en la tarea (quién la graba); sólo no se le
+  // avisa ni lo ve en línea — el portal comprueba `portal_activo` al leer.
+  const conPortal = Boolean(m.portal_activo);
+  const avisarReal = avisar && conPortal;
+  if (avisarReal && !String(m.email || "").trim()) {
     return NextResponse.json({ error: `${m.nombre} no tiene correo registrado. Agrégaselo en Ajustes → Músicos.` }, { status: 409 });
   }
 
@@ -170,7 +172,7 @@ export async function POST(req: NextRequest) {
   });
 
   let avisado: string | null = null;
-  if (avisar) {
+  if (avisarReal) {
     // Dominio FIJO, nunca el header Origin: este enlace ES la llave del portal,
     // y tomarlo de una cabecera que el que llama controla permitiría desviarlo.
     const enlace = `${DOMAINS.main}/musico/entrar?token=${makeTokenMusico(musicoId, 60 * 24 * 7)}`;
@@ -183,7 +185,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ ok: true, id: creada.id, avisado });
+  return NextResponse.json({ ok: true, id: creada.id, avisado, sinPortal: !conPortal });
 }
 
 // ── DELETE: quitar la asignación ──

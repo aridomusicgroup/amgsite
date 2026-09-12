@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
+import { cambiarMusicoDeVenta } from "@/lib/musico-asignar";
 
 export const dynamic = "force-dynamic";
 
@@ -55,11 +56,9 @@ export async function GET(req: NextRequest) {
   if (!ventaId) return NextResponse.json({ error: "Falta venta_id." }, { status: 400 });
 
   const sb = supabaseAdmin();
-  const { data, error } = await sb
-    .from("pagos_musico")
-    .select("id, venta_id, musico, monto, fecha, medio_pago, pagado, nota")
-    .eq("venta_id", ventaId)
-    .order("created_at", { ascending: true });
+  const lista = (cols: string) => sb.from("pagos_musico").select(cols).eq("venta_id", ventaId).order("created_at", { ascending: true });
+  let { data, error } = await lista("id, venta_id, musico, musico_id, instrumento, monto, fecha, medio_pago, pagado, nota");
+  if (error) ({ data, error } = await lista("id, venta_id, musico, monto, fecha, medio_pago, pagado, nota"));
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ pagos: data ?? [] });
 }
@@ -132,16 +131,47 @@ export async function PATCH(req: NextRequest) {
   if ("nota" in b) patch.nota = b.nota ? String(b.nota).trim() : null;
 
   const sb = supabaseAdmin();
+
+  // Cambiar de músico: se toma del catálogo y el cambio se lleva a sus tareas
+  // y a su portal (cambiarMusicoDeVenta). "Que se actualice en todos lados."
+  let cambio: { anteriorId: string | null; nuevoId: string; instrumento: string } | null = null;
+  if (b.musico_id) {
+    const [{ data: m }, { data: prev }] = await Promise.all([
+      sb.from("musicos").select("id, nombre, instrumentos, tarifa").eq("id", String(b.musico_id).trim()).maybeSingle(),
+      sb.from("pagos_musico").select("musico, musico_id, instrumento, monto, pagado").eq("id", id).maybeSingle(),
+    ]);
+    if (!m) return NextResponse.json({ error: "Ese músico no está en el catálogo." }, { status: 404 });
+    if (!prev) return NextResponse.json({ error: "Ese pago ya no existe." }, { status: 404 });
+    const suyos = (m.instrumentos as string[] | null) ?? [];
+    const instrumento = String(prev.instrumento || "").trim() || (suyos.length === 1 ? suyos[0] : "");
+    const anteriorId = (prev.musico_id as string | null) ?? (prev.musico ? (await delCatalogo(sb, String(prev.musico)))?.id ?? null : null);
+    patch.musico = m.nombre;
+    patch.musico_id = m.id;
+    if (instrumento) patch.instrumento = instrumento;
+    // Pendiente y con la tarifa del anterior → la del nuevo. Un monto puesto a
+    // mano, o uno ya pagado, no se toca.
+    if (!prev.pagado && b.monto === undefined && anteriorId && Number(m.tarifa) > 0) {
+      const { data: ant } = await sb.from("musicos").select("tarifa").eq("id", anteriorId).maybeSingle();
+      if (ant && Number(ant.tarifa) === Number(prev.monto)) patch.monto = Number(m.tarifa);
+    }
+    if (anteriorId !== m.id) cambio = { anteriorId, nuevoId: m.id as string, instrumento };
+  }
+
   const { data: upd, error } = await sb.from("pagos_musico").update(patch).eq("id", id).select("venta_id, musico").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const ventaId = upd?.venta_id as string;
   const total = ventaId ? await recomputeCostoExtra(sb, ventaId) : 0;
+  const movido = cambio && ventaId
+    ? await cambiarMusicoDeVenta(sb, ventaId, cambio.anteriorId, cambio.nuevoId, cambio.instrumento, actor)
+    : null;
 
   try {
     const quien = await nombreDeActor(sb, actor);
     const folio = ventaId ? await folioDeVenta(sb, ventaId) : "venta";
-    const que = "pagado" in patch ? (patch.pagado ? "marcado PAGADO" : "marcado PENDIENTE") : `editado (${Object.keys(patch).filter((k) => k !== "updated_at").join(", ")})`;
+    const que = cambio ? `cambiado a ${patch.musico}`
+      : "pagado" in patch ? (patch.pagado ? "marcado PAGADO" : "marcado PENDIENTE")
+      : `editado (${Object.keys(patch).filter((k) => k !== "updated_at").join(", ")})`;
     await registrarActividad(sb, {
       tipo: "pago_musico_editado",
       titulo: `${quien} ${que} el pago a músico ${upd?.musico ? `(${upd.musico}) ` : ""}en ${folio}`,
@@ -150,7 +180,7 @@ export async function PATCH(req: NextRequest) {
     });
   } catch { /* bitácora best-effort */ }
 
-  return NextResponse.json({ ok: true, costo_extra: total });
+  return NextResponse.json({ ok: true, costo_extra: total, movido });
 }
 
 // ── DELETE : elimina un pago ──
