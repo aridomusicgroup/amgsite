@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Music4, Package, Layers, Loader2, Cloud, Music2, Grid3x3 } from "lucide-react";
+import { Music4, Package, Layers, Loader2, Cloud, Music2 } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { toast } from "@/lib/toast";
 import { RenderOpciones } from "./RenderOpciones";
@@ -224,13 +224,6 @@ function RenderList({ proyectos, onAbrir }: {
                   titulo={`WAV 24-bit por grupo, con mezcla y máster · tarda ~${MINUTOS.stems} min`}
                   deshabilitado={!!enVuelo}
                   onClick={() => onAbrir(p, "stems")}
-                />
-                <BotonRender
-                  icono={<Grid3x3 size={14} />}
-                  texto="Cuadrar"
-                  titulo={`Corta en los transitorios y los cuadra a la rejilla, respetando el groove. Deja un proyecto NUEVO "… AUTO.rpp"; el tuyo no se toca · tarda ~${MINUTOS.cuantizar} min`}
-                  deshabilitado={!!enVuelo}
-                  onClick={() => onAbrir(p, "cuantizar")}
                 />
               </div>
             </div>
