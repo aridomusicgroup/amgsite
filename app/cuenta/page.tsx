@@ -188,17 +188,28 @@ export default async function CuentaPage() {
                         </div>
                         {it.downloads.length > 0 ? (
                           <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                            {it.downloads.map((d) => (
-                              <a
-                                key={d.url}
-                                href={d.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1.5 bg-lgb-red text-white text-xs px-3.5 py-2 rounded-full hover:bg-red-700 transition-all"
-                              >
-                                <FolderDown size={13} /> {d.label}
-                              </a>
-                            ))}
+                            {it.downloads.map((d) =>
+                              d.directo ? (
+                                // Baja el archivo sin salir de la página (ver lib/beat-descarga).
+                                <a
+                                  key={d.url}
+                                  href={d.url}
+                                  className="flex items-center gap-1.5 bg-lgb-red text-white text-xs px-3.5 py-2 rounded-full hover:bg-red-700 transition-all"
+                                >
+                                  <Download size={13} /> {d.label}
+                                </a>
+                              ) : (
+                                <a
+                                  key={d.url}
+                                  href={d.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 bg-lgb-red text-white text-xs px-3.5 py-2 rounded-full hover:bg-red-700 transition-all"
+                                >
+                                  <FolderDown size={13} /> {d.label}
+                                </a>
+                              ),
+                            )}
                           </div>
                         ) : (
                           <span className="flex items-center gap-1.5 text-white/40 text-xs shrink-0">

@@ -22,7 +22,7 @@ export function PedidosPanel({ orders, isAdmin, almacenamientoTipos, almacenamie
           onClick={() => setTab("pedidos")}
           className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer ${tab === "pedidos" ? "bg-lgb-red text-white" : "bg-white/5 text-white/60 hover:text-white"}`}
         >
-          Pedidos <span className="opacity-60">({orders.length})</span>
+          Pedidos <span className="opacity-60">({orders.filter((o) => o.type !== "beat").length})</span>
         </button>
         {isAdmin && (
           <button

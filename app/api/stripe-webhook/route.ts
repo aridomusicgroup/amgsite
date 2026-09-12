@@ -8,13 +8,14 @@ import {
   customerContractEmail,
   internalContractEmail,
 } from "@/lib/emails";
-import { SOCIALS } from "@/lib/site";
+import { SOCIALS, DOMAINS } from "@/lib/site";
 import rawBeats from "@/data/beats-beatstars.json";
 import rawLicenses from "@/data/licenses.json";
 import { cleanTitle } from "@/lib/beatstars";
 import { generateExclusiveContract } from "@/lib/contract";
 import { generateLicenseCertificate } from "@/lib/license";
 import { getBeatMeta } from "@/lib/beat-drive";
+import { descargasDeBeat, itemsOrdenados, type Formato } from "@/lib/beat-descarga";
 import { registrarPagoDeContado, sincronizarFidelidadVenta } from "@/lib/fidelidad-server";
 import { adminEmails, crmEmails } from "@/lib/supabase/auth-server";
 import { pushAEmails } from "@/lib/push";
@@ -98,6 +99,9 @@ export async function POST(req: NextRequest) {
   const summary =
     meta.resumen || (meta.order ? items.map((i) => i.description).join(" | ") : null);
 
+  // El correo firma sus enlaces de descarga con el id del pedido guardado.
+  let orderId: string | null = null;
+
   // ── 1) Guardar en Supabase ──────────────────────────────────
   const sbUrl = process.env.SUPABASE_URL;
   const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -121,7 +125,10 @@ export async function POST(req: NextRequest) {
             stripe_session_id: session.id,
             customer_id: customer?.id ?? null,
             type,
-            status: "nuevo",
+            // Un beat se entrega en este mismo momento (el correo trae la
+            // descarga): nace entregado y no se queda como pendiente en Pedidos
+            // ni como "Recibido" en el panel del cliente.
+            status: type === "beat" ? "entregado" : "nuevo",
             total,
             currency: currency.toUpperCase(),
             summary,
@@ -138,6 +145,7 @@ export async function POST(req: NextRequest) {
         .select("id")
         .single();
 
+      orderId = order?.id ?? null;
       if (order?.id) {
         await sb.from("order_items").delete().eq("order_id", order.id);
         await sb.from("order_items").insert(
@@ -279,23 +287,25 @@ export async function POST(req: NextRequest) {
             const license = lics.find((l) => l.id === it.licenseId);
             const bt = beatMeta ? cleanTitle(beatMeta.title) : "";
             if (beatMeta?.driveFolderId && bt) {
-              const folderUrl = (id: string) => `https://drive.google.com/drive/folders/${id}`;
-              const sub = beatMeta.subfolders;
-              if (license && !license.exclusive && sub) {
-                // Solo las carpetas que incluye la licencia comprada (Basic=MP3, Premium=WAV+MP3…)
-                let added = 0;
-                for (const ft of license.files) {
-                  const id = sub[ft.toUpperCase()];
-                  if (id) {
-                    downloads.push({ title: `⬇ ${ft.toUpperCase()} — ${bt.slice(0, 42)}`, url: folderUrl(id) });
-                    added++;
-                  }
-                }
-                // Si faltara alguna subcarpeta, no dejar al cliente sin descarga
-                if (!added) downloads.push({ title: `⬇ ${bt.slice(0, 55)}`, url: folderUrl(beatMeta.driveFolderId) });
-              } else {
-                // Exclusiva (o beat sin subcarpetas): carpeta general con TODOS los archivos
-                downloads.push({ title: `⬇ ${bt.slice(0, 46)} — Todos los archivos`, url: folderUrl(beatMeta.driveFolderId) });
+              // Sólo los formatos de la licencia comprada (Basic=MP3, Premium=WAV+MP3…):
+              // MP3/WAV bajan directo, STEMS abre su carpeta (ver lib/beat-descarga).
+              // La posición del renglón es la misma que usa el panel del cliente.
+              const ordenados = itemsOrdenados(items);
+              const idx = ordenados.findIndex((i) => i.description.toLowerCase() === bt.toLowerCase());
+              const linea = idx >= 0 ? ordenados[idx] : null;
+              const botones = descargasDeBeat({
+                orderId: idx >= 0 ? orderId : null,
+                idx: Math.max(idx, 0),
+                carpeta: { driveFolderId: beatMeta.driveFolderId, subfolders: beatMeta.subfolders },
+                monto: linea?.amount ?? license?.price ?? 0,
+                base: DOMAINS.main,
+                licencia: license
+                  ? { files: license.exclusive ? null : (license.files as Formato[]), exclusive: license.exclusive }
+                  : undefined,
+              });
+              for (const b of botones) {
+                const etiqueta = b.label === "Todo" ? "Todos los archivos" : b.label;
+                downloads.push({ title: `⬇ ${etiqueta} — ${bt.slice(0, 42)}`, url: b.url });
               }
             }
             // Certificado de licencia para las licencias no exclusivas

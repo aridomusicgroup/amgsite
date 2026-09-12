@@ -14,13 +14,15 @@ export default async function PedidosPage() {
     isAdmin ? getAlmacenamientoTipos() : Promise.resolve([]),
     isAdmin ? getProyectosActivosAlmacenamiento() : Promise.resolve([]),
   ]);
+  // Los beats del sitio no cuentan como pedidos de trabajo (ver OrdersList).
+  const produccion = orders.filter((o) => o.type !== "beat").length;
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-coolvetica text-3xl">Pedidos</h1>
           <p className="text-white/40 text-sm mt-1">
-            {orders.length} {orders.length === 1 ? "pedido" : "pedidos"} · mueve cada uno por su etapa
+            {produccion} {produccion === 1 ? "pedido" : "pedidos"} · mueve cada uno por su etapa
           </p>
         </div>
         {isAdmin && <SyncPedidosButton />}

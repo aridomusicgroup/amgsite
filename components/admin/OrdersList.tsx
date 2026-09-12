@@ -85,7 +85,13 @@ export function OrdersList({ initialOrders, isAdmin = false }: { initialOrders: 
     }
   };
 
+  // Los beats del sitio se entregan solos (el correo trae la descarga) y ya
+  // quedan registrados en Ventas: aquí sólo harían ruido entre las
+  // producciones. Viven aparte, en su propio botón.
+  const beats = orders.filter((o) => o.type === "beat");
   const filtered = orders.filter((o) => {
+    if (filter === "beats") return o.type === "beat";
+    if (o.type === "beat") return false;
     if (filter === "todos") return true;
     if (filter === "activos") return !["entregado", "cancelado"].includes(o.status);
     return o.status === filter;
@@ -98,6 +104,7 @@ export function OrdersList({ initialOrders, isAdmin = false }: { initialOrders: 
     { id: "revision", label: "En revisión" },
     { id: "entregado", label: "Entregados" },
     { id: "todos", label: "Todos" },
+    ...(beats.length ? [{ id: "beats", label: `Beats del sitio (${beats.length})` }] : []),
   ];
 
   return (
