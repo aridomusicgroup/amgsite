@@ -134,10 +134,10 @@ export async function generateQuotePdf(d: QuoteData): Promise<Uint8Array> {
     });
   }
   if (comision > 0) {
-    // Se nombra la plataforma a propósito: el cliente tiene derecho a saber por
-    // qué paga ese extra, y así no se lee como un cargo inventado.
+    // Se dice qué es a propósito: el cliente tiene derecho a saber por qué paga
+    // ese extra, y así no se lee como un cargo inventado.
     blocks.push({
-      row: { left: `Comisión PayPal (${comisionPct}%)`, right: fmtMoney(comision, moneda), muted: true },
+      row: { left: `Comisión por pago internacional (${comisionPct}%)`, right: fmtMoney(comision, moneda), muted: true },
       spaceBefore: 2,
     });
   }
@@ -150,7 +150,7 @@ export async function generateQuotePdf(d: QuoteData): Promise<Uint8Array> {
   blocks.push({ row: { left: "TOTAL", right: fmtMoney(total, moneda), bold: true }, size: 13, spaceBefore: 6 });
   if (comision > 0) {
     blocks.push({
-      text: `Este total incluye la comisión de PayPal. Si prefieres pagar por transferencia, el total es ${fmtMoney(trasDescuentos - creditoAplicado, moneda)}.`,
+      text: `Este total incluye la comisión de la plataforma de pago (tarjeta o PayPal). Si prefieres pagar por transferencia, el total es ${fmtMoney(trasDescuentos - creditoAplicado, moneda)}.`,
       muted: true, size: 8.5, spaceBefore: 3,
     });
   }

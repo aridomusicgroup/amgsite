@@ -11,7 +11,10 @@
 // cada uno lo hiciera por su cuenta, un día el PDF diría un número y el panel
 // otro — y el que manda es el que ya firmó el cliente.
 
-/** Lo que cobra PayPal. Se guarda por documento, así que cambiarlo aquí no toca lo ya cotizado. */
+/**
+ * Comisión por pago internacional (Stripe o PayPal; se llamaba "PayPal" hasta
+ * el 12-sep). Se guarda por documento, así que cambiarlo aquí no toca lo ya cotizado.
+ */
 export const COMISION_PAYPAL = 6;
 
 export interface LineaCotizacion {

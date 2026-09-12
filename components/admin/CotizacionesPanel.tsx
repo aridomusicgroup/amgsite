@@ -900,9 +900,9 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
           onChange={(e) => setComisionPct(e.target.checked ? COMISION_PAYPAL : 0)}
           className="mt-0.5 accent-lgb-red cursor-pointer" />
         <span className="min-w-0">
-          <span className="text-sm text-white/85 block">Va a pagar por PayPal (+{COMISION_PAYPAL}%)</span>
+          <span className="text-sm text-white/85 block">Comisión por pago internacional (+{COMISION_PAYPAL}%)</span>
           <span className="text-[11px] text-white/40 block mt-0.5">
-            Le suma la comisión de la plataforma al total. Si no, ese {COMISION_PAYPAL}% sale de tu bolsa.
+            Le suma al total lo que cobra la plataforma (Stripe, PayPal). Si no, ese {COMISION_PAYPAL}% sale de tu bolsa.
           </span>
         </span>
       </label>
@@ -918,7 +918,7 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
           )}
           {d.comision > 0 && (
             <div className="flex justify-between text-amber-300/80">
-              <span>Comisión PayPal ({d.comisionPct}%)</span><span>+ {fmt(d.comision, moneda)}</span>
+              <span>Comisión por pago internacional ({d.comisionPct}%)</span><span>+ {fmt(d.comision, moneda)}</span>
             </div>
           )}
         </div>
@@ -1274,8 +1274,8 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
   const [extras, setExtras] = useState(() => inferirInstrumentos(c.items.map((i) => i.label)).join(", "));
   /** Quién toca cada instrumento. Lo llena el propio picker. */
   const [musicosElegidos, setMusicosElegidos] = useState<{ instrumento: string; musico_id: string }[]>([]);
-  // Si la cotización llevaba la comisión de PayPal, el medio de pago ya se sabe.
-  const [medioPago, setMedioPago] = useState(c.comision_pct > 0 ? "PAYPAL" : "");
+  // La comisión ya no dice por dónde pagó (puede ser Stripe o PayPal): se captura.
+  const [medioPago, setMedioPago] = useState("");
   const [quienCerro, setQuienCerro] = useState("");
   // Por defecto los socios (Luis y Eliud): son los responsables de toda
   // producción salvo que se cambie aquí. Se lee del rol y no de dos ids fijos,
