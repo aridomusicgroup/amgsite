@@ -69,6 +69,8 @@ async function registrarTramoPagado(
   montoMxn: number,
   esPrimerPago: boolean,
   comisionMxn: number | null,
+  /** La sesión de Stripe del tramo: con ella se completa la comisión si llegó vacía. */
+  sessionId: string | null = null,
 ): Promise<void> {
   const { data: prev } = await sb.from("pagos").select("monto_mxn").eq("venta_id", ventaId);
   const cobradoPrev = (prev ?? []).reduce((a: number, p: { monto_mxn: number }) => a + (Number(p.monto_mxn) || 0), 0);
@@ -85,12 +87,14 @@ async function registrarTramoPagado(
     medio_pago: "Stripe",
     notas: "Tramo de cotización pagado por Stripe",
     comision_stripe_mxn: comisionMxn,
+    stripe_session_id: sessionId,
   };
   const { error } = await sb.from("pagos").insert(campos);
   if (error) {
-    // Probablemente falta la columna (SQL de comisión Stripe sin correr) — reintenta sin ella.
-    const { comision_stripe_mxn: _omit, ...sinComision } = campos;
-    await sb.from("pagos").insert(sinComision);
+    // Probablemente falta alguna columna (SQL sin correr) — reintenta sin las nuevas.
+    const { comision_stripe_mxn: _omit, stripe_session_id: _s, ...sinNuevas } = campos;
+    void _s;
+    await sb.from("pagos").insert(sinNuevas);
   }
 
   await sincronizarFidelidadVenta(sb, ventaId);
@@ -111,6 +115,7 @@ export async function crearVentaDesdeCotizacionPagada(
   cotizacionId: string,
   montoTramoNativo: number,
   comisionTramoMxn: number | null = null,
+  sessionId: string | null = null,
 ): Promise<ResultadoVentaAutomatica | null> {
   // `musicos` es columna nueva (supabase-musicos-titular.sql): sin ella, la
   // consulta entera fallaría y el pago se quedaría sin venta.
@@ -127,7 +132,7 @@ export async function crearVentaDesdeCotizacionPagada(
   const { data: existente } = await sb.from("ventas").select("id, folio").eq("cotizacion_id", cotizacionId).maybeSingle();
   if (existente) {
     const ventaId = existente.id as string;
-    await registrarTramoPagado(sb, ventaId, montoTramoMxn, false, comisionTramoMxn);
+    await registrarTramoPagado(sb, ventaId, montoTramoMxn, false, comisionTramoMxn, sessionId);
     return { ventaId, ventaFolio: existente.folio as string, proyectoFolio: null, proyectoCreado: false, yaExistia: true };
   }
 
@@ -198,7 +203,7 @@ export async function crearVentaDesdeCotizacionPagada(
 
   // Fidelidad ("de contado") solo se otorga cuando la venta queda cobrada al
   // 100% — registrarTramoPagado se encarga de checarlo cada vez.
-  await registrarTramoPagado(sb, ventaId, montoTramoMxn, true, comisionTramoMxn);
+  await registrarTramoPagado(sb, ventaId, montoTramoMxn, true, comisionTramoMxn, sessionId);
 
   // El seguimiento va DESPUÉS de registrar el tramo, para saber si quedó saldo.
   // Con un esquema 50/50 este primer pago es el anticipo: quedan por cobrar los

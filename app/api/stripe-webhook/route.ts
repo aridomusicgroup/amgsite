@@ -606,7 +606,7 @@ async function handleCotizacionPago(stripe: Stripe, session: Stripe.Checkout.Ses
     // Cualquier tramo pagado (aunque sea solo el anticipo) crea la venta sola
     // — ver crearVentaDesdeCotizacionPagada. Es idempotente: en tramos
     // posteriores solo suma el pago a la venta que ya existe.
-    const resultado = await crearVentaDesdeCotizacionPagada(sb, cotizacionId, monto, comisionMxn);
+    const resultado = await crearVentaDesdeCotizacionPagada(sb, cotizacionId, monto, comisionMxn, session.id);
     if (resultado) {
       await registrarComisionStripeEgreso(sb, resultado.ventaId, resultado.ventaFolio, new Date().toISOString().slice(0, 10), comisionMxn, meta.tramo_label || null);
       // Si con este tramo quedó liquidada y había archivos retenidos, se le

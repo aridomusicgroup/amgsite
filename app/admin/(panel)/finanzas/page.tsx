@@ -14,6 +14,7 @@ import { ActividadFeed } from "@/components/admin/ActividadFeed";
 import { NuevoGastoRecurrenteForm } from "@/components/admin/NuevoGastoRecurrenteForm";
 import { GastosRecurrentesList } from "@/components/admin/GastosRecurrentesList";
 import { FinanzasSecciones } from "@/components/admin/FinanzasSecciones";
+import { ComisionesStripeBoton } from "@/components/admin/ComisionesStripeBoton";
 import { getGastosRecurrentesParaPanel } from "@/lib/gastos-recurrentes-data";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +62,7 @@ export default async function FinanzasPage() {
           Inversión en equipo (capex, no cuenta como gasto del mes): {money(f.totals.capex)}
           {f.totals.comisionStripe > 0 && <> · Comisión Stripe descontada (ya restada de costos): {money(f.totals.comisionStripe)}</>}
         </p>
+        <div className="mt-1.5"><ComisionesStripeBoton /></div>
       </div>
 
       {avisos.length > 0 && (
