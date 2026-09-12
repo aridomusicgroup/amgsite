@@ -84,7 +84,10 @@ export function DevLogsPanel({ logs, proyectos, musicos }: { logs: LogRow[]; pro
       if (!res.ok) throw new Error(d.error || "Error");
       // Se dice si quedó o no en su portal. Que esto pase callado fue lo que
       // dejó a Martín con el correo del previo y el portal vacío durante días.
-      if (opciones.asignar && !d.asignado) {
+      const cuantos = (opciones.musicosExtra?.length ?? 0) + 1;
+      if (cuantos > 1) {
+        toast(`✓ En cola — al terminar le llega a los ${cuantos} músicos`);
+      } else if (opciones.asignar && !d.asignado) {
         toast("⚠️ El render quedó en cola, pero NO se le pudo dejar en su portal. Asígnaselo desde la tarea.");
       } else if (d.asignado) {
         toast("✓ En cola, y ya lo tiene en su portal");

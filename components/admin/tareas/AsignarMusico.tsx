@@ -14,7 +14,7 @@ type Asignacion = {
   instrumento: string;
   nota: string | null;
   estado: string;
-  musicos: { nombre: string; email: string | null } | null;
+  musicos: { nombre: string; email: string | null; portal_activo?: boolean | null } | null;
 };
 
 const ESTADO_LABEL: Record<string, string> = {
@@ -126,7 +126,10 @@ export function AsignarMusico({ proyectoId, tareaId, tituloTarea, musicos }: {
                 {a.musicos?.nombre ?? "—"}
                 <span className="text-white/35"> · {a.instrumento}</span>
               </span>
-              <span className="text-[10px] text-white/30 shrink-0">{ESTADO_LABEL[a.estado] ?? a.estado}</span>
+              {/* Sin portal no puede grabar ahí: "esperando su grabación" engañaba. */}
+              {a.musicos?.portal_activo === false
+                ? <span className="text-[10px] text-amber-300/70 shrink-0">Sin portal</span>
+                : <span className="text-[10px] text-white/30 shrink-0">{ESTADO_LABEL[a.estado] ?? a.estado}</span>}
               {a.musicos?.email
                 ? <Mail size={11} className="text-white/25 shrink-0" aria-label="Tiene correo" />
                 : <MailX size={11} className="text-amber-300/70 shrink-0" aria-label="Sin correo: no se le puede avisar" />}

@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   const sb = supabaseAdmin();
   const { data, error } = await sb
     .from("musico_asignaciones")
-    .select("id, musico_id, tarea_id, instrumento, nota, estado, musicos(nombre, email)")
+    .select("id, musico_id, tarea_id, instrumento, nota, estado, musicos(nombre, email, portal_activo)")
     .eq("proyecto_id", proyectoId)
     .order("creado_at", { ascending: true });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

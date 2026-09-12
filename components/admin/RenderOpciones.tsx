@@ -90,6 +90,8 @@ export function RenderOpciones({
   // previo sin asignarle nada lo deja con un correo y un portal vacío.
   const [asignar, setAsignar] = useState(true);
   const [instrumento, setInstrumento] = useState("");
+  // Mandárselo a TODOS los de la venta: se renderiza una vez y se les reenvía.
+  const [todos, setTodos] = useState(false);
 
   useEffect(() => {
     if (!esMusico) return;
@@ -102,6 +104,8 @@ export function RenderOpciones({
         setDeVenta(lista);
         // Si sólo se contrató a uno, ya está: es ese. Con varios se elige.
         if (lista.length === 1) { setMusicoId(lista[0].id); setInstrumento(lista[0].instrumento); }
+        // Con varios, lo normal es que todos necesiten el mismo previo.
+        else if (lista.length > 1) setTodos(true);
       })
       .catch(() => { /* se sigue con el catálogo completo */ });
     return () => { vivo = false; };
@@ -182,9 +186,10 @@ export function RenderOpciones({
   // BPM y tonalidad son obligatorios: van en el nombre del archivo y son lo que
   // el músico necesita para ensayar. Sin eso el botón no se habilita.
   const bpmNum = Number(bpm);
+  const enGrupo = esMusico && todos && deVenta.length > 1;
   const musicoIncompleto =
-    esMusico && (!musicoId || !bpm || !Number.isFinite(bpmNum) || bpmNum < 20 || bpmNum > 400 || !tonalidad.trim()
-      || (asignar && !instrumento.trim()));
+    esMusico && ((!enGrupo && !musicoId) || !bpm || !Number.isFinite(bpmNum) || bpmNum < 20 || bpmNum > 400 || !tonalidad.trim()
+      || (asignar && !enGrupo && !instrumento.trim()));
   const listo = !!actual && !vacio && !rangoMalo && !sinPistas && !musicoIncompleto && !enviando;
 
   const confirmar = () => {
@@ -193,11 +198,18 @@ export function RenderOpciones({
     if (rango) op.rango = rango;
     if (tipo === "stems") op.pistas = [...marcadas];
     if (esMusico) {
-      op.musicoId = musicoId;
       op.bpm = bpmNum;
       op.tonalidad = tonalidad.trim();
       op.asignar = asignar;
-      if (asignar) op.instrumento = instrumento.trim();
+      if (enGrupo) {
+        // Se renderiza para el primero y al terminar se les reenvía a los demás.
+        op.musicoId = deVenta[0].id;
+        op.instrumento = deVenta[0].instrumento;
+        op.musicosExtra = deVenta.slice(1).map((m) => ({ musicoId: m.id, instrumento: m.instrumento }));
+      } else {
+        op.musicoId = musicoId;
+        if (asignar) op.instrumento = instrumento.trim();
+      }
     } else {
       op.avisar = avisar && p.puedeAvisar;
     }
@@ -368,6 +380,24 @@ export function RenderOpciones({
                     </Aviso>
                   ) : (
                     <div className="flex flex-col gap-2">
+                      {deVenta.length > 1 && (
+                        <label
+                          className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-colors cursor-pointer ${
+                            todos ? "bg-lgb-red/10 border-lgb-red/40" : "bg-white/5 border-transparent hover:bg-white/10"
+                          }`}
+                        >
+                          <input type="checkbox" checked={todos} onChange={(e) => setTodos(e.target.checked)}
+                            className="mt-0.5 accent-lgb-red" />
+                          <span className="min-w-0">
+                            <span className="block text-sm text-white">A todos los de la venta ({deVenta.length})</span>
+                            <span className="block text-[11px] text-white/40 leading-relaxed mt-0.5">
+                              {deVenta.map((m) => `${m.nombre}${m.instrumento ? ` (${m.instrumento})` : ""}`).join(" · ")}.
+                              {" "}Se renderiza una sola vez y a cada uno le llega su correo.
+                            </span>
+                          </span>
+                        </label>
+                      )}
+                      {!enGrupo && (
                       <select
                         value={musicoId}
                         onChange={(e) => {
@@ -396,6 +426,7 @@ export function RenderOpciones({
                             ))}
                         </optgroup>
                       </select>
+                      )}
 
                       <div className="grid grid-cols-2 gap-2">
                         <label className="block">
@@ -437,7 +468,7 @@ export function RenderOpciones({
                         </span>
                       </label>
 
-                      {asignar && (
+                      {asignar && !enGrupo && (
                         <label className="block">
                           <span className="block text-[11px] text-white/40 mb-1">
                             Qué va a grabar{" "}

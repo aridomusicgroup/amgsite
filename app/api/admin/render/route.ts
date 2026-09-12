@@ -45,7 +45,16 @@ export async function POST(req: NextRequest) {
     if (!String(m.email || "").trim()) {
       return NextResponse.json({ error: "Ese músico no tiene correo registrado. Agrégaselo en Ajustes." }, { status: 409 });
     }
-    if (o.asignar) {
+    // A todos los de la venta: cada uno necesita correo; el portal no es
+    // requisito (se le asigna a quien lo tenga, y a los demás sólo el correo).
+    for (const e of o.musicosExtra ?? []) {
+      const { data: x } = await sb.from("musicos").select("nombre, email, activo").eq("id", e.musicoId).maybeSingle();
+      if (!x || x.activo === false) return NextResponse.json({ error: "Uno de los músicos ya no está activo." }, { status: 409 });
+      if (!String(x.email || "").trim()) {
+        return NextResponse.json({ error: `${x.nombre} no tiene correo registrado. Agrégaselo en Ajustes.` }, { status: 409 });
+      }
+    }
+    if (o.asignar && !o.musicosExtra?.length) {
       if (!m.portal_activo) {
         return NextResponse.json({ error: "Ese músico no tiene el portal prendido. Actívaselo en Ajustes → Músicos o desmarca la casilla." }, { status: 409 });
       }
@@ -53,7 +62,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Dile qué va a grabar, o desmarca lo del portal." }, { status: 400 });
       }
     }
-  } else if (op.op?.musicoId || op.op?.bpm || op.op?.tonalidad || op.op?.asignar || op.op?.instrumento) {
+  } else if (op.op?.musicoId || op.op?.bpm || op.op?.tonalidad || op.op?.asignar || op.op?.instrumento || op.op?.musicosExtra) {
     return NextResponse.json({ error: "Músico, BPM y tonalidad sólo aplican al previo de músico." }, { status: 400 });
   }
   // Elegir pistas sólo tiene sentido en stems; en otro tipo sería una elección
@@ -82,7 +91,16 @@ export async function POST(req: NextRequest) {
   // puede hacer a mano desde la tarea.
   let asignado = false;
   if (tipo === "musico" && op.op?.asignar && op.op.musicoId) {
-    asignado = await asignarEnPortal(supabaseAdmin(), proyectoId, tareaId, op.op.musicoId, String(op.op.instrumento || "").trim(), email);
+    const grupo = [{ musicoId: op.op.musicoId, instrumento: String(op.op.instrumento || "") }, ...(op.op.musicosExtra ?? [])];
+    const sbA = supabaseAdmin();
+    // En grupo sólo a quien tenga portal; uno solo ya se validó arriba.
+    const { data: conPortal } = await sbA.from("musicos").select("id").in("id", grupo.map((g) => g.musicoId)).eq("portal_activo", true);
+    const ids = new Set((conPortal ?? []).map((m) => m.id as string));
+    for (const g of grupo) {
+      if (!ids.has(g.musicoId) || !g.instrumento.trim()) continue;
+      const ok = await asignarEnPortal(sbA, proyectoId, tareaId, g.musicoId, g.instrumento.trim(), email);
+      if (g.musicoId === op.op.musicoId) asignado = ok;
+    }
   }
 
   return NextResponse.json({ ok: true, id: r.id, asignado });

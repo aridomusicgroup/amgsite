@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { avisarClienteDeRender } from "@/lib/render-aviso";
-import { avisarMusicoDeRender } from "@/lib/musico-aviso";
+import { avisarMusicoDeRender, reenviarPrevio } from "@/lib/musico-aviso";
 import { cerrarEntrega, marcaDe } from "@/lib/entrega";
 
 export const dynamic = "force-dynamic";
@@ -55,9 +55,17 @@ export async function POST(req: NextRequest) {
   // llega a las dos por su cuenta: "Compartir con el cliente" y "Mandar a otro
   // músico" mandan exactamente estos mismos correos, y tenerlos duplicados era
   // garantizar que un día dejaran de decir lo mismo.
-  return NextResponse.json(
-    job.musico_id
-      ? await avisarMusicoDeRender(sb, jobId)
-      : await avisarClienteDeRender(sb, jobId),
-  );
+  if (!job.musico_id) return NextResponse.json(await avisarClienteDeRender(sb, jobId));
+
+  // Previo de músico. Si se pidió "a todos los de la venta", el mismo archivo se
+  // les reenvía a los demás, cada quien con su correo (idempotente).
+  const principal = await avisarMusicoDeRender(sb, jobId);
+  const extras = ((job.opciones as { musicosExtra?: { musicoId: string; instrumento: string }[] } | null)?.musicosExtra) ?? [];
+  if (!extras.length) return NextResponse.json(principal);
+  let enviados = 0;
+  for (const e of extras) {
+    const r = await reenviarPrevio(sb, jobId, e.musicoId, e.instrumento || null, null, "REAPER");
+    if (r.ok && r.aviso.avisado) enviados++;
+  }
+  return NextResponse.json({ ...principal, extras: enviados });
 }

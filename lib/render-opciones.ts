@@ -61,6 +61,17 @@ export function leerOpciones(raw: unknown): { ok: true; op: OpcionesRender | nul
     if (inst) op.instrumento = inst;
   }
 
+  // "A todos los de la venta": los demás músicos a quienes se reenvía el previo.
+  if (b.musicosExtra !== undefined && b.musicosExtra !== null) {
+    if (!Array.isArray(b.musicosExtra) || b.musicosExtra.length > 20) {
+      return { ok: false, error: "La lista de músicos no es válida." };
+    }
+    const extras = (b.musicosExtra as { musicoId?: unknown; instrumento?: unknown }[])
+      .map((e) => ({ musicoId: String(e?.musicoId ?? "").trim(), instrumento: String(e?.instrumento ?? "").trim().slice(0, 40) }))
+      .filter((e) => /^[0-9a-f-]{36}$/i.test(e.musicoId));
+    if (extras.length) op.musicosExtra = extras;
+  }
+
   if (b.pistas !== undefined && b.pistas !== null) {
     if (!Array.isArray(b.pistas)) return { ok: false, error: "La lista de pistas no es válida." };
     const pistas = b.pistas.map((p) => String(p).trim()).filter(Boolean);

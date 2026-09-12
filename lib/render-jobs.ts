@@ -117,6 +117,12 @@ export interface OpcionesRender {
   asignar?: boolean;
   instrumento?: string;
   /**
+   * Los DEMÁS músicos de la venta, cuando se le manda a todos. El previo es el
+   * mismo archivo para todos: se renderiza una vez (para `musicoId`) y al
+   * terminar se les reenvía a éstos (`reenviarPrevio`), cada quien con su correo.
+   */
+  musicosExtra?: { musicoId: string; instrumento: string }[];
+  /**
    * Este render es parte de una ENTREGA (Entregables + Stems de un golpe). La
    * pone el servidor, nunca el navegador: con ella el aviso de fin de subida
    * palomea "Subir a Drive" y decide si el cliente lo ve (ver lib/entrega.ts).

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProduccionEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad } from "@/lib/actividad";
-import { avisarMusicoDeRender } from "@/lib/musico-aviso";
+import { reenviarPrevio } from "@/lib/musico-aviso";
 import { asignarEnPortal } from "@/lib/musico-asignar";
 
 export const dynamic = "force-dynamic";
@@ -104,34 +104,12 @@ export async function POST(req: NextRequest) {
     if (!instrumento) return NextResponse.json({ error: "Dile qué va a grabar, o desmarca lo del portal." }, { status: 400 });
   }
 
-  const { bpm, tonalidad } = await tempoYTono(sb, job);
-
-  const { data: nueva, error } = await sb
-    .from("render_jobs")
-    .insert({
-      proyecto_id: job.proyecto_id,
-      tarea_id: job.tarea_id,
-      tipo: "musico",
-      // Nace terminada: el archivo ya existe. El script sólo reclama
-      // `pendiente`, así que nunca la va a tomar para renderizar.
-      estado: "listo",
-      musico_id: musicoId,
-      // El MISMO archivo de Drive, mismo id. Ojo: el día que se implemente
-      // `quitarPublico()` —hoy no tiene ni un llamador— revocar el enlace por
-      // una de estas filas se lo quita también a la otra.
-      drive_urls: archivos,
-      enlace_publico: job.enlace_publico ?? null,
-      opciones: { bpm, tonalidad, instrumento: instrumento || null, nota, reenvioDe: job.id },
-      origen: "reenvio",
-      compartir: false,   // esto NUNCA va al cliente
-      pedido_por: actor,
-    })
-    .select("id")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const aviso = await avisarMusicoDeRender(sb, nueva.id as string);
+  // La fila nueva + el correo viven en lib/musico-aviso: el "a todos los de la
+  // venta" del cuadro de render reparte exactamente igual.
+  const r = await reenviarPrevio(sb, job.id as string, musicoId, instrumento || null, nota, actor);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 });
+  const nueva = { id: r.id };
+  const aviso = r.aviso;
 
   // Va DESPUÉS de avisar y es best-effort: si esto falla, el previo ya salió y
   // la asignación se puede hacer a mano desde la tarea. Pero el resultado se
@@ -154,25 +132,3 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, id: nueva.id, avisado: aviso.avisado ?? null, omitido: aviso.omitido ?? null, asignado });
 }
 
-/**
- * El tempo y la tonalidad que van en el correo.
- *
- * Salen de las opciones del render original, que es lo que de verdad se
- * renderizó. Un trabajo viejo puede no traerlas: ahí se caen a la canción y
- * luego al proyecto, que es donde el propio flujo de render las deja guardadas
- * al encolar.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function tempoYTono(sb: any, job: { proyecto_id: string; tarea_id: string | null; opciones: unknown }) {
-  const op = (job.opciones ?? {}) as Record<string, unknown>;
-  let bpm = Number(op.bpm) || 0;
-  let tonalidad = String(op.tonalidad ?? "").trim();
-  if (bpm && tonalidad) return { bpm, tonalidad };
-
-  const fuente = job.tarea_id
-    ? await sb.from("proyecto_tareas").select("tonalidad, bpm").eq("id", job.tarea_id).maybeSingle()
-    : await sb.from("proyectos").select("tonalidad, bpm").eq("id", job.proyecto_id).maybeSingle();
-  bpm = bpm || Number(fuente?.data?.bpm) || 0;
-  tonalidad = tonalidad || String(fuente?.data?.tonalidad ?? "").trim();
-  return { bpm, tonalidad };
-}

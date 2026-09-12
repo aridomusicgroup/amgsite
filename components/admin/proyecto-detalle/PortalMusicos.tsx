@@ -9,7 +9,7 @@ type Asignacion = {
   musico_id: string;
   instrumento: string;
   estado: string;
-  musicos: { nombre: string; email: string | null } | null;
+  musicos: { nombre: string; email: string | null; portal_activo?: boolean | null } | null;
 };
 
 /** Alguien que recibió el previo de este proyecto y no lo tiene en su portal. */
@@ -100,7 +100,9 @@ export function PortalMusicos({ proyectoId }: { proyectoId: string }) {
             {!a.musicos?.email && (
               <MailX size={11} className="text-amber-300/70 shrink-0" aria-label="Sin correo: no se le puede avisar" />
             )}
-            <span className="text-[11px] text-white/30 shrink-0">{ESTADO_LABEL[a.estado] ?? a.estado}</span>
+            {a.musicos?.portal_activo === false
+              ? <span className="text-[11px] text-amber-300/70 shrink-0">Sin portal</span>
+              : <span className="text-[11px] text-white/30 shrink-0">{ESTADO_LABEL[a.estado] ?? a.estado}</span>}
           </div>
         ))}
 
