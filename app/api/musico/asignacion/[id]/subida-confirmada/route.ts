@@ -6,6 +6,9 @@ import { registrarActividad } from "@/lib/actividad";
 import { pushAResponsables, pushAEmails, destinoProyecto, destinoProyectoTab, conProyecto } from "@/lib/push";
 import { adminEmails } from "@/lib/supabase/auth-server";
 import { rateLimit } from "@/lib/rate-limit";
+import { efectosDeTareaCompletada } from "@/lib/tarea-completar";
+import { entregaTrasPalomear, entregaParaQuienPalomeo } from "@/lib/entrega";
+import { avanzarEstadoPorTareas } from "@/lib/estado-auto";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -80,6 +83,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .eq("id", asig.id);
   }
 
+  // Con la última pista que se le pidió (Charchetas son dos: L y R), su tarea
+  // "Grabar X" queda hecha sola, igual que si alguien la palomeara en el
+  // tablero. Una pista de más o un reemplazo ya no la vuelve a tocar.
+  const completada = clase === "stem" && asig.tareaId
+    ? await completarTareaDelMusico(sb, { asignacionId: asig.id, tareaId: asig.tareaId, instrumento: asig.instrumento, musico })
+    : null;
+
   const { data: proy } = await sb.from("proyectos")
     .select("titulo, responsables, responsable_id")
     .eq("id", asig.proyectoId)
@@ -123,7 +133,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     titulo: "ARIDO · Producción",
     cuerpo: conProyecto(
       (proy?.titulo as string | null) ?? null,
-      esPrevio ? `${texto} — falta tu visto bueno para que lo oiga el cliente` : texto,
+      esPrevio
+        ? `${texto} — falta tu visto bueno para que lo oiga el cliente`
+        : completada ? `${texto} — “${completada}” quedó completa ✅` : texto,
     ),
     url: esPrevio ? destinoProyectoTab(asig.proyectoId, "produccion") : destinoProyecto(asig.proyectoId),
   };
@@ -142,5 +154,88 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     await pushAEmails(sb, correos, msg);
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, completada });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SB = any;
+const norm = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
+
+/**
+ * ¿Ya llegaron todas las pistas que se le piden? Una por canal del instrumento
+ * (`instrumento_pistas.canales`, p. ej. Charchetas = "L, R"); sin canales, una.
+ * Mismo criterio que los botones del portal (`SubirParte`): hueco 0..n-1.
+ */
+async function pistasCompletas(sb: SB, asignacionId: string, instrumento: string): Promise<boolean> {
+  const [{ data: mapa }, { data: stems }] = await Promise.all([
+    sb.from("instrumento_pistas").select("instrumento, canales"),
+    sb.from("musico_archivos").select("slot").eq("asignacion_id", asignacionId).eq("clase", "stem"),
+  ]);
+  const fila = ((mapa ?? []) as { instrumento: string; canales: string | null }[])
+    .find((m) => norm(String(m.instrumento)) === norm(instrumento));
+  const canales = String(fila?.canales ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  const pedidos = Math.max(1, canales.length);
+  const llegaron = new Set(((stems ?? []) as { slot: number | null }[]).map((s) => Number(s.slot) || 0));
+  for (let i = 0; i < pedidos; i++) if (!llegaron.has(i)) return false;
+  return true;
+}
+
+/**
+ * Palomea la tarea del músico cuando ya mandó todas sus pistas. Devuelve el
+ * título de lo que quedó completo, o null si todavía falta algo o ya estaba.
+ *
+ * En un EP la asignación cuelga del TEMA, no de "Grabar X": ahí se palomea la
+ * subtarea "Grabar {instrumento}" de ese tema, nunca el tema entero.
+ */
+async function completarTareaDelMusico(
+  sb: SB,
+  d: { asignacionId: string; tareaId: string; instrumento: string; musico: { nombre: string; email: string | null } },
+): Promise<string | null> {
+  try {
+    if (!(await pistasCompletas(sb, d.asignacionId, d.instrumento))) return null;
+    const actor = d.musico.email ?? "portal-musicos";
+    const { data: t } = await sb.from("proyecto_tareas")
+      .select("id, titulo, hecho, proyecto_id, visible_cliente, es_cancion").eq("id", d.tareaId).maybeSingle();
+    if (!t) return null;
+
+    if (t.es_cancion) {
+      const { data: subs } = await sb.from("proyecto_subtareas").select("id, titulo, hecho").eq("tarea_id", t.id);
+      const sub = ((subs ?? []) as { id: string; titulo: string; hecho: boolean }[])
+        .find((s) => !s.hecho && norm(s.titulo) === norm(`Grabar ${d.instrumento}`));
+      if (!sub) return null;
+      const { data: hecha } = await sb.from("proyecto_subtareas")
+        .update({ hecho: true }).eq("id", sub.id).eq("hecho", false).select("id");
+      if (!hecha?.length) return null;
+      if (t.proyecto_id) await avanzarEstadoPorTareas(sb, t.proyecto_id as string, actor);
+      await entregaParaQuienPalomeo(sb, await entregaTrasPalomear(sb, { subtareaId: sub.id }));
+      return `${sub.titulo} · ${t.titulo}`;
+    }
+
+    if (t.hecho) return null;
+    // `.eq("hecho", false)`: si alguien la palomeó en este mismo instante, no se repiten los avisos.
+    const { data: hecha } = await sb.from("proyecto_tareas")
+      .update({ hecho: true, completado_at: new Date().toISOString() })
+      .eq("id", t.id).eq("hecho", false).select("id");
+    if (!hecha?.length) return null;
+
+    await efectosDeTareaCompletada(sb, {
+      tareaId: t.id as string,
+      proyectoId: (t.proyecto_id as string | null) ?? null,
+      titulo: t.titulo as string,
+      visibleCliente: (t.visible_cliente as boolean | null) ?? null,
+      actor,
+    });
+    await registrarActividad(sb, {
+      tipo: "tarea_completada",
+      titulo: `“${t.titulo}” quedó completa: ${d.musico.nombre} mandó sus pistas ✅`,
+      actor: d.musico.email ?? null,
+      proyecto_id: (t.proyecto_id as string | null) ?? null,
+      tarea_id: t.id as string,
+    });
+    return t.titulo as string;
+  } catch (e) {
+    // La pista ya quedó registrada; no palomear la tarea no debe tumbar la subida.
+    console.error("completar-tarea-musico:", e);
+    return null;
+  }
 }

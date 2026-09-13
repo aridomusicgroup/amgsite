@@ -1,55 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
 import { getProduccionEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad, nombresPorId, nombreDeActor } from "@/lib/actividad";
 import { pushAResponsables, contextoProyecto, conProyecto, destinoTarea } from "@/lib/push";
-import { progresoTareaEmail } from "@/lib/emails";
 import { pasoDeTitulo } from "@/lib/pasos-entrega";
-import { entregaTrasPalomear, entregaParaQuienPalomeo, type EntregaLista } from "@/lib/entrega";
-import { avanzarEstadoPorTareas } from "@/lib/estado-auto";
+import type { EntregaLista } from "@/lib/entrega";
+import { efectosDeTareaCompletada } from "@/lib/tarea-completar";
 import { anclarCarpeta } from "@/lib/carpeta-reaper";
 
 export const dynamic = "force-dynamic";
-
-const SITE = "https://aridomusicgroup.com";
-
-/**
- * Al completar una tarea VISIBLE, avisa al cliente por correo con el avance.
- * Best-effort: nunca rompe el flujo del equipo. Solo si el proyecto tiene un
- * pedido ligado (order_id) y el contacto tiene correo.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function notificarProgresoCliente(sb: any, proyectoId: string, tareaTitulo: string) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return;
-  const { data: p } = await sb.from("proyectos").select("titulo, order_id, contacto_id").eq("id", proyectoId).single();
-  if (!p?.order_id || !p.contacto_id) return;
-  const { data: ct } = await sb.from("contactos").select("nombre, email").eq("id", p.contacto_id).single();
-  const email = String(ct?.email || "").trim().toLowerCase();
-  if (!email) return;
-
-  // Avance por tareas VISIBLES del proyecto.
-  const { data: ts } = await sb.from("proyecto_tareas").select("hecho").eq("proyecto_id", proyectoId).eq("visible_cliente", true);
-  const total = (ts ?? []).length;
-  const hechas = (ts ?? []).filter((t: { hecho: boolean }) => t.hecho).length;
-  const entregado = total > 0 && hechas >= total;
-
-  const mail = progresoTareaEmail({
-    customerName: (ct?.nombre as string | null)?.split(" ")[0] ?? null,
-    concepto: (p.titulo as string) || "tu producción",
-    tarea: tareaTitulo,
-    hechas, total, entregado,
-    url: `${SITE}/cuenta/pedido/${p.order_id}`,
-  });
-  const resend = new Resend(key);
-  await resend.emails.send({
-    from: "Latino Gang Beats <acceso@aridomusicgroup.com>",
-    to: email,
-    subject: mail.subject,
-    html: mail.html,
-  });
-}
 
 /** Persiste el nuevo orden de las tareas (array de ids ya ordenado). En paralelo. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -156,20 +115,21 @@ export async function PATCH(req: NextRequest) {
   const { error } = await sb.from("proyecto_tareas").update(patch).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Al completar la tarea padre, marca sus subtareas pendientes como hechas.
-  if (patch.hecho === true) {
-    await sb.from("proyecto_subtareas").update({ hecho: true }).eq("tarea_id", id).eq("hecho", false);
-  }
-
   // ¿Con esto ya sólo falta subir a Drive? Entonces el navegador abre el cuadro
   // de entrega (Entregables + Stems). Se revisa con CUALQUIER palomeo, no sólo
   // el de "Aprobada": la última tarea pendiente puede ser otra.
   let entrega: EntregaLista | null = null;
   let estado: string | null = null;
   if (patch.hecho === true && !prev?.hecho) {
-    // Primero la columna (Cola → Producción → En revisión), luego la entrega.
-    if (prev?.proyecto_id) estado = await avanzarEstadoPorTareas(sb, prev.proyecto_id as string, email);
-    entrega = await entregaParaQuienPalomeo(sb, await entregaTrasPalomear(sb, { tareaId: id }));
+    // Subtareas, columna (Cola → Producción → En revisión), entrega y aviso al
+    // cliente: lo mismo que cuando el portal de músicos palomea "Grabar X".
+    ({ estado, entrega } = await efectosDeTareaCompletada(sb, {
+      tareaId: id,
+      proyectoId: (prev?.proyecto_id as string | null) ?? null,
+      titulo: (patch.titulo as string) || (prev?.titulo as string) || "una tarea",
+      visibleCliente: (prev?.visible_cliente as boolean | null) ?? null,
+      actor: email,
+    }));
   }
 
   // Bitácora: asignación y completado/reapertura (ignora ediciones de notas)
@@ -207,12 +167,6 @@ export async function PATCH(req: NextRequest) {
       });
     }
   } catch { /* bitácora best-effort */ }
-
-  // Aviso al cliente: solo al COMPLETAR una tarea VISIBLE (no en reapertura ni internas).
-  if (patch.hecho === true && !Boolean(prev?.hecho) && prev?.visible_cliente !== false && prev?.proyecto_id) {
-    try { await notificarProgresoCliente(sb, prev.proyecto_id as string, (patch.titulo as string) || (prev?.titulo as string) || "una tarea"); }
-    catch (e) { console.error("notify-cliente:", e); }
-  }
 
   return NextResponse.json({ ok: true, entrega, estado });
 }
