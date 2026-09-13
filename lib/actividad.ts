@@ -19,6 +19,7 @@ export type ActividadTipo =
   | "egreso_creado" | "egreso_editado" | "egreso_eliminado" | "pago_recurrente_pendiente"
   | "gasto_recurrente_creado" | "gasto_recurrente_editado" | "gasto_recurrente_eliminado"
   | "ingreso_creado" | "ingreso_eliminado"
+  | "reparto_cerrado" | "reparto_eliminado" | "finanzas_ajustes_editados"
   | "pago_musico_registrado" | "pago_musico_editado" | "pago_musico_eliminado" | "pago_musico_pendiente"
   // Comercial
   | "cotizacion_creada" | "cotizacion_editada" | "cotizacion_enviada" | "cotizacion_eliminada"

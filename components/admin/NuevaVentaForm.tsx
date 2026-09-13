@@ -5,6 +5,7 @@ import { Plus, X, Loader2 } from "lucide-react";
 import { InstrumentosPicker } from "@/components/admin/InstrumentosPicker";
 import { inferirInstrumentos } from "@/lib/servicios";
 import { aMxn, esExtranjera, convertir, factorConversion, TIPO_CAMBIO_FALLBACK } from "@/lib/tipo-cambio";
+import { MEDIOS_PAGO } from "@/lib/medios-pago";
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 
@@ -181,10 +182,6 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
         <option value="EP" />
         <option value="Álbum" />
       </datalist>
-      <datalist id="medios">
-        <option value="ZELLE" /><option value="PAYPAL" /><option value="TRANSFERENCIA NACIONAL" />
-        <option value="Efectivo" /><option value="Stripe" />
-      </datalist>
 
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-coolvetica text-lg">Nueva venta</h3>
@@ -273,7 +270,10 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
         )}
         <div>
           <label className={lbl}>Medio de pago</label>
-          <input list="medios" value={f.medio_pago} onChange={set("medio_pago")} placeholder="ZELLE" className={inp} />
+          <select value={f.medio_pago} onChange={set("medio_pago")} className={inp}>
+            <option value="" className="bg-lgb-dark">—</option>
+            {MEDIOS_PAGO.map((m) => <option key={m} value={m} className="bg-lgb-dark">{m}</option>)}
+          </select>
         </div>
         <div>
           <label className={lbl}>Quién cerró</label>

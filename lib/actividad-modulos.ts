@@ -13,7 +13,7 @@
 export type ActividadEntidad =
   | "proyecto" | "tarea" | "venta" | "pago" | "cotizacion"
   | "contrato" | "contacto" | "egreso" | "ingreso" | "gasto_recurrente" | "usuario" | "musico"
-  | "almacenamiento";
+  | "almacenamiento" | "reparto";
 
 /**
  * Entidades de dinero/comercial: solo las ven los admins.
@@ -22,7 +22,7 @@ export type ActividadEntidad =
  * `server-only` y esta lista la necesita también quien arma consultas desde
  * archivos que el navegador termina importando (aunque sea solo por tipos).
  */
-export const ENTIDADES_SENSIBLES: ActividadEntidad[] = ["venta", "pago", "egreso", "ingreso", "gasto_recurrente", "cotizacion", "contrato", "usuario", "musico"];
+export const ENTIDADES_SENSIBLES: ActividadEntidad[] = ["venta", "pago", "egreso", "ingreso", "gasto_recurrente", "cotizacion", "contrato", "usuario", "musico", "reparto"];
 
 export type Modulo = "produccion" | "clientes" | "finanzas";
 
@@ -44,7 +44,7 @@ export interface ItemActividad {
 export const ENTIDADES_DE: Record<Modulo, string[]> = {
   produccion: ["proyecto", "tarea"],
   clientes: ["contacto", "cotizacion", "contrato"],
-  finanzas: ["egreso", "ingreso", "gasto_recurrente", "musico"],
+  finanzas: ["egreso", "ingreso", "gasto_recurrente", "musico", "reparto"],
 };
 
 export function moduloDe(it: ItemActividad): Modulo | null {
@@ -83,6 +83,8 @@ export function destinoDe(it: ItemActividad): string {
     case "gasto_recurrente":
     case "musico":
       return "/admin/finanzas?seccion=pagos";
+    case "reparto":
+      return "/admin/finanzas";
     default:
       return "/admin/actividad";
   }

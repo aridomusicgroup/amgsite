@@ -18,6 +18,7 @@ import type { QuoteItem } from "@/lib/pdf/quote";
 import { familiaDeCotizacion } from "@/lib/acuerdos/familias";
 import { aplicaDescuentoFidelidad } from "@/lib/fidelidad";
 import { ESQUEMAS_PAGO, ESQUEMA_LABEL, tramosDe, type EsquemaPago } from "@/lib/esquema-pago";
+import { MEDIOS_PAGO } from "@/lib/medios-pago";
 
 // ── Tipos de props (datos ya serializados desde el server) ──
 interface ClienteLite { id: string; nombre: string; email: string | null; telefono: string | null; direccion: string | null }
@@ -1410,7 +1411,12 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
         </div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Field label="Medio de pago (opcional)"><input value={medioPago} onChange={(e) => setMedioPago(e.target.value)} className="input" placeholder="Transferencia, PayPal…" /></Field>
+        <Field label="Medio de pago (opcional)">
+          <select value={medioPago} onChange={(e) => setMedioPago(e.target.value)} className="input">
+            <option value="">—</option>
+            {MEDIOS_PAGO.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </Field>
         <Field label="Anticipo (opcional)"><input type="number" min={0} value={anticipo} onChange={(e) => setAnticipo(Number(e.target.value) || 0)} className="input" /></Field>
       </div>
       <Field label="Quién cerró (opcional)"><input value={quienCerro} onChange={(e) => setQuienCerro(e.target.value)} className="input" placeholder="Eliud, Rocha…" /></Field>

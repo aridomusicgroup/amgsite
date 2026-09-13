@@ -10,6 +10,7 @@ import { seguimientoDeCobranza } from "@/lib/seguimiento-auto";
 import { propagarNombre } from "@/lib/nombre-sync";
 import { esPagoDeContado } from "@/lib/fidelidad";
 import { registrarPagoDeContado, revertirFidelidadDeVenta, sincronizarFidelidadVenta } from "@/lib/fidelidad-server";
+import { normalizarMedio } from "@/lib/medios-pago";
 
 const peso = (n: unknown) => `$${(Number(n) || 0).toLocaleString("es-MX")}`;
 
@@ -101,7 +102,7 @@ export async function POST(req: NextRequest) {
     monto_cobrado: Number(b.monto_cobrado) || null,
     tipo_cambio: Number(b.tipo_cambio) || null,
     total_mxn: total,
-    medio_pago: b.medio_pago || null,
+    medio_pago: normalizarMedio(b.medio_pago),
     costo_extra: Number(b.costo_extra) || 0,
     extras: b.extras || null,
     canciones: b.canciones || null,
@@ -153,7 +154,7 @@ export async function POST(req: NextRequest) {
       fecha: b.fecha,
       monto_mxn: anticipo,
       tipo: "anticipo",
-      medio_pago: b.medio_pago || null,
+      medio_pago: normalizarMedio(b.medio_pago),
     });
     // Si la tabla pagos aún no existe, no truena la venta: solo se omite el anticipo.
     if (!pErr) saldoPendiente = total - anticipo;
@@ -275,6 +276,7 @@ export async function PATCH(req: NextRequest) {
   for (const k of ["tipo", "beat_nombre", "canal", "medio_pago", "extras", "quien_cerro"]) {
     if (k in b) patch[k] = b[k] ? b[k] : null;
   }
+  if ("medio_pago" in patch) patch.medio_pago = normalizarMedio(patch.medio_pago as string | null);
   if (b.moneda) patch.moneda = String(b.moneda).toUpperCase();
   if (b.total_mxn !== undefined && b.total_mxn !== "") patch.total_mxn = Number(b.total_mxn) || 0;
   // costo_extra ya NO se edita a mano: lo mantiene la API de pagos-musico como la

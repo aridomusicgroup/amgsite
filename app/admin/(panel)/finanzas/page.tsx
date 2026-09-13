@@ -16,6 +16,9 @@ import { GastosRecurrentesList } from "@/components/admin/GastosRecurrentesList"
 import { FinanzasSecciones } from "@/components/admin/FinanzasSecciones";
 import { ComisionesStripeBoton } from "@/components/admin/ComisionesStripeBoton";
 import { getGastosRecurrentesParaPanel } from "@/lib/gastos-recurrentes-data";
+import { BolsasMes } from "@/components/admin/BolsasMes";
+import { promedioTresMeses, sueldoSocio } from "@/lib/bolsas";
+import { Download } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +38,11 @@ export default async function FinanzasPage() {
   const [f, gastosRecurrentes] = await Promise.all([getFinanzasERP(), getGastosRecurrentesParaPanel()]);
   const utilidad = f.totals.ingresos - f.totals.costosDirectos - f.totals.gastosOperativos - f.totals.nomina;
   const otrosIngresos = f.ingresos.reduce((a, i) => a + i.monto_mxn, 0);
+
+  // Mes en curso en hora de México (el servidor corre en UTC).
+  const mesActual = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City" }).format(new Date()).slice(0, 7);
+  const prom = promedioTresMeses(f.meses, mesActual);
+  const sueldo = { semanal: sueldoSocio(prom.promedio, f.ajustes.escalones), promedio: prom.promedio, meses: prom.meses };
 
   // Lo que tiene fecha y no se ha pagado: es lo único urgente de la página.
   const recurrentesPorPagar = gastosRecurrentes.filter((g) => g.activo && g.pendiente);
@@ -71,7 +79,15 @@ export default async function FinanzasPage() {
         </p>
       )}
 
-      <RepartoTrimestral quarters={f.quarters} socios={f.socios} />
+      <BolsasMes meses={f.meses} ajustes={f.ajustes} mesActual={mesActual} />
+
+      <RepartoTrimestral
+        meses={f.meses}
+        ajustes={f.ajustes}
+        repartos={f.repartos}
+        repartidoPorTrimestre={f.repartidoPorTrimestre}
+        socios={f.socios}
+      />
     </div>
   );
 
@@ -89,7 +105,7 @@ export default async function FinanzasPage() {
 
       <PagosMusicoResumen pagos={f.pagosMusico} total={f.totals.musico} pendiente={f.totals.musicoPendiente} pendientes={musicosPorPagar} />
 
-      <NominaPanel equipo={f.equipo} nomina={f.nomina} />
+      <NominaPanel equipo={f.equipo} nomina={f.nomina} sueldoSocio={sueldo} />
     </div>
   );
 
@@ -120,7 +136,16 @@ export default async function FinanzasPage() {
           </p>
         </div>
         {/* Campanita propia: incluye los avisos de gastos recurrentes por vencer. */}
-        <ActividadFeed modulo="finanzas" titulo="Actividad de Finanzas" />
+        <div className="flex items-center gap-2">
+          <a
+            href={`/api/admin/finanzas/export?anio=${mesActual.slice(0, 4)}`}
+            className="flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-xs text-white/70 hover:text-white hover:border-white/25"
+            title="CSV con cobros, egresos, nómina y repartos del año"
+          >
+            <Download size={14} /> Para el contador
+          </a>
+          <ActividadFeed modulo="finanzas" titulo="Actividad de Finanzas" />
+        </div>
       </div>
 
       <FinanzasSecciones

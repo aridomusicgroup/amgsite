@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Trash2, Pencil, Check, X, AlertTriangle } from "lucide-react";
 import { toast } from "@/lib/toast";
+import { normalizarMedio, opcionesMedio } from "@/lib/medios-pago";
 
 interface PagoCliente {
   id: string;
@@ -57,7 +58,7 @@ export function PagosClienteSection({ ventaId }: { ventaId: string }) {
 
   const abrirEdit = (p: PagoCliente) => {
     setEditId(p.id);
-    setF({ fecha: p.fecha ?? "", monto: String(Math.round(p.monto_mxn)), medio: p.medio_pago ?? "" });
+    setF({ fecha: p.fecha ?? "", monto: String(Math.round(p.monto_mxn)), medio: normalizarMedio(p.medio_pago) ?? "" });
   };
 
   const guardar = async (id: string) => {
@@ -121,7 +122,10 @@ export function PagosClienteSection({ ventaId }: { ventaId: string }) {
                 <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:items-center">
                   <input type="date" value={f.fecha} onChange={(e) => setF((s) => ({ ...s, fecha: e.target.value }))} className={`${inp} w-full sm:w-auto`} />
                   <input type="number" step="any" value={f.monto} onChange={(e) => setF((s) => ({ ...s, monto: e.target.value }))} placeholder="Monto" className={`${inp} w-full sm:w-24`} />
-                  <input value={f.medio} onChange={(e) => setF((s) => ({ ...s, medio: e.target.value }))} placeholder="Medio" className={`${inp} w-full col-span-2 sm:w-28`} />
+                  <select value={f.medio} onChange={(e) => setF((s) => ({ ...s, medio: e.target.value }))} className={`${inp} w-full col-span-2 sm:w-32`}>
+                    <option value="" className="bg-lgb-dark">Medio</option>
+                    {opcionesMedio(f.medio).map((m) => <option key={m} value={m} className="bg-lgb-dark">{m}</option>)}
+                  </select>
                   <div className="col-span-2 flex items-center gap-1 sm:ml-auto">
                     <button onClick={() => guardar(p.id)} disabled={busy}
                       className="flex items-center gap-1 bg-lgb-red text-white px-2.5 py-1 rounded-lg text-[11px] font-medium hover:bg-red-700 disabled:opacity-50">

@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
 import { sincronizarFidelidadVenta } from "@/lib/fidelidad-server";
 import { liberarEntregas } from "@/lib/entrega";
+import { normalizarMedio } from "@/lib/medios-pago";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest) {
     fecha: b.fecha,
     monto_mxn: monto,
     tipo,
-    medio_pago: b.medio_pago || null,
+    medio_pago: normalizarMedio(b.medio_pago),
     notas: b.notas || null,
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -142,6 +143,7 @@ export async function PATCH(req: NextRequest) {
   for (const k of ["medio_pago", "notas"]) {
     if (k in b) patch[k] = b[k] ? String(b[k]).trim() : null;
   }
+  if ("medio_pago" in patch) patch.medio_pago = normalizarMedio(patch.medio_pago as string | null);
 
   const montoNuevo = b.monto_mxn !== undefined ? Number(b.monto_mxn) : Number(pago.monto_mxn);
   if (b.monto_mxn !== undefined) {

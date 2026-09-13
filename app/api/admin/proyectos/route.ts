@@ -9,6 +9,7 @@ import { anclarCarpeta } from "@/lib/carpeta-reaper";
 import { crearTareasDeProyecto, crearTareasDeCanciones, parseInstrumentos } from "@/lib/produccion-tareas";
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
 import { papeleraCarpeta } from "@/lib/drive-oauth";
+import { normalizarMedio } from "@/lib/medios-pago";
 
 export const dynamic = "force-dynamic";
 
@@ -98,12 +99,12 @@ export async function POST(req: NextRequest) {
         folio: folioV, fecha: b.fecha || hoy(), contacto_id: contactoId,
         tipo: TIPO_LABEL[b.tipo] || "Beat personalizado", beat_nombre: String(b.titulo).trim(),
         canal: b.canal || "whatsapp", moneda: "MXN", total_mxn: total,
-        medio_pago: b.medio_pago || null, quien_cerro: b.quien_cerro || null,
+        medio_pago: normalizarMedio(b.medio_pago), quien_cerro: b.quien_cerro || null,
       }).select("id").single();
       ventaId = vr?.id ?? null;
       const anticipo = Number(b.anticipo) || 0;
       if (ventaId && anticipo > 0 && anticipo < total) {
-        await sb.from("pagos").insert({ venta_id: ventaId, fecha: b.fecha || hoy(), monto_mxn: anticipo, tipo: "anticipo", medio_pago: b.medio_pago || null });
+        await sb.from("pagos").insert({ venta_id: ventaId, fecha: b.fecha || hoy(), monto_mxn: anticipo, tipo: "anticipo", medio_pago: normalizarMedio(b.medio_pago) });
       }
       await recalcContacto(sb, contactoId);
     }

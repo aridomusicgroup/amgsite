@@ -5,6 +5,7 @@ import { ESTADOS_NO_ABIERTOS, calcEntregas, type DashProyecto, type EntregasResu
 import { ENTIDADES_SENSIBLES } from "@/lib/actividad-modulos";
 import { pasoDe, ESPERA_PROYECTO, ESPERA_TEMA, type EstadoEntrega, type PasoEntrega } from "@/lib/pasos-entrega";
 import { mapaDeEntregas, claveUnidad, type ResumenEntrega } from "@/lib/entrega-estado";
+import { AJUSTES_DEFAULT, type AjustesBolsas, type EscalonSueldo, type MesFinanzas } from "@/lib/bolsas";
 
 export type { DashProyecto };
 
@@ -418,6 +419,8 @@ export interface QuarterAgg {
   nomina: number;         // sueldos pagados
 }
 export interface SocioMin { id: string; nombre: string; participacion_pct: number }
+/** Un reparto ya hecho (a cuenta o de cierre de trimestre). */
+export interface RepartoRow { id: string; periodo: string; estado: string; notas: string | null; total: number; fecha: string | null }
 export interface EquipoRow {
   id: string; nombre: string; rol: string; participacion_pct: number;
   pago_base: number; periodicidad: string; pago_variable: boolean; activo: boolean;
@@ -447,10 +450,11 @@ const quarterOf = (fecha: string) => {
 
 export async function getFinanzasERP() {
   const sb = supabaseAdmin();
-  const [ventasRes, egresosRes, nominaRes, equipoRes, pagosRes, ingresosRes, pagosMusicoRes] = await Promise.all([
+  const [ventasRes, egresosRes, nominaRes, equipoRes, pagosRes, ingresosRes, pagosMusicoRes, repartosRes, ajustesRes] = await Promise.all([
     sb.from("ventas").select("id, fecha, total_mxn, costo_extra"),
     sb.from("egresos").select("id, fecha, categoria, proveedor, descripcion, total_mxn, es_capex").order("fecha", { ascending: false }),
-    sb.from("nomina").select("id, periodo_inicio, monto, estado, tipo, equipo(nombre)").order("periodo_inicio", { ascending: false }).limit(100),
+    // Toda la nómina (no solo la reciente): los totales por trimestre y por mes salen de aquí.
+    sb.from("nomina").select("id, persona_id, periodo_inicio, monto, estado, tipo, equipo(nombre)").order("periodo_inicio", { ascending: false }).limit(5000),
     sb.from("equipo").select("id, nombre, rol, participacion_pct, pago_base, periodicidad, pago_variable, activo").order("rol"),
     // Pagos (anticipos/finiquitos). Si la tabla no existe, .data es null → [].
     sb.from("pagos").select("venta_id, fecha, monto_mxn"),
@@ -459,6 +463,10 @@ export async function getFinanzasERP() {
     // Pagos a músicos (COGS itemizado). Trae venta + cliente + proyecto ligado.
     // Si la tabla no existe, .data es null → [].
     sb.from("pagos_musico").select("id, monto, fecha, medio_pago, pagado, nota, musico, ventas(folio, beat_nombre, contactos(nombre), proyectos(titulo))").order("fecha", { ascending: false }),
+    // Repartos ya hechos, con lo que recibió cada socio.
+    sb.from("repartos").select("id, periodo, estado, notas, created_at, reparto_socio(socio_id, monto, estado, fecha_pago)").order("created_at", { ascending: false }),
+    // Ajustes de las bolsas (supabase-bolsas.sql). Sin la tabla → valores por defecto.
+    sb.from("finanzas_ajustes").select("*").eq("id", 1).maybeSingle(),
   ]);
 
   const quarters = new Map<string, QuarterAgg>();
@@ -466,6 +474,14 @@ export async function getFinanzasERP() {
     const { key, label } = quarterOf(fecha);
     if (!quarters.has(key)) quarters.set(key, { key, label, ingresos: 0, costosDirectos: 0, gastosOperativos: 0, nomina: 0 });
     return quarters.get(key)!;
+  };
+  // Lo mismo por mes, para las bolsas (lib/bolsas.ts): ahí "directos" incluye
+  // las comisiones de plataforma y "operación" la nómina de colaboradores.
+  const meses = new Map<string, MesFinanzas>();
+  const ensureM = (fecha: string) => {
+    const mes = fecha.slice(0, 7);
+    if (!meses.has(mes)) meses.set(mes, { mes, cobrado: 0, directos: 0, operacion: 0, sueldosSocios: 0 });
+    return meses.get(mes)!;
   };
 
   // Ventas que tienen pagos registrados → su ingreso se reconoce por pago (base
@@ -480,10 +496,12 @@ export async function getFinanzasERP() {
     // El costo de músicos (COGS) se imputa siempre en la fecha de la venta.
     q.costosDirectos += Number(v.costo_extra) || 0;
     costosTot += Number(v.costo_extra) || 0;
+    ensureM(v.fecha).directos += Number(v.costo_extra) || 0;
     // Ingreso: si no tiene pagos, su total cuenta en su fecha (instantáneo/histórico).
     if (!ventasConPagos.has(v.id as string)) {
       q.ingresos += Number(v.total_mxn) || 0;
       ingresosTot += Number(v.total_mxn) || 0;
+      ensureM(v.fecha).cobrado += Number(v.total_mxn) || 0;
     }
   }
   // Ingreso de las ventas con anticipos: cada pago en el trimestre de su fecha.
@@ -492,6 +510,7 @@ export async function getFinanzasERP() {
     if (!f) continue;
     const monto = Number(p.monto_mxn) || 0;
     ensureQ(f).ingresos += monto;
+    ensureM(f).cobrado += monto;
     ingresosTot += monto;
   }
   // Otros ingresos (YouTube/streaming/payouts): entran igual que las ventas.
@@ -504,7 +523,7 @@ export async function getFinanzasERP() {
       recurrente: Boolean(i.recurrente), nota: (i.nota as string | null) ?? null,
     };
     ingresos.push(row);
-    if (row.fecha) { ensureQ(row.fecha).ingresos += row.monto_mxn; ingresosTot += row.monto_mxn; }
+    if (row.fecha) { ensureQ(row.fecha).ingresos += row.monto_mxn; ingresosTot += row.monto_mxn; ensureM(row.fecha).cobrado += row.monto_mxn; }
   }
   const egresos: EgresoRow[] = [];
   for (const e of egresosRes.data ?? []) {
@@ -519,14 +538,20 @@ export async function getFinanzasERP() {
       // Sueldos capturados como egreso antes de que existiera la tabla
       // `nomina` (abr–jun 2026): son nómina, no gasto operativo. La utilidad
       // no cambia; cambia en qué renglón se ven.
-      else if (row.categoria === "Nómina") { ensureQ(e.fecha).nomina += row.total_mxn; nominaTot += row.total_mxn; }
-      else { ensureQ(e.fecha).gastosOperativos += row.total_mxn; gastosTot += row.total_mxn; }
+      else if (row.categoria === "Nómina") { ensureQ(e.fecha).nomina += row.total_mxn; nominaTot += row.total_mxn; ensureM(e.fecha).operacion += row.total_mxn; }
+      else {
+        ensureQ(e.fecha).gastosOperativos += row.total_mxn; gastosTot += row.total_mxn;
+        // Comisiones de plataforma: costo directo de la venta, no operación.
+        if ((row.categoria ?? "").startsWith("Comisión")) ensureM(e.fecha).directos += row.total_mxn;
+        else ensureM(e.fecha).operacion += row.total_mxn;
+      }
     }
   }
   // Comisión de Stripe: ya está sumada arriba como un Egreso normal (mismo
   // trato que BeatStars) — este total es solo informativo, para el pie de
   // página de Finanzas. NO se vuelve a sumar a ningún total.
   const comisionStripeTot = egresos.reduce((a, e) => a + (e.categoria === "Comisión Stripe" ? e.total_mxn : 0), 0);
+  const socioIds = new Set((equipoRes.data ?? []).filter((e) => e.rol === "socio").map((e) => e.id as string));
   const nomina: NominaRow[] = [];
   for (const n of nominaRes.data ?? []) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -535,7 +560,12 @@ export async function getFinanzasERP() {
       id: n.id as string, persona, periodo_inicio: n.periodo_inicio as string,
       monto: Number(n.monto) || 0, estado: n.estado as string, tipo: n.tipo as string,
     });
-    if (n.periodo_inicio) { ensureQ(n.periodo_inicio).nomina += Number(n.monto) || 0; nominaTot += Number(n.monto) || 0; }
+    if (n.periodo_inicio) {
+      ensureQ(n.periodo_inicio).nomina += Number(n.monto) || 0; nominaTot += Number(n.monto) || 0;
+      const m = ensureM(n.periodo_inicio);
+      if (socioIds.has(n.persona_id as string)) m.sueldosSocios += Number(n.monto) || 0;
+      else m.operacion += Number(n.monto) || 0;
+    }
   }
 
   const equipo = (equipoRes.data ?? []).map((e) => ({
@@ -574,7 +604,40 @@ export async function getFinanzasERP() {
     if (!pagado) musicoPendiente += monto;
   }
 
+  // Repartos ya hechos (tablas `repartos` + `reparto_socio`), por trimestre.
+  const repartos: RepartoRow[] = (repartosRes.data ?? []).map((r) => {
+    const porSocio = (r.reparto_socio as FilaLibre[] | null) ?? [];
+    return {
+      id: r.id as string, periodo: r.periodo as string, estado: r.estado as string,
+      notas: (r.notas as string | null) ?? null,
+      total: porSocio.reduce((a, s) => a + (Number(s.monto) || 0), 0),
+      fecha: (porSocio.find((s) => s.fecha_pago)?.fecha_pago as string | undefined) ?? ((r.created_at as string | null)?.slice(0, 10) ?? null),
+    };
+  });
+  const repartidoPorTrimestre: Record<string, number> = {};
+  for (const r of repartos) repartidoPorTrimestre[r.periodo] = (repartidoPorTrimestre[r.periodo] ?? 0) + r.total;
+
+  const aj = ajustesRes.data as FilaLibre | null;
+  const num = (v: unknown, d: number) => (v === null || v === undefined || isNaN(Number(v)) ? d : Number(v));
+  const ajustes: AjustesBolsas = aj
+    ? {
+        impuestosPct: num(aj.impuestos_pct, AJUSTES_DEFAULT.impuestosPct),
+        colchonPct: num(aj.colchon_pct, AJUSTES_DEFAULT.colchonPct),
+        colchonMeta: num(aj.colchon_meta, AJUSTES_DEFAULT.colchonMeta),
+        colchonInicial: num(aj.colchon_inicial, 0),
+        inicio: (aj.inicio as string | null) ?? AJUSTES_DEFAULT.inicio,
+        escalones: Array.isArray(aj.escalones) && aj.escalones.length
+          ? (aj.escalones as EscalonSueldo[]).map((e) => ({ desde: Number(e.desde) || 0, semanal: Number(e.semanal) || 0 }))
+          : AJUSTES_DEFAULT.escalones,
+        guardado: true,
+      }
+    : AJUSTES_DEFAULT;
+
   return {
+    meses: [...meses.values()].sort((a, b) => a.mes.localeCompare(b.mes)),
+    ajustes,
+    repartos,
+    repartidoPorTrimestre,
     quarters: [...quarters.values()].sort((a, b) => b.key.localeCompare(a.key)),
     socios,
     equipo,
