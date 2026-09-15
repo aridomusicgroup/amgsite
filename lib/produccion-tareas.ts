@@ -128,7 +128,7 @@ async function insertarTolerante(sb: SupabaseClient, tabla: string, filas: Recor
     select ? sb.from(tabla).insert(fs).select(select) : sb.from(tabla).insert(fs);
   let actuales = filas;
   let r = await intento(actuales);
-  for (const col of ["paso", "responsable_id"]) {
+  for (const col of ["conceptos", "paso", "responsable_id"]) {
     if (!r.error) break;
     actuales = actuales.map((f) => {
       const { [col]: _fuera, ...resto } = f;
@@ -286,33 +286,62 @@ async function pasosDeCancion(sb: SupabaseClient, instrumentos: string[]): Promi
  * alguien las había escrito A MANO, tema por tema: se crearon horas y hasta una
  * semana después del proyecto, con dedazos, y distintas en cada tema.
  *
+ * Cada tema puede traer SUS instrumentos y lo que se le cotizó: en TRiP MX el
+ * trombón iba en dos de los tres temas y las charchetas en otros dos, y con una
+ * sola lista para todo el disco el "Grabar Trombón" aparecía también donde no se
+ * vendió. Un tema sin instrumentos propios lleva los generales, como antes.
+ *
  * Best-effort como `crearTareasDeProyecto`: la venta o el proyecto ya se
- * guardaron y no se pierden por esto.
+ * guardaron y no se pierden por esto. Devuelve los temas que sí se crearon, con
+ * sus instrumentos, para colgar de cada uno a su músico.
  */
+export interface CancionPlan {
+  titulo: string;
+  /** Sin esto lleva `instrumentos`, los generales del proyecto. */
+  instrumentos?: string[];
+  /** Lo cotizado para este tema; queda en `proyecto_tareas.conceptos` (elige su plantilla de REAPER). */
+  conceptos?: string[];
+}
+
+export interface TemaCreado { id: string; titulo: string; instrumentos: string[] }
+
 export async function crearTareasDeCanciones(
   sb: SupabaseClient,
   proyectoId: string,
   tipo: string | undefined,
-  canciones: string[],
+  canciones: (string | CancionPlan)[],
   instrumentos: string[],
   responsableId: string | null,
-): Promise<void> {
-  if (!canciones.length) return;
+): Promise<TemaCreado[]> {
+  const planes = canciones
+    .map((c) => (typeof c === "string" ? { titulo: c } : c))
+    .map((c) => ({ ...c, titulo: c.titulo.trim() }))
+    .filter((c) => c.titulo);
+  if (!planes.length) return [];
   try {
-    const { data: temas } = await sb
-      .from("proyecto_tareas")
-      .insert(canciones.map((titulo, i) => ({
-        proyecto_id: proyectoId, titulo, responsable_id: responsableId,
-        orden: i, es_cancion: true, hecho: false,
-      })))
-      .select("id");
+    const { data: temas } = await insertarTolerante(sb, "proyecto_tareas", planes.map((c, i) => ({
+      proyecto_id: proyectoId, titulo: c.titulo, responsable_id: responsableId,
+      orden: i, es_cancion: true, hecho: false,
+      conceptos: c.conceptos?.length ? c.conceptos : null,
+    })), "id, orden");
+    const idDeOrden = new Map<number, string>((temas ?? []).map((t) => [Number(t.orden), t.id as string]));
 
-    const pasos = await pasosDeCancion(sb, instrumentos);
-    if (pasos.length && temas?.length) {
-      const { data: eq } = await sb.from("equipo").select("id, nombre");
-      const findId = resolverEquipo((eq ?? []) as { id: string; nombre: string }[]);
-      const subRows = temas.flatMap((t) => pasos.map((p, j) => ({
-        tarea_id: t.id as string,
+    const { data: eq } = await sb.from("equipo").select("id, nombre");
+    const findId = resolverEquipo((eq ?? []) as { id: string; nombre: string }[]);
+    // Los pasos dependen sólo de los instrumentos: temas con la misma
+    // instrumentación comparten la consulta a la plantilla.
+    const pasosPor = new Map<string, TplTarea[]>();
+    const creados: TemaCreado[] = [];
+    const subRows: Record<string, unknown>[] = [];
+
+    for (const [i, c] of planes.entries()) {
+      const tareaId = idDeOrden.get(i);
+      if (!tareaId) continue;
+      const insts = c.instrumentos ?? instrumentos;
+      const llave = insts.join("|");
+      if (!pasosPor.has(llave)) pasosPor.set(llave, await pasosDeCancion(sb, insts));
+      (pasosPor.get(llave) ?? []).forEach((p, j) => subRows.push({
+        tarea_id: tareaId,
         titulo: p.titulo,
         orden: j,
         hecho: false,
@@ -322,14 +351,17 @@ export async function crearTareasDeCanciones(
         // "Aprobada" y "Subir a Drive" de cada tema: con ellos, aprobar un tema
         // abre su propio cuadro de entrega.
         paso: p.paso ?? pasoDeTitulo(p.titulo),
-      })));
-      await insertarTolerante(sb, "proyecto_subtareas", subRows);
+      }));
+      creados.push({ id: tareaId, titulo: c.titulo, instrumentos: insts });
     }
+    if (subRows.length) await insertarTolerante(sb, "proyecto_subtareas", subRows);
 
     // Las del disco completo (portada, distribución…) van después de los temas.
     // Sin plantilla de `ep`/`album` no nace ninguna, que es lo de siempre.
-    await crearTareasDeProyecto(sb, proyectoId, tipo, [], canciones.length);
+    await crearTareasDeProyecto(sb, proyectoId, tipo, [], planes.length);
+    return creados;
   } catch (e) {
     console.error("crearTareasDeCanciones:", e);
+    return [];
   }
 }

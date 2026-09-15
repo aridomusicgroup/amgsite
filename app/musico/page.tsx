@@ -121,6 +121,7 @@ function Tarjeta({ a }: { a: AsignacionMusico }) {
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
           <p className="font-coolvetica text-lg truncate">{a.cancion}</p>
+          {a.tema && <p className="text-white/35 text-xs truncate">{a.proyecto}</p>}
           <p className="text-lgb-red text-sm mt-0.5">{a.instrumento}</p>
         </div>
         {hechas > 0 && (
@@ -155,7 +156,14 @@ function Tarjeta({ a }: { a: AsignacionMusico }) {
         </a>
       )}
 
-      <SubirParte asignacionId={a.id} archivos={a.archivos} canales={a.canales} />
+      <SubirParte
+        asignacionId={a.id}
+        archivos={a.archivos}
+        canales={a.canales}
+        destino={a.tema ? `${a.tema} · ${a.proyecto}` : a.proyecto}
+        duracionRef={a.duracionRef}
+        temaRef={a.cancion}
+      />
     </section>
   );
 }

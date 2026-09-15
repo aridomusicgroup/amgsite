@@ -11,6 +11,7 @@ import { CONTRACT_TIPOS } from "@/lib/pdf/contracts";
 import { esEsquemaValido } from "@/lib/esquema-pago";
 import { aplicaDescuentoFidelidad } from "@/lib/fidelidad";
 import { nivelDeContacto, creditoDisponible, aplicarCredito } from "@/lib/fidelidad-server";
+import { limpiarTemas } from "@/lib/temas";
 
 const TIPOS_VALIDOS = new Set(CONTRACT_TIPOS.map((t) => t.id));
 
@@ -68,7 +69,10 @@ export async function POST(req: NextRequest) {
   const tipo = TIPOS_VALIDOS.has(b.tipo) ? String(b.tipo) : null;
   const esquemaPago = esEsquemaValido(b.esquema_pago) ? b.esquema_pago : null;
   const numCanciones = esquemaPago === "por_cancion" || tipo === "ep_album" ? Math.max(1, Number(b.num_canciones) || 1) : null;
-  const epAlbumFormato = tipo === "ep_album" && (b.ep_album_formato === "ep" || b.ep_album_formato === "album") ? b.ep_album_formato : null;
+  // Un EP/álbum siempre es uno de los dos: sin formato, ni la venta por Stripe
+  // sabía qué proyecto armar (le pasó a COT-0063). Si no viene, es EP.
+  const epAlbumFormato = tipo === "ep_album" ? (b.ep_album_formato === "album" ? "album" : "ep") : null;
+  const temas = tipo === "ep_album" ? limpiarTemas(b.temas) : null;
   const sinDescuentoFidelidad = !!b.sin_descuento_fidelidad;
 
   const sb = supabaseAdmin();
@@ -130,6 +134,7 @@ export async function POST(req: NextRequest) {
     credito_aplicado: creditoAUsar,
     sin_descuento_fidelidad: sinDescuentoFidelidad,
     musicos: parseMusicos(b.musicos),
+    temas,
     total,
     // Espejo en pesos: es lo que leen el Dashboard y Finanzas, que reportan
     // todo en MXN. Se guarda calculado (y no se recalcula al vuelo) para que la
@@ -147,8 +152,14 @@ export async function POST(req: NextRequest) {
   // ellas para no dejar el flujo principal roto mientras tanto.
   let { data, error } = await sb.from("cotizaciones").insert(row).select("id, folio").single();
   if (error && /schema cache/i.test(error.message)) {
-    const { tipo: _t, esquema_pago: _e, num_canciones: _n, descuento_fidelidad: _f, credito_aplicado: _c, ep_album_formato: _ea, sin_descuento_fidelidad: _s, musicos: _m, ...sinNuevas } = row;
-    void _t; void _e; void _n; void _f; void _c; void _ea; void _s; void _m;
+    // Primero sólo sin `temas` (la más nueva): no perder por ella todo lo demás.
+    const { temas: _tm, ...sinTemas } = row;
+    void _tm;
+    ({ data, error } = await sb.from("cotizaciones").insert(sinTemas).select("id, folio").single());
+  }
+  if (error && /schema cache/i.test(error.message)) {
+    const { tipo: _t, esquema_pago: _e, num_canciones: _n, descuento_fidelidad: _f, credito_aplicado: _c, ep_album_formato: _ea, sin_descuento_fidelidad: _s, musicos: _m, temas: _tm, ...sinNuevas } = row;
+    void _t; void _e; void _n; void _f; void _c; void _ea; void _s; void _m; void _tm;
     ({ data, error } = await sb.from("cotizaciones").insert(sinNuevas).select("id, folio").single());
   }
 
@@ -203,8 +214,10 @@ export async function PATCH(req: NextRequest) {
       : null;
   }
   if ("ep_album_formato" in b) {
-    patch.ep_album_formato = b.ep_album_formato === "ep" || b.ep_album_formato === "album" ? b.ep_album_formato : null;
+    const esEpAlbum = "tipo" in patch ? patch.tipo === "ep_album" : true;
+    patch.ep_album_formato = esEpAlbum ? (b.ep_album_formato === "album" ? "album" : "ep") : null;
   }
+  if ("temas" in b) patch.temas = limpiarTemas(b.temas);
   if ("sin_descuento_fidelidad" in b) patch.sin_descuento_fidelidad = !!b.sin_descuento_fidelidad;
   if ("musicos" in b) patch.musicos = parseMusicos(b.musicos);
 
@@ -250,9 +263,14 @@ export async function PATCH(req: NextRequest) {
   }
 
   let { error } = await sb.from("cotizaciones").update(patch).eq("id", id);
+  if (error && /schema cache/i.test(error.message) && "temas" in patch) {
+    const { temas: _tm, ...sinTemas } = patch;
+    void _tm;
+    ({ error } = await sb.from("cotizaciones").update(sinTemas).eq("id", id));
+  }
   if (error && /schema cache/i.test(error.message)) {
-    const { tipo: _t, esquema_pago: _e, num_canciones: _n, descuento_fidelidad: _f, credito_aplicado: _c, ep_album_formato: _ea, sin_descuento_fidelidad: _s, musicos: _m, ...sinNuevas } = patch;
-    void _t; void _e; void _n; void _f; void _c; void _ea; void _s; void _m;
+    const { tipo: _t, esquema_pago: _e, num_canciones: _n, descuento_fidelidad: _f, credito_aplicado: _c, ep_album_formato: _ea, sin_descuento_fidelidad: _s, musicos: _m, temas: _tm, ...sinNuevas } = patch;
+    void _t; void _e; void _n; void _f; void _c; void _ea; void _s; void _m; void _tm;
     ({ error } = await sb.from("cotizaciones").update(sinNuevas).eq("id", id));
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

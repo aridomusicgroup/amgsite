@@ -3,6 +3,7 @@ import { QuoteItem } from "@/lib/pdf/quote";
 import { ContractTipo } from "@/lib/pdf/contracts";
 import { familiaDeCotizacion, FAMILIA_LABEL, type Familia } from "@/lib/acuerdos/familias";
 import { ACUERDO_VERSIONES } from "@/lib/acuerdos/acuerdo-cliente";
+import { limpiarTemas, type Tema } from "@/lib/temas";
 
 /**
  * Capa de datos de Cotizaciones y Contratos (Supabase, service-role).
@@ -49,6 +50,8 @@ export interface Cotizacion {
   sin_descuento_fidelidad: boolean;
   /** Quién toca cada instrumento (elegido al cotizar). Vacío = el titular del catálogo. */
   musicos: { instrumento: string; musico_id: string }[];
+  /** EP/Álbum: cada tema con lo cotizado para él. null = cotización vieja (se reparte por cantidad). */
+  temas: Tema[] | null;
   /** Comisión de PayPal que se le cobra al cliente. 0 = no paga por PayPal. */
   comision_pct: number;
   /** En la moneda del documento, con comisión ya incluida. */
@@ -131,6 +134,7 @@ export async function getCotizaciones(): Promise<Cotizacion[]> {
     musicos: (Array.isArray(c.musicos) ? c.musicos : [])
       .map((e: { instrumento?: unknown; musico_id?: unknown }) => ({ instrumento: String(e?.instrumento ?? ""), musico_id: String(e?.musico_id ?? "") }))
       .filter((e: { instrumento: string; musico_id: string }) => e.instrumento && e.musico_id),
+    temas: limpiarTemas(c.temas),
     comision_pct: Number(c.comision_pct) || 0,
     total: Number(c.total) || 0,
     total_mxn: Number(c.total_mxn) > 0 ? Number(c.total_mxn) : null,

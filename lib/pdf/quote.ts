@@ -2,6 +2,7 @@ import { Block, renderDocument, fechaLarga } from "./render";
 import { fmtMoney, SELLER } from "./parts";
 import { LOGO_ARIDO_NEGRO } from "./logo";
 import { incluyeDePaquete } from "@/lib/servicios";
+import { nombreTema } from "@/lib/temas";
 import { aplicarMerge } from "./plantilla-parse";
 import { COTIZACION_TERMINOS_SEED } from "./plantilla-seeds";
 import { subtotalDe, comisionValida } from "@/lib/comision";
@@ -44,6 +45,8 @@ export interface QuoteData {
   esquemaPago?: string | null;
   /** Solo cuando esquemaPago = "por_cancion". */
   numCanciones?: number | null;
+  /** EP/Álbum: qué lleva cada tema, para que el cliente vea lo mismo que se va a producir. */
+  temas?: { nombre: string; conceptos: string[] }[] | null;
 }
 
 export async function generateQuotePdf(d: QuoteData): Promise<Uint8Array> {
@@ -152,6 +155,16 @@ export async function generateQuotePdf(d: QuoteData): Promise<Uint8Array> {
     blocks.push({
       text: `Este total incluye la comisión de la plataforma de pago (tarjeta o PayPal). Si prefieres pagar por transferencia, el total es ${fmtMoney(trasDescuentos - creditoAplicado, moneda)}.`,
       muted: true, size: 8.5, spaceBefore: 3,
+    });
+  }
+
+  // EP/Álbum: qué lleva cada tema. Es lo mismo de lo que salen las tareas y los
+  // músicos del proyecto, así que el cliente firma exactamente lo que se produce.
+  if (d.temas?.length) {
+    blocks.push({ sectionLabel: "Temas", spaceBefore: 16 });
+    d.temas.forEach((t, i) => {
+      blocks.push({ text: `${i + 1}. ${nombreTema(t, i)}`, size: 10, spaceBefore: 5 });
+      if (t.conceptos.length) blocks.push({ text: t.conceptos.join(" · "), muted: true, size: 8.5, indent: 2, spaceBefore: 1 });
     });
   }
 

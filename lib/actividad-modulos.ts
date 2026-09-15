@@ -100,6 +100,7 @@ export const DOT_ACTIVIDAD: Record<string, string> = {
   tarea_completada: "bg-green-400",
   musico_asignado: "bg-white/50",
   musico_archivo: "bg-blue-400",
+  musico_archivo_retirado: "bg-white/30",
   musico_previo_compartido: "bg-green-400",
   render_compartido: "bg-green-400",
   entrega_preparada: "bg-blue-400",

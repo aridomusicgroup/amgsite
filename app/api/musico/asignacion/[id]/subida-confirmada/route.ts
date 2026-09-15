@@ -9,6 +9,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { efectosDeTareaCompletada } from "@/lib/tarea-completar";
 import { entregaTrasPalomear, entregaParaQuienPalomeo } from "@/lib/entrega";
 import { avanzarEstadoPorTareas } from "@/lib/estado-auto";
+import { pistasCompletas, retirarArchivo } from "@/lib/musico-pistas";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -66,15 +67,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   }
 
   const sb = supabaseAdmin();
-  const { error } = await sb.from("musico_archivos").insert({
+  const { data: nuevo, error } = await sb.from("musico_archivos").insert({
     asignacion_id: asig.id,
     clase,
     nombre,
     drive_id: driveId,
     slot: clase === "stem" ? slot : 0,
     bytes: Number.isFinite(bytes) && bytes > 0 ? Math.round(bytes) : null,
-  });
+  }).select("id").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // "Cambiar pista": la nueva reemplaza a la anterior del mismo canal. Antes se
+  // quedaban las dos y el script las habría metido dos veces al proyecto.
+  if (clase === "stem" && nuevo?.id) {
+    await retirarAnteriores(sb, asig.id, slot, nuevo.id as string, musico.email ?? "portal-musicos");
+  }
 
   // Una pista entregada mueve la asignación; un previo es un avance, no la entrega.
   if (clase === "stem") {
@@ -162,22 +169,20 @@ type SB = any;
 const norm = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
 
 /**
- * ¿Ya llegaron todas las pistas que se le piden? Una por canal del instrumento
- * (`instrumento_pistas.canales`, p. ej. Charchetas = "L, R"); sin canales, una.
- * Mismo criterio que los botones del portal (`SubirParte`): hueco 0..n-1.
+ * Retira las pistas anteriores de ese canal que todavía no entran a REAPER. Una
+ * que ya entró se deja: sacarla del .rpp es decisión del estudio, no del portal.
  */
-async function pistasCompletas(sb: SB, asignacionId: string, instrumento: string): Promise<boolean> {
-  const [{ data: mapa }, { data: stems }] = await Promise.all([
-    sb.from("instrumento_pistas").select("instrumento, canales"),
-    sb.from("musico_archivos").select("slot").eq("asignacion_id", asignacionId).eq("clase", "stem"),
-  ]);
-  const fila = ((mapa ?? []) as { instrumento: string; canales: string | null }[])
-    .find((m) => norm(String(m.instrumento)) === norm(instrumento));
-  const canales = String(fila?.canales ?? "").split(",").map((x) => x.trim()).filter(Boolean);
-  const pedidos = Math.max(1, canales.length);
-  const llegaron = new Set(((stems ?? []) as { slot: number | null }[]).map((s) => Number(s.slot) || 0));
-  for (let i = 0; i < pedidos; i++) if (!llegaron.has(i)) return false;
-  return true;
+async function retirarAnteriores(sb: SB, asignacionId: string, slot: number, nuevoId: string, actor: string): Promise<void> {
+  try {
+    const { data } = await sb.from("musico_archivos").select("id, importado_at")
+      .eq("asignacion_id", asignacionId).eq("clase", "stem").eq("slot", slot).neq("id", nuevoId);
+    for (const a of (data ?? []) as { id: string; importado_at: string | null }[]) {
+      if (!a.importado_at) await retirarArchivo(sb, a.id, { actor, puedeImportado: false });
+    }
+  } catch (e) {
+    // La nueva ya quedó registrada; la vieja se puede quitar a mano.
+    console.error("retirar-anteriores:", e);
+  }
 }
 
 /**

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { crearTareasDeProyecto, crearTareasDeCanciones, parseInstrumentos } from "@/lib/produccion-tareas";
+import { crearTareasDeProyecto, parseInstrumentos } from "@/lib/produccion-tareas";
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
 import { crearPagosMusicoPendientes } from "@/lib/musicos-sync";
 import { habilitarPortal as habilitarPortalDe } from "@/lib/musico-asignar";
@@ -11,6 +11,8 @@ import { propagarNombre } from "@/lib/nombre-sync";
 import { esPagoDeContado } from "@/lib/fidelidad";
 import { registrarPagoDeContado, revertirFidelidadDeVenta, sincronizarFidelidadVenta } from "@/lib/fidelidad-server";
 import { normalizarMedio } from "@/lib/medios-pago";
+import { armarTemas, temasDeLaCotizacion, type TemaPlan } from "@/lib/armar-proyecto";
+import { limpiarTemas } from "@/lib/temas";
 
 const peso = (n: unknown) => `$${(Number(n) || 0).toLocaleString("es-MX")}`;
 
@@ -227,19 +229,29 @@ export async function POST(req: NextRequest) {
         creado_por: "ventas",
       }).select("id").single();
       // Tareas del proyecto, en orden de prioridad:
-      //  1. EP/Álbum → una tarea por canción.
+      //  1. EP/Álbum → una tarea por tema, con lo que lleva ESE tema.
       //  2. `tareas_libres` → conceptos fuera de catálogo ("+ Libre"): se crean tal
       //     cual, SIN plantilla (no aplica maqueta/mezcla/master a algo a la medida).
       //  3. Si no → mismo motor de plantillas que Producción.
       const libres = String(b.tareas_libres || "").split(/[\n;]+/).map((s) => s.trim()).filter(Boolean);
+      const esDisco = tproy === "ep" || tproy === "album";
       if (proy?.id) {
         // Qué tarea quedó para cada instrumento, para colgar ahí la asignación
         // del músico sin tener que volver a buscarla por su título.
         let tareaDeInstrumento = new Map<string, string>();
-        if (canciones.length) {
-          // Un tema = una tarea, y DENTRO sus pasos como subtareas. El mismo
-          // motor que el proyecto manual y que la cotización pagada por Stripe.
-          await crearTareasDeCanciones(sb, proy.id, tproy, canciones, parseInstrumentos(b.instrumentos || b.extras), responsableId);
+        if (esDisco) {
+          // Los temas, en orden de confianza: los que mandó la pantalla de
+          // convertir, la lista de canciones escrita a mano, los guardados en la
+          // cotización. Nunca cero: TRiP MX nació sin tareas porque "Convertir"
+          // no mandaba canciones y no existe plantilla de tareas para `ep`.
+          const generales = parseInstrumentos(b.instrumentos || b.extras);
+          const temas: TemaPlan[] =
+            limpiarTemas(b.temas)
+            ?? (canciones.length ? canciones.map((nombre) => ({ nombre, conceptos: [], instrumentos: generales })) : null)
+            ?? (b.cotizacion_id ? await temasDeLaCotizacion(sb, String(b.cotizacion_id)) : null)
+            ?? [{ nombre: "", conceptos: [], instrumentos: generales }];
+          // Aquí mismo cuelga a cada músico del tema donde toca.
+          await armarTemas(sb, { proyectoId: proy.id as string, tipo: tproy, temas, elegidos, responsableId, actor: "venta" });
         } else if (libres.length) {
           const rows = libres.map((titulo, i) => ({ proyecto_id: proy.id, titulo, responsable_id: responsableId, orden: i }));
           await sb.from("proyecto_tareas").insert(rows);
@@ -250,7 +262,7 @@ export async function POST(req: NextRequest) {
         // A quien tenga portal, se le habilita el proyecto en /musico. Va aquí,
         // después de las tareas, para poder colgar cada asignación de su tarea
         // "Grabar {instrumento}" y que el músico vea la fecha límite.
-        if (elegidos.length) await habilitarPortal(sb, proy.id as string, elegidos, tareaDeInstrumento);
+        if (elegidos.length && !esDisco) await habilitarPortal(sb, proy.id as string, elegidos, tareaDeInstrumento);
 
         // Dispara el pedido del sitio ligado → el cliente ve el avance en su panel.
         try { await crearPedidoDeProyecto(sb, proy.id); } catch (e) { console.error("pedido-sync:", e); }

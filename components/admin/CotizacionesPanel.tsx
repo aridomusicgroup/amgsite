@@ -19,6 +19,8 @@ import { familiaDeCotizacion } from "@/lib/acuerdos/familias";
 import { aplicaDescuentoFidelidad } from "@/lib/fidelidad";
 import { ESQUEMAS_PAGO, ESQUEMA_LABEL, tramosDe, type EsquemaPago } from "@/lib/esquema-pago";
 import { MEDIOS_PAGO } from "@/lib/medios-pago";
+import { TemasEditor } from "@/components/admin/TemasEditor";
+import { ajustarTemas, temasDeCotizacion, type Tema } from "@/lib/temas";
 
 // ── Tipos de props (datos ya serializados desde el server) ──
 interface ClienteLite { id: string; nombre: string; email: string | null; telefono: string | null; direccion: string | null }
@@ -693,7 +695,10 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
   const [tipo, setTipo] = useState(initial?.tipo ?? "");
   const [esquemaPago, setEsquemaPago] = useState(initial?.esquema_pago ?? "estandar");
   const [numCanciones, setNumCanciones] = useState(initial?.num_canciones ?? 5);
-  const [epAlbumFormato, setEpAlbumFormato] = useState<"ep" | "album" | "">(initial?.ep_album_formato ?? "");
+  // Siempre uno de los dos: sin formato, la venta por Stripe no sabía qué armar.
+  const [epAlbumFormato, setEpAlbumFormato] = useState<"ep" | "album">(initial?.ep_album_formato ?? "ep");
+  // Qué lleva cada tema. Se reajusta al cambiar conceptos o número de temas.
+  const [temas, setTemas] = useState<Tema[]>(() => (initial?.tipo === "ep_album" ? temasDeCotizacion(initial) : []));
   const [nombre, setNombre] = useState(initial?.cliente_nombre ?? "");
   const [email, setEmail] = useState(initial?.cliente_email ?? "");
   const [telefono, setTelefono] = useState(initial?.cliente_telefono ?? "");
@@ -776,7 +781,8 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
       tipo: tipo || null,
       esquema_pago: esquemaAplica ? esquemaPago : null,
       num_canciones: (esquemaAplica && esquemaPago === "por_cancion") || tipo === "ep_album" ? numCanciones : null,
-      ep_album_formato: tipo === "ep_album" && epAlbumFormato ? epAlbumFormato : null,
+      ep_album_formato: tipo === "ep_album" ? epAlbumFormato : null,
+      temas: tipo === "ep_album" ? temas : null,
       // El servidor vuelve a calcular el % de fidelidad y el crédito
       // disponible por su cuenta — aquí solo se manda la INTENCIÓN de
       // aplicarlo, nunca un monto (eso sería confiar en el navegador).
@@ -794,7 +800,11 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
   return (
     <Modal title={initial ? `Editar ${initial.folio}` : "Nueva cotización"} onClose={onClose}>
       <Field label="Tipo de servicio">
-        <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="input cursor-pointer">
+        <select value={tipo} onChange={(e) => {
+          const v = e.target.value;
+          setTipo(v);
+          if (v === "ep_album") setTemas((t) => ajustarTemas(t, numCanciones, items));
+        }} className="input cursor-pointer">
           <option value="">Sin clasificar</option>
           {tipos.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
         </select>
@@ -808,14 +818,17 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
       {tipo === "ep_album" && (
         <div className="grid grid-cols-2 gap-3 mt-2">
           <Field label="¿Es EP o Álbum?">
-            <select value={epAlbumFormato} onChange={(e) => setEpAlbumFormato(e.target.value as "ep" | "album" | "")} className="input cursor-pointer">
-              <option value="">Sin especificar</option>
+            <select value={epAlbumFormato} onChange={(e) => setEpAlbumFormato(e.target.value === "album" ? "album" : "ep")} className="input cursor-pointer">
               <option value="ep">EP</option>
               <option value="album">Álbum</option>
             </select>
           </Field>
           <Field label="Número de canciones">
-            <input type="number" min={1} value={numCanciones} onChange={(e) => setNumCanciones(Math.max(1, Number(e.target.value) || 1))} className="input" />
+            <input type="number" min={1} max={30} value={numCanciones} onChange={(e) => {
+              const n = Math.min(30, Math.max(1, Number(e.target.value) || 1));
+              setNumCanciones(n);
+              setTemas((t) => ajustarTemas(t, n, items));
+            }} className="input" />
           </Field>
         </div>
       )}
@@ -829,7 +842,12 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
           setDescuento((d) => convertir(Number(d) || 0, factor));
         }} />
       <div className="mt-2"><label className="text-white/60 text-xs">Conceptos</label>
-        <div className="mt-1"><ItemsEditor items={items} onChange={setItems} moneda={moneda} /></div>
+        <div className="mt-1"><ItemsEditor items={items} onChange={(nuevos) => {
+          // Con los de antes a la mano: así se sabe qué concepto es nuevo (se
+          // reparte solo) y cuál despalomeaste a propósito (no regresa).
+          if (tipo === "ep_album") setTemas((t) => ajustarTemas(t, numCanciones, nuevos, items));
+          setItems(nuevos);
+        }} moneda={moneda} /></div>
       </div>
       {instrumentosCot && (
         <div className="mt-2">
@@ -840,6 +858,7 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
           </div>
         </div>
       )}
+      {tipo === "ep_album" && <TemasEditor temas={temas} items={items} onChange={setTemas} />}
       <div className="grid grid-cols-2 gap-3 mt-3">
         <Field label="Descuento"><input type="number" min={0} value={descuento} onChange={(e) => setDescuento(Number(e.target.value) || 0)} className="input" /></Field>
         <Field label="Vigencia (días)"><input type="number" min={1} value={vigencia} onChange={(e) => setVigencia(Number(e.target.value) || 15)} className="input" /></Field>
@@ -1251,7 +1270,13 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
   const hoy = new Date().toISOString().slice(0, 10);
   const [fecha, setFecha] = useState(hoy);
   const [titulo, setTitulo] = useState(c.items[0]?.label ?? "Producción");
-  const [tipo, setTipo] = useState("Beat personalizado");
+  // Una cotización de EP/álbum nace como tal: antes caía en "Beat personalizado"
+  // y, cambiándolo a mano a EP, el proyecto salía sin una sola tarea (TRiP MX).
+  const esDisco = c.tipo === "ep_album";
+  const [tipo, setTipo] = useState(esDisco ? (c.ep_album_formato === "album" ? "Álbum" : "EP") : "Beat personalizado");
+  const tipoDisco = tipo === "EP" || tipo === "Álbum";
+  // Los temas de la cotización, editables aquí por si el nombre cambió desde que se cotizó.
+  const [temas, setTemas] = useState<Tema[]>(() => temasDeCotizacion(c));
   // Se guardan en el proyecto: el previo para músico los toma de aquí en vez de
   // pedirlos cada vez. Opcionales — si no se saben todavía, se capturan después.
   const [tonalidad, setTonalidad] = useState("");
@@ -1312,11 +1337,13 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
         total_mxn: enPesos,
         medio_pago: medioPago || null, quien_cerro: quienCerro || null,
         anticipo: Number(anticipo) || 0,
-        extras: modo === "plantilla" ? extras || null : null,
+        extras: modo === "plantilla" || tipoDisco ? extras || null : null,
         // Plantilla → tareas "Grabar {instrumento}". Libre → una tarea por concepto.
-        instrumentos: modo === "plantilla" ? extras : "",
-      musicos_elegidos: modo === "plantilla" ? musicosElegidos : [],
-        tareas_libres: modo === "libre" ? tareasLibres : "",
+        instrumentos: modo === "plantilla" || tipoDisco ? extras : "",
+        musicos_elegidos: modo === "plantilla" || tipoDisco ? musicosElegidos : [],
+        tareas_libres: modo === "libre" && !tipoDisco ? tareasLibres : "",
+        // EP/Álbum: un tema = una tarea con lo que lleva ese tema.
+        temas: tipoDisco ? temas : undefined,
         crear_proyecto: crearProyecto,
         responsables,
         tonalidad: tonalidad.trim() || null,
@@ -1367,7 +1394,19 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
           </Field>
         </div>
       )}
-      {crearProyecto && (
+      {crearProyecto && tipoDisco && (
+        <div className="mt-3">
+          <p className="text-white/40 text-[11px]">
+            Cada tema nace como tarea con sus pasos, y el músico de cada instrumento queda en el tema donde toca.
+          </p>
+          <TemasEditor temas={temas} items={c.items} onChange={setTemas} />
+          <div className="mt-3">
+            <span className="text-white/60 text-xs">Quién toca</span>
+            <div className="mt-1"><InstrumentosPicker value={extras} onChange={setExtras} onMusicos={setMusicosElegidos} inicial={c.musicos} /></div>
+          </div>
+        </div>
+      )}
+      {crearProyecto && !tipoDisco && (
         <div className="mt-3">
           <div className="flex items-center gap-2 flex-wrap mb-2">
             <span className="text-white/60 text-xs mr-1">Tareas del proyecto:</span>

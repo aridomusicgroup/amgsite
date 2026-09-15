@@ -37,8 +37,12 @@ export interface AsignacionMusico {
   instrumento: string;
   nota: string | null;
   estado: string;
-  /** Título de la canción. NUNCA el cliente ni el folio. */
+  /** Lo que se graba: el tema en un EP, el proyecto en lo demás. NUNCA el cliente ni el folio. */
   cancion: string;
+  /** Título del proyecto (en un EP, el disco). */
+  proyecto: string;
+  /** El tema, cuando la asignación cuelga de un tema de EP/álbum. */
+  tema: string | null;
   /** Título de la tarea, ej. "Grabar Charchetas". */
   tarea: string | null;
   fechaLimite: string | null;
@@ -54,6 +58,12 @@ export interface AsignacionMusico {
    * dos voces quedarían cruzadas y nadie se enteraría hasta abrir el proyecto.
    */
   canales: string[];
+  /**
+   * Cuánto dura el proyecto de REAPER de esto (lo mide reaper-sync). Sirve para
+   * avisarle antes de subir un archivo que no cuadra — Jorge subió a otro
+   * proyecto una pista que duraba otra cosa y nada se lo dijo.
+   */
+  duracionRef: number | null;
   archivos: ArchivoMusico[];
 }
 
@@ -86,6 +96,38 @@ export const getMusico = cache(async (musicoId: string): Promise<MusicoSesion | 
   }
 });
 
+type Fila = Record<string, unknown>;
+
+/**
+ * Sus archivos, sin los que se están quitando.
+ *
+ * Por escalones porque `slot` y `retirar_at` son columnas nuevas: sin el
+ * reintento, antes de la migración el músico vería su tarjeta sin ninguno de
+ * los archivos que ya subió.
+ */
+async function leerArchivos(sb: ReturnType<typeof supabaseAdmin>, ids: string[]): Promise<Fila[]> {
+  const BASE = "id, asignacion_id, clase, nombre, subido_at, aprobado_at, bajado_at, importado_at";
+  for (const cols of [`${BASE}, slot, retirar_at`, `${BASE}, slot`, BASE]) {
+    const { data, error } = await sb.from("musico_archivos").select(cols)
+      .in("asignacion_id", ids).order("subido_at", { ascending: false });
+    if (!error) return ((data ?? []) as unknown as Fila[]).filter((a) => !a.retirar_at);
+  }
+  return [];
+}
+
+/** `id → duracion_seg` de una tabla, o vacío si la columna aún no existe. */
+async function duraciones(sb: ReturnType<typeof supabaseAdmin>, tabla: string, ids: string[]): Promise<Map<string, number>> {
+  const m = new Map<string, number>();
+  if (!ids.length) return m;
+  const { data, error } = await sb.from(tabla).select("id, duracion_seg").in("id", ids);
+  if (error) return m;
+  for (const r of (data ?? []) as unknown as Fila[]) {
+    const d = Number(r.duracion_seg);
+    if (d > 0) m.set(r.id as string, d);
+  }
+  return m;
+}
+
 /** Sus asignaciones abiertas, con lo que ya subió en cada una. */
 export async function asignacionesDeMusico(musicoId: string): Promise<AsignacionMusico[]> {
   const sb = supabaseAdmin();
@@ -108,22 +150,11 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
   const tareaIds = vivas.map((a) => a.tarea_id as string | null).filter(Boolean) as string[];
   const proyIds = [...new Set(vivas.map((a) => a.proyecto_id as string))];
 
-  const [archRes, tareasRes, refRes, canalesRes] = await Promise.all([
-    // `slot` es columna nueva; sin el reintento, antes de la migración el
-    // músico vería su tarjeta sin ninguno de los archivos que ya subió.
-    sb.from("musico_archivos")
-      .select("id, asignacion_id, clase, nombre, slot, subido_at, aprobado_at, bajado_at, importado_at")
-      .in("asignacion_id", ids)
-      .order("subido_at", { ascending: false })
-      .then((r) => (r.error
-        ? sb.from("musico_archivos")
-            .select("id, asignacion_id, clase, nombre, subido_at, aprobado_at, bajado_at, importado_at")
-            .in("asignacion_id", ids)
-            .order("subido_at", { ascending: false })
-        : r)),
+  const [archivos, tareasRes, refRes, canalesRes, durTema, durProy] = await Promise.all([
+    leerArchivos(sb, ids),
     tareaIds.length
-      ? sb.from("proyecto_tareas").select("id, titulo, fecha, hecho").in("id", tareaIds)
-      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      ? sb.from("proyecto_tareas").select("id, titulo, fecha, hecho, es_cancion").in("id", tareaIds)
+      : Promise.resolve({ data: [] as Fila[] }),
     // El previo de referencia que ya se le mandó por correo desde REAPER.
     sb.from("render_jobs")
       .select("proyecto_id, enlace_publico, created_at")
@@ -133,6 +164,8 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
       .not("enlace_publico", "is", null)
       .order("created_at", { ascending: false }),
     sb.from("instrumento_pistas").select("instrumento, canales"),
+    duraciones(sb, "proyecto_tareas", tareaIds),
+    duraciones(sb, "proyectos", proyIds),
   ]);
 
   // Sin acentos: el instrumento de la asignación lo escribe una persona y el
@@ -144,14 +177,13 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
   };
 
   const porAsig = new Map<string, ArchivoMusico[]>();
-  for (const a of archRes.data ?? []) {
+  for (const a of archivos) {
     const k = a.asignacion_id as string;
     const arr = porAsig.get(k) ?? [];
     arr.push({
       id: a.id as string,
       clase: (a.clase as "previo" | "stem") ?? "stem",
-      // `a` puede venir del reintento SIN la columna: se lee de forma laxa.
-      slot: Number((a as Record<string, unknown>).slot ?? 0) || 0,
+      slot: Number(a.slot ?? 0) || 0,
       nombre: a.nombre as string,
       subido_at: a.subido_at as string,
       aprobado_at: (a.aprobado_at as string | null) ?? null,
@@ -161,12 +193,13 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
     porAsig.set(k, arr);
   }
 
-  const tareas = new Map<string, { titulo: string; fecha: string | null; hecho: boolean }>();
-  for (const t of tareasRes.data ?? []) {
+  const tareas = new Map<string, { titulo: string; fecha: string | null; hecho: boolean; esCancion: boolean }>();
+  for (const t of (tareasRes.data ?? []) as Fila[]) {
     tareas.set(t.id as string, {
       titulo: t.titulo as string,
       fecha: (t.fecha as string | null) ?? null,
       hecho: Boolean(t.hecho),
+      esCancion: Boolean(t.es_cancion),
     });
   }
 
@@ -180,17 +213,24 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
   return vivas.map((a) => {
     const p = a.proyectos as unknown as { titulo: string } | null;
     const t = a.tarea_id ? tareas.get(a.tarea_id as string) : undefined;
+    const proyecto = p?.titulo ?? "Producción";
+    const tema = t?.esCancion ? t.titulo : null;
     return {
       id: a.id as string,
       instrumento: a.instrumento as string,
       nota: (a.nota as string | null) ?? null,
       estado: (a.estado as string) ?? "pendiente",
-      cancion: p?.titulo ?? "Producción",
+      cancion: tema ?? proyecto,
+      proyecto,
+      tema,
       tarea: t?.titulo ?? null,
       fechaLimite: t?.fecha ?? null,
       hecha: Boolean(t?.hecho),
       referencia: referencias.get(a.proyecto_id as string) ?? null,
       canales: canalesDe(a.instrumento as string),
+      // En un EP la referencia es la del tema; si el tema no tiene, no se
+      // compara contra el disco entero (no dice nada del tema).
+      duracionRef: tema ? durTema.get(a.tarea_id as string) ?? null : durProy.get(a.proyecto_id as string) ?? null,
       archivos: porAsig.get(a.id as string) ?? [],
     };
   });

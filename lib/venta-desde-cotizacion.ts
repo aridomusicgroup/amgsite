@@ -1,4 +1,6 @@
-import { resolverEquipo, crearTareasDeProyecto, crearTareasDeCanciones } from "@/lib/produccion-tareas";
+import { resolverEquipo, crearTareasDeProyecto } from "@/lib/produccion-tareas";
+import { armarTemas } from "@/lib/armar-proyecto";
+import { temasDeCotizacion } from "@/lib/temas";
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
 import { crearPagosMusicoPendientes, resolverElegidos } from "@/lib/musicos-sync";
 import { habilitarPortal } from "@/lib/musico-asignar";
@@ -117,11 +119,12 @@ export async function crearVentaDesdeCotizacionPagada(
   comisionTramoMxn: number | null = null,
   sessionId: string | null = null,
 ): Promise<ResultadoVentaAutomatica | null> {
-  // `musicos` es columna nueva (supabase-musicos-titular.sql): sin ella, la
-  // consulta entera fallaría y el pago se quedaría sin venta.
+  // `musicos` y `temas` son columnas nuevas: sin ellas, la consulta entera
+  // fallaría y el pago se quedaría sin venta. Por escalones, de la más nueva.
   const COLS = "id, folio, tipo, contacto_id, cliente_nombre, cliente_email, cliente_telefono, moneda, tipo_cambio, items, total, total_mxn, num_canciones, ep_album_formato";
   const leer = (cols: string) => sb.from("cotizaciones").select(cols).eq("id", cotizacionId).single();
-  let { data: cot } = await leer(`${COLS}, musicos`);
+  let { data: cot } = await leer(`${COLS}, musicos, temas`);
+  if (!cot) ({ data: cot } = await leer(`${COLS}, musicos`));
   if (!cot) ({ data: cot } = await leer(COLS));
   if (!cot) return null;
 
@@ -146,17 +149,11 @@ export async function crearVentaDesdeCotizacionPagada(
   let ventaTipo: string;
   let tproy: string | null;
   if (cot.tipo === "ep_album") {
-    const formato = cot.ep_album_formato as "ep" | "album" | null;
-    const numCanciones = Number(cot.num_canciones) || 0;
-    if (formato && numCanciones > 0) {
-      ventaTipo = formato === "album" ? "Álbum" : "EP";
-      tproy = formato;
-    } else {
-      // Sin formato o sin número de canciones no hay con qué armar las tareas
-      // a ciegas — se crea solo la venta, el proyecto lo arma el staff a mano.
-      ventaTipo = "EP / Álbum";
-      tproy = null;
-    }
+    // Sin formato es EP (antes se quedaba sin proyecto y había que armarlo a
+    // mano). Sin temas guardados salen "Canción N" repartidos por cantidad.
+    const formato = cot.ep_album_formato === "album" ? "album" : "ep";
+    ventaTipo = formato === "album" ? "Álbum" : "EP";
+    tproy = formato;
   } else {
     const mapa = MAPA_TIPO[cot.tipo as string];
     ventaTipo = mapa?.ventaTipo ?? items[0]?.label ?? "Producción";
@@ -243,13 +240,13 @@ export async function crearVentaDesdeCotizacionPagada(
         if (tproy === "ep" || tproy === "album") {
           const { data: eq } = await sb.from("equipo").select("id, nombre");
           const findId = resolverEquipo((eq ?? []) as { id: string; nombre: string }[]);
-          const numCanciones = Math.max(1, Number(cot.num_canciones) || 1);
-          // La cotización sabe CUÁNTOS temas, no cómo se llaman: nacen como
-          // "Canción N" y se renombran en el tablero. Antes además nacían sin
-          // `es_cancion`, así que el panel no los trataba como temas.
-          const canciones = Array.from({ length: numCanciones }, (_, i) => `Canción ${i + 1}`);
-          await crearTareasDeCanciones(sb, proy.id, tproy, canciones, instrumentos, findId("eliud"));
-          if (elegidos.length) await habilitarPortal(sb, proy.id, elegidos, undefined, "stripe");
+          // Los temas de la cotización, con su nombre y lo que lleva cada uno; en
+          // una vieja, "Canción N" repartidos por cantidad. Cada músico queda
+          // colgado del tema donde toca.
+          await armarTemas(sb, {
+            proyectoId: proy.id, tipo: tproy, temas: temasDeCotizacion(cot),
+            elegidos, responsableId: findId("eliud"), actor: "stripe",
+          });
         } else {
           // Cada músico con portal queda colgado de SU tarea "Grabar X", con fecha.
           const porInstrumento = await crearTareasDeProyecto(sb, proy.id, tproy, instrumentos);

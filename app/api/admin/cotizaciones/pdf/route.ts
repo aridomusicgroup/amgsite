@@ -3,6 +3,7 @@ import { getSession } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { generateQuotePdf, QuoteItem } from "@/lib/pdf/quote";
 import { getCotizacionTerminos } from "@/lib/plantillas-data";
+import { temasDeCotizacion } from "@/lib/temas";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
     terminos,
     esquemaPago: (c.esquema_pago as string | null) ?? null,
     numCanciones: c.num_canciones != null ? Number(c.num_canciones) : null,
+    temas: c.tipo === "ep_album" ? temasDeCotizacion(c) : null,
     descuentoFidelidad: Number(c.descuento_fidelidad) || 0,
     creditoAplicado: Number(c.credito_aplicado) || 0,
   });
