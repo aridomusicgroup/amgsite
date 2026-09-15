@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Pencil, Trash2, MoreHorizontal, PauseCircle, PlayCircle, CircleDollarSign } from "lucide-react";
 import type { GastoRecurrenteRow } from "@/lib/gastos-recurrentes-data";
 import { toast } from "@/lib/toast";
+import { PERIODOS, etiquetaPeriodo } from "@/lib/gastos-recurrentes";
 
 const peso = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -14,7 +15,7 @@ export function GastosRecurrentesList({ gastos }: { gastos: GastoRecurrenteRow[]
   const router = useRouter();
   const [actionsId, setActionsId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [ef, setEf] = useState({ nombre: "", categoria: "", proveedor: "", monto_estimado: "", dia_mes: "", notas: "" });
+  const [ef, setEf] = useState({ nombre: "", categoria: "", proveedor: "", monto_estimado: "", dia_mes: "", cada_meses: "1", notas: "" });
   const [editSaving, setEditSaving] = useState(false);
   const [editErr, setEditErr] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -40,7 +41,8 @@ export function GastosRecurrentesList({ gastos }: { gastos: GastoRecurrenteRow[]
     setEditingId(g.id); setActionsId(null);
     setEf({
       nombre: g.nombre, categoria: g.categoria || "", proveedor: g.proveedor || "",
-      monto_estimado: String(g.montoEstimado ?? ""), dia_mes: String(g.diaMes ?? ""), notas: g.notas || "",
+      monto_estimado: String(g.montoEstimado ?? ""), dia_mes: String(g.diaMes ?? ""),
+      cada_meses: String(g.cadaMeses ?? 1), notas: g.notas || "",
     });
     setEditErr(null);
   };
@@ -148,7 +150,7 @@ export function GastosRecurrentesList({ gastos }: { gastos: GastoRecurrenteRow[]
                     )}
                   </div>
                   <p className="text-white/40 text-xs mt-0.5">
-                    día {g.diaMes}{g.proveedor ? ` · ${g.proveedor}` : ""}{g.activo && g.proximaFecha ? ` · vence ${fechaCorta(g.proximaFecha)}` : ""}
+                    día {g.diaMes}{g.cadaMeses > 1 ? ` · ${etiquetaPeriodo(g.cadaMeses)}` : ""}{g.proveedor ? ` · ${g.proveedor}` : ""}{g.activo && g.proximaFecha ? ` · vence ${fechaCorta(g.proximaFecha)}` : ""}
                   </p>
                 </div>
                 <span className="text-sm font-medium flex-shrink-0">{peso(g.montoEstimado)}</span>
@@ -186,6 +188,12 @@ export function GastosRecurrentesList({ gastos }: { gastos: GastoRecurrenteRow[]
                     <div>
                       <label className={lblS}>Día del mes</label>
                       <input type="number" min={1} max={31} value={ef.dia_mes} onChange={(ev) => setEf((p) => ({ ...p, dia_mes: ev.target.value }))} className={inp} />
+                    </div>
+                    <div>
+                      <label className={lblS}>Se paga</label>
+                      <select value={ef.cada_meses} onChange={(ev) => setEf((p) => ({ ...p, cada_meses: ev.target.value }))} className={inp}>
+                        {PERIODOS.map((o) => <option key={o.meses} value={o.meses} className="bg-lgb-dark">{o.label}</option>)}
+                      </select>
                     </div>
                     <div>
                       <label className={lblS}>Categoría</label>
@@ -242,7 +250,7 @@ export function GastosRecurrentesList({ gastos }: { gastos: GastoRecurrenteRow[]
 
               {confirmDeleteId === g.id && (
                 <div className="mt-3 pt-3 border-t border-red-500/20 flex flex-wrap items-center gap-3">
-                  <p className="text-sm text-white/80">¿Eliminar "{g.nombre}"? <span className="text-white/40">No se puede deshacer.</span></p>
+                  <p className="text-sm text-white/80">¿Eliminar “{g.nombre}”? <span className="text-white/40">No se puede deshacer.</span></p>
                   <div className="flex gap-2 ml-auto">
                     <button onClick={() => doDelete(g.id)} disabled={deleting}
                       className="flex items-center gap-1.5 bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50">

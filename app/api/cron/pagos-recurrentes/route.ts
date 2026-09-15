@@ -4,6 +4,7 @@ import { pushAEmails } from "@/lib/push";
 import { adminEmails } from "@/lib/supabase/auth-server";
 import { registrarActividad } from "@/lib/actividad";
 import { combinarConRegistrados, pagosPendientes, cicloDe, type EgresoLite, type GastoRecurrenteRegistrado } from "@/lib/gastos-recurrentes";
+import { leerGastosRegistrados } from "@/lib/gastos-recurrentes-data";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -35,17 +36,18 @@ export async function GET(req: NextRequest) {
   const sb = supabaseAdmin();
   const hoy = new Date().toISOString().slice(0, 10);
 
-  const [{ data: egresos }, { data: registradosRaw }] = await Promise.all([
+  const [{ data: egresos }, registradosRaw] = await Promise.all([
     sb.from("egresos").select("fecha, categoria, proveedor, descripcion, total_mxn, es_capex").order("fecha", { ascending: true }).limit(2000),
-    sb.from("gastos_recurrentes").select("id, nombre, categoria, proveedor, monto_estimado, dia_mes, activo"),
+    leerGastosRegistrados(sb),
   ]);
-  const registrados: GastoRecurrenteRegistrado[] = (registradosRaw ?? []).map((r) => ({
+  const registrados: GastoRecurrenteRegistrado[] = registradosRaw.map((r) => ({
     id: r.id as string,
     nombre: r.nombre as string,
     categoria: (r.categoria as string | null) ?? null,
     proveedor: (r.proveedor as string | null) ?? null,
     montoEstimado: Number(r.monto_estimado) || 0,
     diaMes: Number(r.dia_mes) || 1,
+    cadaMeses: Number(r.cada_meses) || 1,
     activo: r.activo !== false,
   }));
 

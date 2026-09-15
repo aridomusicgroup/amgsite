@@ -2,8 +2,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, Loader2 } from "lucide-react";
+import { PERIODOS } from "@/lib/gastos-recurrentes";
 
-const EMPTY = { nombre: "", categoria: "", proveedor: "", monto_estimado: "", dia_mes: "5", notas: "" };
+const EMPTY = { nombre: "", categoria: "", proveedor: "", monto_estimado: "", dia_mes: "5", cada_meses: "1", notas: "" };
 
 export function NuevoGastoRecurrenteForm() {
   const router = useRouter();
@@ -75,6 +76,12 @@ export function NuevoGastoRecurrenteForm() {
         <div>
           <label className={lbl}>Día del mes *</label>
           <input type="number" min={1} max={31} value={f.dia_mes} onChange={set("dia_mes")} required className={inp} />
+        </div>
+        <div>
+          <label className={lbl}>Se paga</label>
+          <select value={f.cada_meses} onChange={(e) => setF((p) => ({ ...p, cada_meses: e.target.value }))} className={inp}>
+            {PERIODOS.map((o) => <option key={o.meses} value={o.meses} className="bg-lgb-dark">{o.label}</option>)}
+          </select>
         </div>
         <div className="col-span-2 sm:col-span-3">
           <label className={lbl}>Notas</label>

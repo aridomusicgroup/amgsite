@@ -36,8 +36,23 @@ export interface GastoRecurrenteRegistrado {
   proveedor: string | null;
   montoEstimado: number;
   diaMes: number; // 1-31
+  /** Cada cuántos meses toca: 1 = mensual, 2 = bimestral (la luz de CFE)… */
+  cadaMeses?: number;
   activo: boolean;
 }
+
+/** Periodicidades que se ofrecen en el panel (`gastos_recurrentes.cada_meses`). */
+export const PERIODOS: { meses: number; label: string }[] = [
+  { meses: 1, label: "Cada mes" },
+  { meses: 2, label: "Cada 2 meses" },
+  { meses: 3, label: "Cada 3 meses" },
+  { meses: 6, label: "Cada 6 meses" },
+  { meses: 12, label: "Cada año" },
+];
+
+/** "cada mes", "cada 2 meses", "cada año"… para mostrar junto al día. */
+export const etiquetaPeriodo = (cadaMeses: number): string =>
+  cadaMeses <= 1 ? "cada mes" : cadaMeses === 12 ? "cada año" : `cada ${cadaMeses} meses`;
 
 const MS_DIA = 24 * 60 * 60 * 1000;
 
@@ -130,16 +145,21 @@ function ocurrenciaEnMesDe(diaMes: number, iso: string): string {
   return aISO(new Date(y, m, Math.min(diaMes, ultimoDiaDelMes(y, m))));
 }
 
+/** Cada cuántos meses, saneado: entero de 1 a 12 (1 si viene vacío o raro). */
+const saneaCada = (cadaMeses: number | null | undefined): number =>
+  Math.min(12, Math.max(1, Math.trunc(Number(cadaMeses) || 1)));
+
 /**
- * Ocurrencia de `diaMes` en el mes SIGUIENTE al de `desdeISO` — no el mes
- * siguiente al día exacto. Si alguien paga unos días antes de la fecha
- * (pagó Google One el 5, el cargo real es el 7), ese pago sigue cerrando el
- * ciclo de ESE mes; comparar por día exacto lo dejaba "sin pagar" y el aviso
- * no se apagaba nunca aunque ya se hubiera registrado el pago.
+ * Ocurrencia de `diaMes` `cadaMeses` meses DESPUÉS del mes de `desdeISO` — no
+ * del día exacto. Si alguien paga unos días antes de la fecha (pagó Google One
+ * el 5, el cargo real es el 7), ese pago sigue cerrando el ciclo de ESE mes;
+ * comparar por día exacto lo dejaba "sin pagar" y el aviso no se apagaba nunca
+ * aunque ya se hubiera registrado el pago. Con `cadaMeses = 2` (la luz), el
+ * pago de agosto deja el siguiente vencimiento en octubre, no en septiembre.
  */
-function siguienteOcurrencia(diaMes: number, desdeISO: string): string {
+function siguienteOcurrencia(diaMes: number, desdeISO: string, cadaMeses = 1): string {
   const d = aFecha(desdeISO);
-  const y = d.getFullYear(), m = d.getMonth() + 1;
+  const y = d.getFullYear(), m = d.getMonth() + saneaCada(cadaMeses);
   return aISO(new Date(y, m, Math.min(diaMes, ultimoDiaDelMes(y, m))));
 }
 
@@ -149,8 +169,8 @@ function siguienteOcurrencia(diaMes: number, desdeISO: string): string {
  * ocurrencia de ESTE mes (aunque ya haya pasado — así avisa desde el día uno,
  * sin necesitar 2+ pagos de historial como sí requiere la inferencia).
  */
-export function proximoVencimiento(diaMes: number, ultimaPagadaISO: string | null, hoyISO: string): string {
-  if (ultimaPagadaISO) return siguienteOcurrencia(diaMes, ultimaPagadaISO);
+export function proximoVencimiento(diaMes: number, ultimaPagadaISO: string | null, hoyISO: string, cadaMeses = 1): string {
+  if (ultimaPagadaISO) return siguienteOcurrencia(diaMes, ultimaPagadaISO, cadaMeses);
   return ocurrenciaEnMesDe(diaMes, hoyISO);
 }
 
@@ -198,7 +218,7 @@ export function combinarConRegistrados(
       montoEstimado: r.montoEstimado,
       vecesVisto: ultimaPagada ? 1 : 0,
       ultimaFecha: ultimaPagada ?? "",
-      proximaFecha: proximoVencimiento(r.diaMes, ultimaPagada, hoyISO),
+      proximaFecha: proximoVencimiento(r.diaMes, ultimaPagada, hoyISO, r.cadaMeses ?? 1),
       origen: "explicito",
     });
   }
