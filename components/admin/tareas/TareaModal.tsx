@@ -29,6 +29,9 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
   const [resp, setResp] = useState(tarea.responsable_id ?? "");
   const [fecha, setFecha] = useState(tarea.fecha ?? "");
   const [linkPost, setLinkPost] = useState(tarea.link_post ?? "");
+  // Sólo en un tema de EP/álbum: cada canción lleva su tonalidad y su tempo.
+  const [tonalidad, setTonalidad] = useState(tarea.tonalidad ?? "");
+  const [bpm, setBpm] = useState(tarea.bpm != null ? String(tarea.bpm) : "");
   const [nuevaSub, setNuevaSub] = useState("");
   const [nuevaSubResp, setNuevaSubResp] = useState("");
   const [saving, setSaving] = useState(false);
@@ -70,7 +73,10 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
     try {
       await fetch(T, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: tarea.id, titulo, notas, responsable_id: resp || null, fecha: fecha || null, link_post: linkPost || null }),
+        body: JSON.stringify({
+          id: tarea.id, titulo, notas, responsable_id: resp || null, fecha: fecha || null, link_post: linkPost || null,
+          ...(tarea.es_cancion ? { tonalidad, bpm } : {}),
+        }),
       });
       setSaved(true);
     } finally { setSaving(false); }
@@ -82,7 +88,7 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
     const id = setTimeout(() => { void guardar(); }, 700);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [titulo, notas, resp, fecha, linkPost]);
+  }, [titulo, notas, resp, fecha, linkPost, tonalidad, bpm]);
   const cerrar = async () => {
     await guardar();
     // Un tema de EP renombrado: el título se guardó letra por letra mientras se
@@ -147,6 +153,20 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
             <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inp} />
           </div>
         </div>
+
+        {/* Por canción: los usa el previo para músico, que los pone en el nombre del archivo. */}
+        {tarea.es_cancion && (
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div>
+              <label className={lblS}>Tonalidad</label>
+              <input value={tonalidad} onChange={(e) => setTonalidad(e.target.value)} placeholder="Am" maxLength={12} className={inp} />
+            </div>
+            <div>
+              <label className={lblS}>BPM</label>
+              <input type="number" min={20} max={400} value={bpm} onChange={(e) => setBpm(e.target.value)} placeholder="154" className={inp} />
+            </div>
+          </div>
+        )}
 
         <RecordatorioTarea tareaId={tarea.id} actual={recordatorio} responsableId={tarea.responsable_id ?? null} equipo={equipo} miId={miId} />
 

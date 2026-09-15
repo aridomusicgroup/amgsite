@@ -26,7 +26,7 @@ async function conRespaldo(
   return { data: ((await b()).data as FilaLibre[] | null) ?? [] };
 }
 
-const COLS_TAREA = "id, proyecto_id, titulo, hecho, responsable_id, notas, fecha, orden, link_post, visible_cliente, revision, es_cancion";
+const COLS_TAREA = "id, proyecto_id, titulo, hecho, responsable_id, notas, fecha, orden, link_post, visible_cliente, revision, es_cancion, tonalidad, bpm";
 const COLS_SUB = "id, tarea_id, titulo, hecho, responsable_id, orden";
 const EN_VUELO_RENDER = ["pendiente", "renderizando", "subiendo"];
 const ACTIVOS_ENTREGA = ["cola", "produccion", "revision"];
@@ -815,6 +815,9 @@ export interface ProyectoTarea {
   revision: number;
   /** Un tema de EP/álbum: sus pasos son las subtareas. */
   es_cancion: boolean;
+  /** Sólo en un tema de EP/álbum: cada canción tiene la suya (la del proyecto es la de un sencillo). */
+  tonalidad: string | null;
+  bpm: number | null;
   /** "Aprobada" / "Subir a Drive": los dos pasos que mueven la entrega automática. */
   paso: PasoEntrega | null;
   /** Cómo va la entrega, en la tarea donde se pinta la píldora (ver adjuntarEntregas). */
@@ -944,6 +947,8 @@ export async function getProyectos(): Promise<Proyecto[]> {
       visible_cliente: t.visible_cliente !== false,
       revision: Number(t.revision) || 0,
       es_cancion: Boolean(t.es_cancion),
+      tonalidad: (t.tonalidad as string | null) ?? null,
+      bpm: t.bpm == null ? null : Number(t.bpm),
       paso: pasoDe(t as { paso?: unknown; titulo?: string }),
       entrega: null,
       subtareas: subtareasPorTarea.get(t.id as string) ?? [],
@@ -1187,6 +1192,8 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
       visible_cliente: t.visible_cliente !== false,
       revision: Number(t.revision) || 0,
       es_cancion: Boolean(t.es_cancion),
+      tonalidad: (t.tonalidad as string | null) ?? null,
+      bpm: t.bpm == null ? null : Number(t.bpm),
       paso: pasoDe(t as { paso?: unknown; titulo?: string }),
       entrega: null,
       subtareas: subtareasPorTarea.get(t.id as string) ?? [],

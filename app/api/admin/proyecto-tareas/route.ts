@@ -101,11 +101,27 @@ export async function PATCH(req: NextRequest) {
   if ("fecha" in b) patch.fecha = b.fecha || null;
   if ("link_post" in b) patch.link_post = b.link_post ? String(b.link_post) : null;
   if ("visible_cliente" in b) patch.visible_cliente = Boolean(b.visible_cliente);
-  if (Object.keys(patch).length === 0) return NextResponse.json({ error: "Nada que actualizar." }, { status: 400 });
+  // Tonalidad y BPM por tema (EP/álbum). Vacío = sin dato; un BPM fuera de
+  // 20-400 no se guarda (es el mismo rango que exige el previo para músico).
+  const ficha: Record<string, unknown> = {};
+  if ("tonalidad" in b) ficha.tonalidad = String(b.tonalidad ?? "").trim().slice(0, 12) || null;
+  if ("bpm" in b) {
+    const n = Math.round(Number(b.bpm));
+    ficha.bpm = Number.isFinite(n) && n >= 20 && n <= 400 ? n : null;
+  }
+  if (Object.keys(patch).length === 0 && Object.keys(ficha).length === 0) {
+    return NextResponse.json({ error: "Nada que actualizar." }, { status: 400 });
+  }
 
   // Estado previo: para registrar SOLO asignación/completado (no el autoguardado de notas)
   const { data: prev } = await sb.from("proyecto_tareas")
-    .select("titulo, responsable_id, hecho, proyecto_id, visible_cliente").eq("id", id).single();
+    .select("titulo, responsable_id, hecho, proyecto_id, visible_cliente, es_cancion").eq("id", id).single();
+  // Sólo un tema de EP/álbum lleva su propia tonalidad y BPM; en lo demás
+  // viven en el proyecto (Editar proyecto).
+  if (prev?.es_cancion) Object.assign(patch, ficha);
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ error: "Tonalidad y BPM sólo se guardan en los temas de un EP o álbum." }, { status: 400 });
+  }
   // Un TEMA de EP con carpeta en disco: anclarla antes de renombrarlo, o el
   // script del estudio la pierde. La pregunta de si se renombra la hace la
   // ventana de la tarea al cerrarse (aquí llega cada 0.7 s mientras se escribe).
