@@ -171,14 +171,17 @@ export function TareasTab({ proyecto, equipo, recordatorios, miId, musicos }: {
                         </span>
                       )}
 
-                      <button onClick={() => toggle(t)}
-                        className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${done ? "bg-green-500/30 border-green-400/50" : "border-white/20"}`}>
+                      <button onClick={() => toggle(t)} aria-label={done ? `Marcar pendiente: ${t.titulo}` : `Completar: ${t.titulo}`}
+                        className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 ${done ? "bg-green-500/30 border-green-400/50" : "border-white/20"}`}>
                         {done && <Check size={11} className="text-green-300" />}
                       </button>
 
+                      {/* Al cerrar la ventana el foco regresa aquí, y como el botón
+                          ocupa todo el renglón, cualquier contorno dibujaba un recuadro
+                          de lado a lado. Con teclado se marca subrayando el título. */}
                       <button onClick={() => setModalTareaId(t.id)}
                         title="Abrir la tarea (subtareas, notas, fecha, recordatorio)"
-                        className={`text-sm flex-1 min-w-0 truncate text-left hover:text-white transition-colors ${done ? "text-white/30 line-through" : t.revision > 0 ? "text-amber-300/90" : "text-white/80"}`}>
+                        className={`text-sm flex-1 min-w-0 truncate text-left hover:text-white transition-colors focus:outline-none focus-visible:underline focus-visible:decoration-white/40 focus-visible:underline-offset-4 ${done ? "text-white/30 line-through" : t.revision > 0 ? "text-amber-300/90" : "text-white/80"}`}>
                         {t.revision > 0 && <span className="text-[9px] font-bold text-amber-400 bg-amber-400/15 border border-amber-400/30 rounded-full px-1.5 mr-1.5 align-middle">R{t.revision}</span>}
                         {t.titulo}
                         {t.subtareas.length > 0 && <span className="text-white/30 ml-1">({subDone}/{t.subtareas.length})</span>}

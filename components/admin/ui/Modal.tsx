@@ -59,7 +59,7 @@ export function Modal({ open, onClose, title, children, maxWidth = "max-w-lg" }:
           <motion.div
             ref={panelRef}
             role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}
-            className={`relative bg-lgb-dark border border-white/15 rounded-t-2xl sm:rounded-2xl w-full ${maxWidth} max-h-[88vh] overflow-y-auto p-5 outline-none`}
+            className={`relative bg-lgb-dark border border-white/15 rounded-t-2xl sm:rounded-2xl w-full ${maxWidth} max-h-[88vh] overflow-y-auto scroll-sutil p-5 outline-none`}
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.97 }}
             animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.98 }}

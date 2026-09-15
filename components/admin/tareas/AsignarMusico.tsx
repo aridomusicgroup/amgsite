@@ -22,6 +22,13 @@ const ESTADO_LABEL: Record<string, string> = {
   entregado: "ya mandó su pista",
   aceptado: "listo",
 };
+/** El estado como píldora: a 10px y sin fondo se perdía junto al nombre. */
+const PILDORA = "text-[11px] leading-none rounded-full px-2 py-1 shrink-0 whitespace-nowrap";
+const ESTADO_COLOR: Record<string, string> = {
+  pendiente: "bg-white/5 text-white/50",
+  entregado: "bg-green-500/10 text-green-300",
+  aceptado: "bg-green-500/10 text-green-300",
+};
 
 /**
  * Asignarle esta tarea a un músico externo.
@@ -115,7 +122,7 @@ export function AsignarMusico({ proyectoId, tareaId, tituloTarea, musicos }: {
 
   return (
     <div className="mt-4">
-      <p className="text-[10px] text-white/30 uppercase tracking-wider mb-2">Músico externo</p>
+      <p className="text-[11px] font-medium text-white/45 uppercase tracking-wider mb-2">Músico externo</p>
 
       {asignaciones.length > 0 && (
         <div className="space-y-1.5 mb-2">
@@ -128,8 +135,8 @@ export function AsignarMusico({ proyectoId, tareaId, tituloTarea, musicos }: {
               </span>
               {/* Sin portal no puede grabar ahí: "esperando su grabación" engañaba. */}
               {a.musicos?.portal_activo === false
-                ? <span className="text-[10px] text-amber-300/70 shrink-0">Sin portal</span>
-                : <span className="text-[10px] text-white/30 shrink-0">{ESTADO_LABEL[a.estado] ?? a.estado}</span>}
+                ? <span className={`${PILDORA} bg-amber-400/10 text-amber-300`}>Sin portal</span>
+                : <span className={`${PILDORA} ${ESTADO_COLOR[a.estado] ?? "bg-white/5 text-white/50"}`}>{ESTADO_LABEL[a.estado] ?? a.estado}</span>}
               {a.musicos?.email
                 ? <Mail size={11} className="text-white/25 shrink-0" aria-label="Tiene correo" />
                 : <MailX size={11} className="text-amber-300/70 shrink-0" aria-label="Sin correo: no se le puede avisar" />}

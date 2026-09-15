@@ -105,6 +105,12 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
     router.refresh();
     onClose();
   };
+  // Escape cierra (guardando), como el resto de las ventanas del panel.
+  useEffect(() => {
+    const alTeclear = (e: KeyboardEvent) => { if (e.key === "Escape") void cerrar(); };
+    document.addEventListener("keydown", alTeclear);
+    return () => document.removeEventListener("keydown", alTeclear);
+  });
   // Directo y no por onAction: hay que leer la respuesta, que dice si con esto
   // ya sólo falta subir a Drive (y entonces se abre el cuadro de entrega).
   const toggleHecho = () => {
@@ -132,7 +138,8 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/70 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={cerrar}>
-      <div className="bg-lgb-dark border border-white/15 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[88vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label={titulo || "Tarea"}
+        className="bg-lgb-dark border border-white/15 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[88vh] overflow-y-auto scroll-sutil p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 mb-4">
           <button onClick={toggleHecho} className={`mt-1 w-5 h-5 rounded border flex items-center justify-center shrink-0 ${tarea.hecho ? "bg-green-500/30 border-green-400/50" : "border-white/25"}`}>
             {tarea.hecho && <Check size={13} className="text-green-300" />}
@@ -202,7 +209,7 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
         )}
 
         <div className="mt-4">
-          <p className="text-[10px] text-white/30 uppercase tracking-wider mb-2">Subtareas {subtareas.length > 0 && <span className="text-white/40">· {subDone}/{subtareas.length}</span>}</p>
+          <p className="text-[11px] font-medium text-white/45 uppercase tracking-wider mb-2">Subtareas {subtareas.length > 0 && <span className="text-white/55 tabular-nums">· {subDone}/{subtareas.length}</span>}</p>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEndSub}>
             <SortableContext items={subtareas.map((s) => s.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-1.5">
@@ -232,7 +239,9 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
                         {s.paso === "entrega" && tarea.entrega && <EntregaEstado e={tarea.entrega} titulo={tarea.titulo} />}
                         <select value={s.responsable_id ?? ""} onChange={(e) => setSubResp(s.id, e.target.value)} disabled={busy}
                           title="Responsable de la subtarea"
-                          className={`shrink-0 max-w-[7.5rem] bg-white/5 border rounded-md px-1.5 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-lgb-red ${s.responsable_id ? "border-lgb-red/40 text-white/80" : "border-white/10 text-white/35"}`}>
+                          // Neutro: el borde rojo en TODAS las asignadas se leía como error.
+                          // Sin nadie, punteado: eso sí es lo que hay que ver.
+                          className={`shrink-0 w-[7.5rem] bg-white/5 border rounded-md px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-lgb-red ${s.responsable_id ? "border-white/15 text-white/75" : "border-dashed border-white/20 text-white/40"}`}>
                           <option value="" className="bg-lgb-dark">— nadie</option>
                           {equipo.map((m) => <option key={m.id} value={m.id} className="bg-lgb-dark">{m.nombre}</option>)}
                         </select>
