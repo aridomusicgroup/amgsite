@@ -13,6 +13,7 @@ import { registrarPagoDeContado, revertirFidelidadDeVenta, sincronizarFidelidadV
 import { normalizarMedio } from "@/lib/medios-pago";
 import { armarTemas, temasDeLaCotizacion, type TemaPlan } from "@/lib/armar-proyecto";
 import { limpiarTemas } from "@/lib/temas";
+import { limpiarCompas } from "@/lib/compas";
 
 const peso = (n: unknown) => `$${(Number(n) || 0).toLocaleString("es-MX")}`;
 
@@ -218,16 +219,25 @@ export async function POST(req: NextRequest) {
         : /personaliz/i.test(tv) ? "beat_personalizado" : /letra/i.test(tv) ? "bp_letra"
         : /mezcla|master/i.test(tv) ? "mezcla_master" : /grabaci/i.test(tv) ? "grabacion"
         : /exclusiv/i.test(tv) ? "exclusividad" : "beat_personalizado";
-      const { data: proy } = await sb.from("proyectos").insert({
+      const filaProy = {
         folio: proyectoFolio, clase: "produccion",
         titulo: b.beat_nombre || tv || "Producción", tipo: tproy, estado: "cola", prioridad: "media",
         contacto_id: contactoId, venta_id: ventaRow.id, cotizacion_id: b.cotizacion_id || null,
         responsable_id: responsableId, responsables: responsables.length ? responsables : null,
-        // Los toma el previo para músico; si no vinieron se capturan luego.
+        // Los toma el previo para músico, y el script los pone en el .rpp
+        // (BPM y compás) mientras nadie lo haya guardado en REAPER.
         tonalidad: (b.tonalidad || "").trim() || null,
         bpm: Number(b.bpm) || null,
+        compas: limpiarCompas(b.compas),
         creado_por: "ventas",
-      }).select("id").single();
+      };
+      let { data: proy, error: eProy } = await sb.from("proyectos").insert(filaProy).select("id").single();
+      // Sin supabase-compas.sql todavía, el proyecto nace igual (sin compás).
+      if (eProy && /compas/i.test(eProy.message)) {
+        const { compas: _c, ...sinCompas } = filaProy;
+        void _c;
+        ({ data: proy, error: eProy } = await sb.from("proyectos").insert(sinCompas).select("id").single());
+      }
       // Tareas del proyecto, en orden de prioridad:
       //  1. EP/Álbum → una tarea por tema, con lo que lleva ESE tema.
       //  2. `tareas_libres` → conceptos fuera de catálogo ("+ Libre"): se crean tal

@@ -12,6 +12,7 @@ import { inp, lblS, type Equipo } from "./estilos";
 import { AsignarMusico, type MusicoLite } from "./AsignarMusico";
 import { atenderRespuesta, preguntarCarpeta } from "@/lib/entrega-cliente";
 import { EntregaEstado } from "@/components/admin/entrega/EntregaEstado";
+import { CompasSelect } from "@/components/admin/CompasSelect";
 
 // ── Ventana grande: detalle de una tarea (notas, responsable, subtareas) ──────
 export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId, proyectoId, musicos, onClose, onAction }: {
@@ -32,6 +33,7 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
   // Sólo en un tema de EP/álbum: cada canción lleva su tonalidad y su tempo.
   const [tonalidad, setTonalidad] = useState(tarea.tonalidad ?? "");
   const [bpm, setBpm] = useState(tarea.bpm != null ? String(tarea.bpm) : "");
+  const [compas, setCompas] = useState(tarea.compas ?? "");
   const [nuevaSub, setNuevaSub] = useState("");
   const [nuevaSubResp, setNuevaSubResp] = useState("");
   const [saving, setSaving] = useState(false);
@@ -75,7 +77,7 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: tarea.id, titulo, notas, responsable_id: resp || null, fecha: fecha || null, link_post: linkPost || null,
-          ...(tarea.es_cancion ? { tonalidad, bpm } : {}),
+          ...(tarea.es_cancion ? { tonalidad, bpm, compas } : {}),
         }),
       });
       setSaved(true);
@@ -88,7 +90,7 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
     const id = setTimeout(() => { void guardar(); }, 700);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [titulo, notas, resp, fecha, linkPost, tonalidad, bpm]);
+  }, [titulo, notas, resp, fecha, linkPost, tonalidad, bpm, compas]);
   const cerrar = async () => {
     await guardar();
     // Un tema de EP renombrado: el título se guardó letra por letra mientras se
@@ -154,9 +156,10 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
           </div>
         </div>
 
-        {/* Por canción: los usa el previo para músico, que los pone en el nombre del archivo. */}
+        {/* Por canción: el previo para músico los pone en el nombre del archivo, y
+            el script pone BPM y compás en el .rpp mientras nadie lo haya guardado. */}
         {tarea.es_cancion && (
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-3 mb-4">
             <div>
               <label className={lblS}>Tonalidad</label>
               <input value={tonalidad} onChange={(e) => setTonalidad(e.target.value)} placeholder="Am" maxLength={12} className={inp} />
@@ -164,6 +167,10 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
             <div>
               <label className={lblS}>BPM</label>
               <input type="number" min={20} max={400} value={bpm} onChange={(e) => setBpm(e.target.value)} placeholder="154" className={inp} />
+            </div>
+            <div>
+              <label className={lblS}>Compás</label>
+              <CompasSelect value={compas} onChange={setCompas} className={inp} />
             </div>
           </div>
         )}

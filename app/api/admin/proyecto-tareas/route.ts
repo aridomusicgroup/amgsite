@@ -7,6 +7,7 @@ import { pasoDeTitulo } from "@/lib/pasos-entrega";
 import type { EntregaLista } from "@/lib/entrega";
 import { efectosDeTareaCompletada } from "@/lib/tarea-completar";
 import { anclarCarpeta } from "@/lib/carpeta-reaper";
+import { limpiarCompas } from "@/lib/compas";
 
 export const dynamic = "force-dynamic";
 
@@ -109,6 +110,7 @@ export async function PATCH(req: NextRequest) {
     const n = Math.round(Number(b.bpm));
     ficha.bpm = Number.isFinite(n) && n >= 20 && n <= 400 ? n : null;
   }
+  if ("compas" in b) ficha.compas = limpiarCompas(b.compas);
   if (Object.keys(patch).length === 0 && Object.keys(ficha).length === 0) {
     return NextResponse.json({ error: "Nada que actualizar." }, { status: 400 });
   }
@@ -128,7 +130,15 @@ export async function PATCH(req: NextRequest) {
   if (patch.titulo && String(patch.titulo).trim() !== String(prev?.titulo ?? "").trim()) {
     await anclarCarpeta(sb, "proyecto_tareas", id, prev?.titulo as string, patch.titulo as string);
   }
-  const { error } = await sb.from("proyecto_tareas").update(patch).eq("id", id);
+  let { error } = await sb.from("proyecto_tareas").update(patch).eq("id", id);
+  // Sin supabase-compas.sql todavía: se guarda lo demás, no se pierde el autoguardado entero.
+  if (error && "compas" in patch && /compas/i.test(error.message)) {
+    const { compas: _c, ...sinCompas } = patch;
+    void _c;
+    ({ error } = Object.keys(sinCompas).length
+      ? await sb.from("proyecto_tareas").update(sinCompas).eq("id", id)
+      : { error: null });
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // ¿Con esto ya sólo falta subir a Drive? Entonces el navegador abre el cuadro

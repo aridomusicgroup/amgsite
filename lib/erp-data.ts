@@ -18,12 +18,14 @@ type FilaLibre = Record<string, any>;
  * ella y, si falla, sin ella.
  */
 async function conRespaldo(
-  a: () => PromiseLike<{ data: unknown; error: unknown }>,
-  b: () => PromiseLike<{ data: unknown; error: unknown }>,
+  ...intentos: (() => PromiseLike<{ data: unknown; error: unknown }>)[]
 ): Promise<{ data: FilaLibre[] }> {
-  const r = await a();
-  if (!r.error) return { data: (r.data as FilaLibre[] | null) ?? [] };
-  return { data: ((await b()).data as FilaLibre[] | null) ?? [] };
+  // De la consulta más completa a la más pelada; la última va sin red.
+  for (const [i, intento] of intentos.entries()) {
+    const r = await intento();
+    if (!r.error || i === intentos.length - 1) return { data: (r.data as FilaLibre[] | null) ?? [] };
+  }
+  return { data: [] };
 }
 
 const COLS_TAREA = "id, proyecto_id, titulo, hecho, responsable_id, notas, fecha, orden, link_post, visible_cliente, revision, es_cancion, tonalidad, bpm";
@@ -818,6 +820,8 @@ export interface ProyectoTarea {
   /** Sólo en un tema de EP/álbum: cada canción tiene la suya (la del proyecto es la de un sencillo). */
   tonalidad: string | null;
   bpm: number | null;
+  /** "6/8". Con el BPM, el script lo pone en el .rpp mientras nadie lo haya guardado. */
+  compas: string | null;
   /** "Aprobada" / "Subir a Drive": los dos pasos que mueven la entrega automática. */
   paso: PasoEntrega | null;
   /** Cómo va la entrega, en la tarea donde se pinta la píldora (ver adjuntarEntregas). */
@@ -838,6 +842,8 @@ export interface Proyecto {
   creado: string;
   brief: string | null; entregable_url: string | null; notas: string | null;
   tonalidad: string | null; bpm: number | null;
+  /** "6/8". Con el BPM, el script lo pone en el .rpp mientras nadie lo haya guardado. */
+  compas: string | null;
   /** Carpeta de Drive donde el cliente sube sus archivos (null si aún no se crea o Drive no está configurado). */
   drive_folder_id: string | null;
   plataforma: string | null; fecha_publicacion: string | null; link_post: string | null;
@@ -868,6 +874,8 @@ export async function getProyectos(): Promise<Proyecto[]> {
   const [provRes, tareasRes, equipoRes, ventasRes, pagosRes, subtareasRes, postsRes, entregaRes, colaRes] = await Promise.all([
     sb.from("proyectos").select("*, contactos(nombre)").order("created_at", { ascending: false }).limit(1000),
     conRespaldo(
+      // `compas` es columna nueva (supabase-compas.sql).
+      () => sb.from("proyecto_tareas").select(`${COLS_TAREA}, paso, compas`).order("orden", { ascending: true }),
       () => sb.from("proyecto_tareas").select(`${COLS_TAREA}, paso`).order("orden", { ascending: true }),
       () => sb.from("proyecto_tareas").select(COLS_TAREA).order("orden", { ascending: true }),
     ),
@@ -949,6 +957,7 @@ export async function getProyectos(): Promise<Proyecto[]> {
       es_cancion: Boolean(t.es_cancion),
       tonalidad: (t.tonalidad as string | null) ?? null,
       bpm: t.bpm == null ? null : Number(t.bpm),
+      compas: (t.compas as string | null) ?? null,
       paso: pasoDe(t as { paso?: unknown; titulo?: string }),
       entrega: null,
       subtareas: subtareasPorTarea.get(t.id as string) ?? [],
@@ -987,6 +996,7 @@ export async function getProyectos(): Promise<Proyecto[]> {
       creado: ((p.created_at as string | null) ?? "").slice(0, 10),
       brief: p.brief as string | null, entregable_url: p.entregable_url as string | null, notas: p.notas as string | null,
       tonalidad: (p.tonalidad as string | null) ?? null, bpm: p.bpm == null ? null : Number(p.bpm),
+      compas: (p.compas as string | null) ?? null,
       drive_folder_id: (p.drive_folder_id as string | null) ?? null,
       plataforma: (p.plataforma as string | null) ?? null,
       fecha_publicacion: (p.fecha_publicacion as string | null) ?? null,
@@ -1108,6 +1118,7 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
 
   const [tareasRes, equipoRes, ventaRes, contratosRes, cotizacionRes, renderJobsRes, renderInvRes, actividadRes, postsRes, referencia] = await Promise.all([
     conRespaldo(
+      () => sb.from("proyecto_tareas").select(`${COLS_TAREA}, paso, compas`).eq("proyecto_id", id).order("orden", { ascending: true }),
       () => sb.from("proyecto_tareas").select(`${COLS_TAREA}, paso`).eq("proyecto_id", id).order("orden", { ascending: true }),
       () => sb.from("proyecto_tareas").select(COLS_TAREA).eq("proyecto_id", id).order("orden", { ascending: true }),
     ),
@@ -1194,6 +1205,7 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
       es_cancion: Boolean(t.es_cancion),
       tonalidad: (t.tonalidad as string | null) ?? null,
       bpm: t.bpm == null ? null : Number(t.bpm),
+      compas: (t.compas as string | null) ?? null,
       paso: pasoDe(t as { paso?: unknown; titulo?: string }),
       entrega: null,
       subtareas: subtareasPorTarea.get(t.id as string) ?? [],
@@ -1264,6 +1276,7 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
     creado: ((p.created_at as string | null) ?? "").slice(0, 10),
     brief: p.brief as string | null, entregable_url: p.entregable_url as string | null, notas: p.notas as string | null,
     tonalidad: (p.tonalidad as string | null) ?? null, bpm: p.bpm == null ? null : Number(p.bpm),
+      compas: (p.compas as string | null) ?? null,
     drive_folder_id: (p.drive_folder_id as string | null) ?? null,
     plataforma: (p.plataforma as string | null) ?? null,
     fecha_publicacion: (p.fecha_publicacion as string | null) ?? null,

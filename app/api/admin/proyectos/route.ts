@@ -10,6 +10,7 @@ import { crearTareasDeProyecto, crearTareasDeCanciones, parseInstrumentos } from
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
 import { papeleraCarpeta } from "@/lib/drive-oauth";
 import { normalizarMedio } from "@/lib/medios-pago";
+import { limpiarCompas } from "@/lib/compas";
 
 export const dynamic = "force-dynamic";
 
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
   const leadResp = responsables[0] || b.responsable_id || null;
 
   const folio = await nextFolio(sb, "proyectos", "P");
-  const { data: proy, error } = await sb.from("proyectos").insert({
+  const fila = {
     folio, clase, titulo: String(b.titulo).trim(), tipo: b.tipo || null,
     estado: ESTADOS.includes(b.estado) ? b.estado : "cola",
     prioridad: ["baja", "media", "alta"].includes(b.prioridad) ? b.prioridad : "media",
@@ -122,9 +123,18 @@ export async function POST(req: NextRequest) {
     fecha_inicio: b.fecha_inicio || null, fecha_entrega: b.fecha_entrega || null,
     brief: b.brief || null, notas: b.notas || null, entregable_url: b.entregable_url || null,
     tonalidad: (b.tonalidad || "").trim() || null, bpm: Number(b.bpm) || null,
+    // Con el BPM, el script lo pone en el .rpp mientras nadie lo haya guardado.
+    compas: limpiarCompas(b.compas),
     plataforma: b.plataforma || null, fecha_publicacion: b.fecha_publicacion || null, link_post: b.link_post || null,
     creado_por: email,
-  }).select("id").single();
+  };
+  let { data: proy, error } = await sb.from("proyectos").insert(fila).select("id").single();
+  // Sin supabase-compas.sql todavía, el proyecto nace igual (sin compás).
+  if (error && /compas/i.test(error.message)) {
+    const { compas: _c, ...sinCompas } = fila;
+    void _c;
+    ({ data: proy, error } = await sb.from("proyectos").insert(sinCompas).select("id").single());
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Canciones (EP/Album): una tarea por tema con sus pasos como subtareas.
@@ -216,6 +226,7 @@ export async function PATCH(req: NextRequest) {
   for (const k of ["tipo", "brief", "notas", "entregable_url", "responsable_id", "venta_id", "fecha_inicio", "fecha_entrega", "fecha_entrega_real", "plataforma", "fecha_publicacion", "link_post", "tonalidad", "bpm"]) {
     if (k in b) patch[k] = b[k] ? b[k] : null;
   }
+  if ("compas" in b) patch.compas = limpiarCompas(b.compas);
   if (b.estado && ESTADOS.includes(b.estado)) patch.estado = b.estado;
   if (["baja", "media", "alta"].includes(b.prioridad)) patch.prioridad = b.prioridad;
   if ("responsables" in b) {
@@ -244,6 +255,12 @@ export async function PATCH(req: NextRequest) {
     // Probablemente falta la columna (SQL de almacenamiento sin correr) — reintenta sin ella.
     const { limite_almacenamiento_mb: _omit, ...sinLimite } = patch;
     ({ error } = await sb.from("proyectos").update(sinLimite).eq("id", id));
+  }
+  if (error && "compas" in patch && /compas/i.test(error.message)) {
+    // Sin supabase-compas.sql todavía: se guarda todo lo demás.
+    const { compas: _c, limite_almacenamiento_mb: _l, ...sinCompas } = patch;
+    void _c; void _l;
+    ({ error } = await sb.from("proyectos").update(sinCompas).eq("id", id));
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

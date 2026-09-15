@@ -16,6 +16,7 @@ import {
 } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
 import { InstrumentosPicker } from "@/components/admin/InstrumentosPicker";
+import { CompasSelect } from "@/components/admin/CompasSelect";
 import { fechaLarga, soloHora, paraInput, sugerenciaInicial, estaVencido, type MiRecordatorio } from "@/lib/recordatorios";
 import { estaAtrasado } from "@/lib/vencimientos";
 import { useDestacar } from "@/lib/useDestacar";
@@ -456,7 +457,7 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
     titulo: p.titulo, clase: p.clase, tipo: p.tipo ?? "", responsable_id: p.responsable_id ?? "", responsables: p.responsables ?? [],
     prioridad: p.prioridad, fecha_entrega: p.fecha_entrega ?? "", brief: p.brief ?? "",
     entregable_url: p.entregable_url ?? "", notas: p.notas ?? "", venta_id: p.venta_id ?? "",
-    tonalidad: p.tonalidad ?? "", bpm: p.bpm != null ? String(p.bpm) : "",
+    tonalidad: p.tonalidad ?? "", bpm: p.bpm != null ? String(p.bpm) : "", compas: p.compas ?? "",
     plataforma: p.plataforma ?? "", fecha_publicacion: p.fecha_publicacion ?? "", link_post: p.link_post ?? "",
   });
   const [ventaInput, setVentaInput] = useState(ventas.find((v) => v.id === p.venta_id)?.label ?? "");
@@ -864,6 +865,10 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
               <label className={lblS}>BPM</label>
               <input type="number" min={20} max={400} value={ef.bpm} onChange={(e) => setEf((p) => ({ ...p, bpm: e.target.value }))} placeholder="154" className={inp} />
             </div>
+            <div>
+              <label className={lblS}>Compás</label>
+              <CompasSelect value={ef.compas} onChange={(v) => setEf((p) => ({ ...p, compas: v }))} className={inp} />
+            </div>
           </div>
           {isAdmin && (
             <div>
@@ -931,7 +936,7 @@ function NuevoProyecto({ equipo, clientes, onClose }: { equipo: Equipo[]; client
   const [error, setError] = useState<string | null>(null);
   const [f, setF] = useState({
     titulo: "", tipo: "beat_personalizado", responsable_id: "", prioridad: "media",
-    fecha_entrega: "", brief: "", notas: "", tonalidad: "", bpm: "",
+    fecha_entrega: "", brief: "", notas: "", tonalidad: "", bpm: "", compas: "",
     cliente: "", email: "", telefono: "", canal: "whatsapp",
     plataforma: "", fecha_publicacion: "", link_post: "", canciones: "", instrumentos: "",
   });
@@ -1024,8 +1029,8 @@ function NuevoProyecto({ equipo, clientes, onClose }: { equipo: Equipo[]; client
           <input value={clase === "produccion" ? f.brief : f.notas} onChange={(e) => set(clase === "produccion" ? "brief" : "notas", e.target.value)} className={inp} />
         </div>
 
-        {/* Tonalidad y BPM: el previo para músico los toma de aquí. Si se dejan
-            vacíos se guardan solos la primera vez que se escriban en REAPER. */}
+        {/* Tonalidad, BPM y compás: el previo para músico los toma de aquí, y el
+            script pone BPM y compás en el .rpp mientras nadie lo haya guardado. */}
         {clase === "produccion" && (
           <>
             <div>
@@ -1035,6 +1040,10 @@ function NuevoProyecto({ equipo, clientes, onClose }: { equipo: Equipo[]; client
             <div>
               <label className={lblS}>BPM <span className="text-white/25">(opcional)</span></label>
               <input type="number" min={20} max={400} value={f.bpm} onChange={(e) => set("bpm", e.target.value)} placeholder="154" className={inp} />
+            </div>
+            <div>
+              <label className={lblS}>Compás <span className="text-white/25">(opcional)</span></label>
+              <CompasSelect value={f.compas} onChange={(v) => set("compas", v)} className={inp} />
             </div>
           </>
         )}

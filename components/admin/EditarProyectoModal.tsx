@@ -10,6 +10,7 @@ import {
 import { TIPO_PROY_LABEL, PRIORIDAD_LABEL, type ProyectoDetalle } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
 import { atenderRespuesta } from "@/lib/entrega-cliente";
+import { CompasSelect } from "@/components/admin/CompasSelect";
 
 /**
  * Mismo formulario que la edición inline de la tarjeta en el kanban (Producción),
@@ -28,6 +29,7 @@ export function EditarProyectoModal({ open, proyecto, equipo, ventas, isAdmin, o
     prioridad: proyecto.prioridad, fecha_entrega: proyecto.fecha_entrega ?? "", brief: proyecto.brief ?? "",
     entregable_url: proyecto.entregable_url ?? "", notas: proyecto.notas ?? "", venta_id: proyecto.venta_id ?? "",
     tonalidad: proyecto.tonalidad ?? "", bpm: proyecto.bpm != null ? String(proyecto.bpm) : "",
+    compas: proyecto.compas ?? "",
     plataforma: proyecto.plataforma ?? "", fecha_publicacion: proyecto.fecha_publicacion ?? "", link_post: proyecto.link_post ?? "",
   });
   const [ventaInput, setVentaInput] = useState(ventas.find((v) => v.id === proyecto.venta_id)?.label ?? "");
@@ -101,6 +103,10 @@ export function EditarProyectoModal({ open, proyecto, equipo, ventas, isAdmin, o
           <div>
             <label className={lblS}>BPM</label>
             <input type="number" min={20} max={400} value={ef.bpm} onChange={(e) => setEf((p) => ({ ...p, bpm: e.target.value }))} placeholder="154" className={inp} />
+          </div>
+          <div>
+            <label className={lblS}>Compás</label>
+            <CompasSelect value={ef.compas} onChange={(v) => setEf((p) => ({ ...p, compas: v }))} className={inp} />
           </div>
         </div>
         {isAdmin && (
