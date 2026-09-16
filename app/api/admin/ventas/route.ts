@@ -56,7 +56,18 @@ export async function POST(req: NextRequest) {
   const email = (b.email || "").trim().toLowerCase();
   const telefono = (b.telefono || "").trim();
   const t10 = tel10(telefono);
-  if (cliente || email || telefono) {
+  // Elegido de la lista en "Nueva venta": ése es, sin adivinar por nombre.
+  if (b.contacto_id && /^[0-9a-f-]{36}$/i.test(String(b.contacto_id))) {
+    const { data: elegido } = await sb.from("contactos").select("id, email, telefono").eq("id", b.contacto_id).is("merged_into", null).maybeSingle();
+    if (elegido) {
+      contactoId = elegido.id as string;
+      const patch: Record<string, string> = {};
+      if (email && !elegido.email) patch.email = email;
+      if (telefono && !elegido.telefono) patch.telefono = telefono;
+      if (Object.keys(patch).length) await sb.from("contactos").update(patch).eq("id", contactoId);
+    }
+  }
+  if (!contactoId && (cliente || email || telefono)) {
     const { data: existentes } = await sb.from("contactos").select("id, nombre, email, telefono").is("merged_into", null);
     const list = existentes ?? [];
     const match =

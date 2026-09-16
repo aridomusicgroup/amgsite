@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getFullAdminEmail } from "@/lib/supabase/auth-server";
-import { getVentas, getInventario } from "@/lib/erp-data";
+import { getVentas, getInventario, getContactos } from "@/lib/erp-data";
 import { VentasList } from "@/components/admin/VentasList";
 import { NuevaVentaForm } from "@/components/admin/NuevaVentaForm";
 import { ConciliarVentas } from "@/components/admin/ConciliarVentas";
@@ -12,9 +12,16 @@ const peso = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
 
 export default async function VentasPage() {
   if (!(await getFullAdminEmail())) redirect("/admin"); // solo admins totales
-  const [ventas, inventario, tcSugerido] = await Promise.all([
-    getVentas(), getInventario(), tipoCambioSugerido(),
+  const [ventas, inventario, tcSugerido, contactos] = await Promise.all([
+    getVentas(), getInventario(), tipoCambioSugerido(), getContactos(),
   ]);
+  // Para prellenar al cliente en "Nueva venta", igual que en cotizaciones.
+  const clientes = contactos
+    .filter((c) => c.nombre)
+    .map((c) => ({
+      id: c.id, nombre: c.nombre as string, email: c.email, telefono: c.telefono,
+      origen: c.origen, origen_post_id: c.origenPostId, origen_enlace: c.origenEnlace,
+    }));
   const beats = inventario.map((b) => ({ id: b.id, nombre: b.nombre }));
   const total = ventas.reduce((a, v) => a + v.total_mxn, 0);
   const ticket = ventas.length ? total / ventas.length : 0;
@@ -52,7 +59,7 @@ export default async function VentasPage() {
 
       <ConciliarVentas ventas={ventas} />
 
-      <NuevaVentaForm beats={beats} tcSugerido={tcSugerido} />
+      <NuevaVentaForm beats={beats} clientes={clientes} tcSugerido={tcSugerido} />
       <VentasList ventas={ventas} />
     </div>
   );

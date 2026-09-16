@@ -33,8 +33,15 @@ const EMPTY = {
 
 const norm = (s: string) => (s || "").replace(/\s+/g, " ").trim().toLowerCase();
 
-export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
+export interface ClienteVenta {
+  id: string; nombre: string; email: string | null; telefono: string | null;
+  origen: string | null; origen_post_id: string | null; origen_enlace: string | null;
+}
+
+export function NuevaVentaForm({ beats, clientes = [], tcSugerido = TIPO_CAMBIO_FALLBACK }: {
   beats: { id: string; nombre: string }[];
+  /** Clientes ya registrados: al elegir uno se llenan sus datos. */
+  clientes?: ClienteVenta[];
   /** Promedio de las últimas ventas en dólares (lo calcula el servidor). */
   tcSugerido?: number;
 }) {
@@ -43,6 +50,24 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
   const [f, setF] = useState({ ...EMPTY });
   /** Cómo llegó el cliente (Instagram, TikTok…), aparte del canal donde se cerró. */
   const [origen, setOrigen] = useState<OrigenValor>(ORIGEN_VACIO);
+  /** El cliente elegido de la lista: la venta se liga a él y no a uno nuevo con el mismo nombre. */
+  const [contactoId, setContactoId] = useState<string | null>(null);
+
+  const onCliente = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nombre = e.target.value;
+    const c = clientes.find((x) => x.nombre === nombre);
+    if (!c) {
+      // Si se sigue escribiendo, ya no es el cliente elegido.
+      setF((p) => ({ ...p, cliente: nombre }));
+      setContactoId(null);
+      return;
+    }
+    // Sólo llena lo vacío: no pisa un correo o teléfono que ya se escribió a mano.
+    setF((p) => ({ ...p, cliente: nombre, email: p.email || c.email || "", telefono: p.telefono || c.telefono || "" }));
+    setContactoId(c.id);
+    if (c.origen) setOrigen({ origen: c.origen, origen_post_id: c.origen_post_id ?? "", origen_enlace: c.origen_enlace ?? "" });
+  };
+  const clienteElegido = contactoId ? clientes.find((x) => x.id === contactoId) ?? null : null;
   /** Quién toca cada instrumento. Lo llena el propio InstrumentosPicker. */
   const [musicosElegidos, setMusicosElegidos] = useState<{ instrumento: string; musico_id: string }[]>([]);
   const [saving, setSaving] = useState(false);
@@ -136,6 +161,7 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
         body: JSON.stringify({
           ...f,
           ...origen,
+          contacto_id: contactoId,
           inventario_beat_id: beatMatch?.id ?? null,
           anticipo: f.estado_pago === "anticipo" ? f.anticipo : "",
           instrumentos: f.extras, // el selector alimenta las tareas "Grabar {instrumento}"
@@ -153,6 +179,7 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
         setOk(partes.join(" · "));
         setF({ ...EMPTY });
         setOrigen(ORIGEN_VACIO);
+        setContactoId(null);
         router.refresh();
       }
     } catch {
@@ -199,8 +226,13 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
           <input type="date" value={f.fecha} onChange={set("fecha")} required className={inp} />
         </div>
         <div className="col-span-2 sm:col-span-1">
-          <label className={lbl}>Cliente</label>
-          <input value={f.cliente} onChange={set("cliente")} placeholder="Nombre" className={inp} />
+          <label className={lbl}>
+            Cliente {clienteElegido && <span className="text-emerald-300/80">· ya registrado ✓</span>}
+          </label>
+          <input list="clientes-venta" value={f.cliente} onChange={onCliente} placeholder="Escribe para buscar o uno nuevo" autoComplete="off" className={inp} />
+          <datalist id="clientes-venta">
+            {clientes.map((c) => <option key={c.id} value={c.nombre}>{[c.telefono, c.email].filter(Boolean).join(" · ")}</option>)}
+          </datalist>
         </div>
         <div className="col-span-2 sm:col-span-1">
           <label className={lbl}>Email <span className="text-white/25">(clave en BeatStars)</span></label>
