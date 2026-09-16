@@ -448,6 +448,11 @@ export interface IngresoRow {
   id: string; folio: string | null; fecha: string; fuente: string | null;
   concepto: string | null; moneda: string; monto_mxn: number; recurrente: boolean; nota: string | null;
 }
+/** Una venta para elegir a cuál se liga un pago a músico. */
+export interface VentaParaPago {
+  id: string; folio: string | null; fecha: string | null; concepto: string | null; cliente: string | null; extras: string | null;
+}
+
 export interface PagoMusicoRow {
   id: string; venta: string | null; beat: string | null; cliente: string | null; proyecto: string | null;
   musico: string | null;
@@ -463,7 +468,7 @@ const quarterOf = (fecha: string) => {
 export async function getFinanzasERP() {
   const sb = supabaseAdmin();
   const [ventasRes, egresosRes, nominaRes, equipoRes, pagosRes, ingresosRes, pagosMusicoRes, repartosRes, ajustesRes] = await Promise.all([
-    sb.from("ventas").select("id, fecha, total_mxn, costo_extra"),
+    sb.from("ventas").select("id, fecha, total_mxn, costo_extra, folio, beat_nombre, tipo, extras, contactos(nombre)"),
     sb.from("egresos").select("id, fecha, categoria, proveedor, descripcion, total_mxn, es_capex").order("fecha", { ascending: false }),
     // Toda la nómina (no solo la reciente): los totales por trimestre y por mes salen de aquí.
     sb.from("nomina").select("id, persona_id, periodo_inicio, monto, estado, tipo, equipo(nombre)").order("periodo_inicio", { ascending: false }).limit(5000),
@@ -657,6 +662,18 @@ export async function getFinanzasERP() {
     ingresos,
     nomina,
     pagosMusico,
+    // Las más recientes primero: el pago a un músico casi siempre es de una venta de estas semanas.
+    ventasParaPago: [...(ventasRes.data ?? [])]
+      .sort((a, b) => String(b.fecha ?? "").localeCompare(String(a.fecha ?? "")))
+      .map((v): VentaParaPago => ({
+        id: v.id as string,
+        folio: (v.folio as string | null) ?? null,
+        fecha: (v.fecha as string | null) ?? null,
+        concepto: ((v.beat_nombre as string | null) || (v.tipo as string | null)) ?? null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        cliente: ((v.contactos as any)?.nombre as string | null) ?? null,
+        extras: (v.extras as string | null) ?? null,
+      })),
     totals: { ingresos: ingresosTot, costosDirectos: costosTot, gastosOperativos: gastosTot, nomina: nominaTot, capex: capexTot, musico: musicoTot, musicoPendiente, comisionStripe: comisionStripeTot },
   };
 }

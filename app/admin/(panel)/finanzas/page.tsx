@@ -103,7 +103,7 @@ export default async function FinanzasPage() {
         <GastosRecurrentesList gastos={gastosRecurrentes} />
       </Bloque>
 
-      <PagosMusicoResumen pagos={f.pagosMusico} total={f.totals.musico} pendiente={f.totals.musicoPendiente} pendientes={musicosPorPagar} />
+      <PagosMusicoResumen pagos={f.pagosMusico} ventas={f.ventasParaPago} total={f.totals.musico} pendiente={f.totals.musicoPendiente} pendientes={musicosPorPagar} />
 
       <NominaPanel equipo={f.equipo} nomina={f.nomina} sueldoSocio={sueldo} />
     </div>
