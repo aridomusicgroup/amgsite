@@ -1387,7 +1387,12 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
 
       {/* Quedan guardados en el proyecto: el previo para músico los toma de aquí
           y ya no hay que escribirlos al renderizar. */}
-      {crearProyecto && (
+      {crearProyecto && tipoDisco && (
+        <p className="text-[11px] text-white/35">
+          En un EP/álbum, la tonalidad, el BPM y el compás son de cada canción: se ponen al abrir el tema en Producción.
+        </p>
+      )}
+      {crearProyecto && !tipoDisco && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <Field label="Tonalidad (opcional)">
             <input value={tonalidad} onChange={(e) => setTonalidad(e.target.value)} maxLength={12} placeholder="Am" className="input" />

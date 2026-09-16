@@ -53,6 +53,15 @@ const TIPOS_CONTENIDO = ["creacion_contenido", "contenido", "beat"];
 export const esContenido = (tipo: string | null) => !!tipo && TIPOS_CONTENIDO.includes(tipo);
 // Campos de publicación (plataforma / fecha de publicación / link del post) SOLO para Creación de contenido (no Beat).
 export const esContenidoPub = (tipo: string | null) => tipo === "creacion_contenido" || tipo === "contenido";
+/**
+ * ¿Este proyecto lleva tonalidad, BPM y compás?
+ *
+ * En un EP/álbum NO: cada canción tiene los suyos y se ponen al abrir el tema
+ * (proyecto_tareas). Tampoco una tarea interna ni creación de contenido, que no
+ * pasan por REAPER. Sí un beat de catálogo: ese sí es un proyecto de verdad.
+ */
+export const llevaFicha = (clase: string | null, tipo: string | null) =>
+  clase === "produccion" && !["ep", "album", "creacion_contenido", "contenido"].includes(String(tipo ?? ""));
 export const PLATAFORMAS = ["Instagram", "TikTok", "YouTube", "Facebook", "Spotify", "Otro"];
 
 // Se mudaron a ./tareas/estilos; se re-exportan para no tocar a quien ya los importaba de aquí.
@@ -857,18 +866,27 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
               <label className={lblS}>Link entregables</label>
               <input value={ef.entregable_url} onChange={(e) => setEf((p) => ({ ...p, entregable_url: e.target.value }))} placeholder="Drive…" className={inp} />
             </div>
-            <div>
-              <label className={lblS}>Tonalidad</label>
-              <input value={ef.tonalidad} onChange={(e) => setEf((p) => ({ ...p, tonalidad: e.target.value }))} placeholder="Am" maxLength={12} className={inp} />
-            </div>
-            <div>
-              <label className={lblS}>BPM</label>
-              <input type="number" min={20} max={400} value={ef.bpm} onChange={(e) => setEf((p) => ({ ...p, bpm: e.target.value }))} placeholder="154" className={inp} />
-            </div>
-            <div>
-              <label className={lblS}>Compás</label>
-              <CompasSelect value={ef.compas} onChange={(v) => setEf((p) => ({ ...p, compas: v }))} className={inp} />
-            </div>
+            {llevaFicha(ef.clase, ef.tipo) && (
+              <>
+                <div>
+                  <label className={lblS}>Tonalidad</label>
+                  <input value={ef.tonalidad} onChange={(e) => setEf((p) => ({ ...p, tonalidad: e.target.value }))} placeholder="Am" maxLength={12} className={inp} />
+                </div>
+                <div>
+                  <label className={lblS}>BPM</label>
+                  <input type="number" min={20} max={400} value={ef.bpm} onChange={(e) => setEf((p) => ({ ...p, bpm: e.target.value }))} placeholder="154" className={inp} />
+                </div>
+                <div>
+                  <label className={lblS}>Compás</label>
+                  <CompasSelect value={ef.compas} onChange={(v) => setEf((p) => ({ ...p, compas: v }))} className={inp} />
+                </div>
+              </>
+            )}
+            {(ef.tipo === "ep" || ef.tipo === "album") && (
+              <p className="col-span-2 text-[11px] text-white/35">
+                Tonalidad, BPM y compás van en cada canción: ábrela en la lista de tareas.
+              </p>
+            )}
           </div>
           {isAdmin && (
             <div>
@@ -1031,7 +1049,12 @@ function NuevoProyecto({ equipo, clientes, onClose }: { equipo: Equipo[]; client
 
         {/* Tonalidad, BPM y compás: el previo para músico los toma de aquí, y el
             script pone BPM y compás en el .rpp mientras nadie lo haya guardado. */}
-        {clase === "produccion" && (
+        {(f.tipo === "ep" || f.tipo === "album") && (
+          <p className="col-span-2 sm:col-span-4 text-[11px] text-white/35">
+            En un EP/álbum, la tonalidad, el BPM y el compás son de cada canción: se ponen al abrir el tema en Tareas.
+          </p>
+        )}
+        {llevaFicha(clase, f.tipo) && (
           <>
             <div>
               <label className={lblS}>Tonalidad <span className="text-white/25">(opcional)</span></label>

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Modal } from "@/components/admin/ui/Modal";
 import {
-  TIPOS_PROD, TIPOS_INT, PLATAFORMAS, esContenidoPub, inp, lblS,
+  TIPOS_PROD, TIPOS_INT, PLATAFORMAS, esContenidoPub, llevaFicha, inp, lblS,
   ResponsablesPicker, type Equipo, type VentaLite,
 } from "@/components/admin/ProduccionBoard";
 import { TIPO_PROY_LABEL, PRIORIDAD_LABEL, type ProyectoDetalle } from "@/lib/erp-data";
@@ -95,19 +95,29 @@ export function EditarProyectoModal({ open, proyecto, equipo, ventas, isAdmin, o
             <label className={lblS}>Link entregables</label>
             <input value={ef.entregable_url} onChange={(e) => setEf((p) => ({ ...p, entregable_url: e.target.value }))} placeholder="Drive…" className={inp} />
           </div>
-          {/* Los usa el previo para músico. */}
-          <div>
-            <label className={lblS}>Tonalidad</label>
-            <input value={ef.tonalidad} onChange={(e) => setEf((p) => ({ ...p, tonalidad: e.target.value }))} maxLength={12} placeholder="Am" className={inp} />
-          </div>
-          <div>
-            <label className={lblS}>BPM</label>
-            <input type="number" min={20} max={400} value={ef.bpm} onChange={(e) => setEf((p) => ({ ...p, bpm: e.target.value }))} placeholder="154" className={inp} />
-          </div>
-          <div>
-            <label className={lblS}>Compás</label>
-            <CompasSelect value={ef.compas} onChange={(v) => setEf((p) => ({ ...p, compas: v }))} className={inp} />
-          </div>
+          {/* Los usa el previo para músico y el tempo del .rpp. En un EP no van
+              aquí: cada canción tiene los suyos. */}
+          {llevaFicha(ef.clase, ef.tipo) && (
+            <>
+              <div>
+                <label className={lblS}>Tonalidad</label>
+                <input value={ef.tonalidad} onChange={(e) => setEf((p) => ({ ...p, tonalidad: e.target.value }))} maxLength={12} placeholder="Am" className={inp} />
+              </div>
+              <div>
+                <label className={lblS}>BPM</label>
+                <input type="number" min={20} max={400} value={ef.bpm} onChange={(e) => setEf((p) => ({ ...p, bpm: e.target.value }))} placeholder="154" className={inp} />
+              </div>
+              <div>
+                <label className={lblS}>Compás</label>
+                <CompasSelect value={ef.compas} onChange={(v) => setEf((p) => ({ ...p, compas: v }))} className={inp} />
+              </div>
+            </>
+          )}
+          {(ef.tipo === "ep" || ef.tipo === "album") && (
+            <p className="col-span-2 text-[11px] text-white/35">
+              Tonalidad, BPM y compás van en cada canción: ábrela en la pestaña Tareas.
+            </p>
+          )}
         </div>
         {isAdmin && (
           <div>
