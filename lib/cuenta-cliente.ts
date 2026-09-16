@@ -145,6 +145,8 @@ export interface PedidoTarea {
   /** Pasos internos completados / totales. 0/0 = la tarea no tiene desglose. */
   subHechas: number;
   subTotal: number;
+  /** Los pasos de esa canción, en orden. Vacío = la tarea no tiene desglose. */
+  pasos: { id: string; titulo: string; hecho: boolean }[];
 }
 export interface PedidoDetalle {
   orderId: string;
@@ -266,32 +268,35 @@ export async function getPedidoDetalle(email: string, orderId: string): Promise<
 
       // Pasos internos de cada tarea. Solo se piden los de tareas VISIBLES:
       // las subtareas no tienen bandera propia, así que heredan la del padre.
+      // Se traen con su TÍTULO: en un EP cada tarea es una canción, y el cliente
+      // puede abrirla para ver en qué va (grabar, mezclar, masterizar…).
       const ids = (ts ?? []).map((t) => t.id as string);
-      const subsPorTarea = new Map<string, { tot: number; hechas: number }>();
+      const pasosPorTarea = new Map<string, { id: string; titulo: string; hecho: boolean }[]>();
       if (ids.length) {
         const { data: subs } = await sb
           .from("proyecto_subtareas")
-          .select("tarea_id, hecho")
-          .in("tarea_id", ids);
+          .select("id, tarea_id, titulo, hecho, orden")
+          .in("tarea_id", ids)
+          .order("orden", { ascending: true });
         for (const s of subs ?? []) {
           const k = s.tarea_id as string;
-          const acc = subsPorTarea.get(k) ?? { tot: 0, hechas: 0 };
-          acc.tot++;
-          if (s.hecho) acc.hechas++;
-          subsPorTarea.set(k, acc);
+          const arr = pasosPorTarea.get(k) ?? [];
+          arr.push({ id: s.id as string, titulo: (s.titulo as string) ?? "", hecho: Boolean(s.hecho) });
+          pasosPorTarea.set(k, arr);
         }
       }
 
       tareas = (ts ?? []).map((t) => {
-        const sub = subsPorTarea.get(t.id as string) ?? { tot: 0, hechas: 0 };
+        const pasos = pasosPorTarea.get(t.id as string) ?? [];
         return {
           id: t.id as string,
           titulo: t.titulo as string,
           hecho: Boolean(t.hecho),
           completadoAt: (t.completado_at as string | null) ?? null,
           revision: Number(t.revision) || 0,
-          subHechas: sub.hechas,
-          subTotal: sub.tot,
+          subHechas: pasos.filter((p) => p.hecho).length,
+          subTotal: pasos.length,
+          pasos,
         };
       });
     }

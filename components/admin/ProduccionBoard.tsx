@@ -16,6 +16,7 @@ import {
 } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
 import { InstrumentosPicker } from "@/components/admin/InstrumentosPicker";
+import { ConfirmCascadeDialog } from "@/components/admin/ui/ConfirmCascadeDialog";
 import { CompasSelect } from "@/components/admin/CompasSelect";
 import { fechaLarga, soloHora, paraInput, sugerenciaInicial, estaVencido, type MiRecordatorio } from "@/lib/recordatorios";
 import { estaAtrasado } from "@/lib/vencimientos";
@@ -533,7 +534,10 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
     if (await api("PATCH", { id: p.id, nueva_ronda: true })) toast(`🔄 Ronda de revisión ${p.revisionActual + 1}`);
   };
   const guardarEdit = async () => { if (await api("PATCH", { id: p.id, ...ef })) { setEditing(false); toast("✓ Guardado"); } };
-  const borrar = async () => { if (await api("DELETE", { id: p.id })) { setConfirming(false); toast("✓ Eliminado"); } };
+  // El borrado vive en ConfirmCascadeDialog (abajo): la misma ventana que la
+  // página del proyecto, que dice qué se va con él y deja elegir venta,
+  // contrato y Drive. Antes aquí sólo se preguntaba "¿Eliminar?" y todo eso
+  // quedaba suelto.
   const toggleTarea = (t: ProyectoTarea) => {
     const nuevo = !taskDone(t);
     setOptDone((o) => ({ ...o, [t.id]: nuevo })); // UI optimista: se voltea al instante
@@ -795,15 +799,11 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
             {isAdmin && <button onClick={() => setConfirming(true)} className="flex items-center gap-1 text-red-300/70 hover:text-red-300 text-xs ml-auto"><Trash2 size={12} /> Eliminar</button>}
           </div>
 
-          {confirming && (
-            <div className="flex items-center gap-2 bg-red-500/5 border border-red-500/20 rounded-lg px-2.5 py-2">
-              <span className="text-xs text-white/70 mr-auto">¿Eliminar? No se deshace.</span>
-              <button onClick={borrar} disabled={busy} className="bg-red-600 text-white px-2.5 py-1 rounded text-xs font-medium disabled:opacity-50">
-                {busy ? <Loader2 size={12} className="animate-spin" /> : "Sí"}
-              </button>
-              <button onClick={() => setConfirming(false)} className="text-white/40 text-xs px-1">No</button>
-            </div>
-          )}
+          <ConfirmCascadeDialog
+            open={confirming} proyectoId={p.id} proyectoTitulo={p.titulo}
+            onClose={() => setConfirming(false)}
+            onConfirmed={() => { setConfirming(false); toast("✓ Proyecto eliminado"); router.refresh(); }}
+          />
         </div>
       )}
 

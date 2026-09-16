@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Check, CalendarCheck, CalendarClock } from "lucide-react";
+import { Check, CalendarCheck, CalendarClock, ChevronDown } from "lucide-react";
 import type { PedidoTarea } from "@/lib/cuenta-cliente";
 
 interface Props {
@@ -30,6 +30,10 @@ export function PedidoProgreso({ concepto, tareas, hechas, total, pct, entregado
   // Índice de la tarea "actual" = la primera no completada (o ninguna si ya acabó).
   const currentIndex = tareas.findIndex((t) => !t.hecho);
   const [fill, setFill] = useState(0);
+  // Qué canción está abierta. En un EP cada tarea es una canción y sus pasos
+  // (grabar, mezclar, masterizar…) son justo lo que el cliente quiere ver por
+  // dentro; en una producción normal las tareas YA son los pasos.
+  const [abierta, setAbierta] = useState<string | null>(null);
 
   // Rellena la línea desde 0 al montar (reveal animado).
   useEffect(() => {
@@ -76,14 +80,35 @@ export function PedidoProgreso({ concepto, tareas, hechas, total, pct, entregado
             const dist = currentIndex < 0 ? 0 : Math.abs(i - currentIndex);
             const opacity = estado === "current" ? 1 : Math.max(0.55, 0.8 - dist * 0.08);
             const esRev = t.revision > 0;
+            // Sólo las canciones de un EP/álbum se abren para ver sus pasos.
+            const desplegable = esAlbum && t.pasos.length > 0;
+            const abierto = desplegable && abierta === t.id;
             return (
               <li key={t.id} className={`pp-item pp-${estado}${esRev ? " pp-rev" : ""}`} style={{ opacity }}>
                 <span className="pp-node">
                   {t.hecho ? <Check size={13} strokeWidth={3} /> : <span className="pp-dot" />}
                 </span>
                 <span className="pp-label">
-                  {t.titulo}
-                  {esRev && <span className="pp-rev-badge">R{t.revision}</span>}
+                  {desplegable ? (
+                    <button
+                      type="button"
+                      className="pp-toggle"
+                      aria-expanded={abierto}
+                      title={abierto ? "Ocultar los pasos" : "Ver los pasos de esta canción"}
+                      onClick={() => setAbierta(abierto ? null : t.id)}
+                    >
+                      <span>
+                        {t.titulo}
+                        {esRev && <span className="pp-rev-badge">R{t.revision}</span>}
+                      </span>
+                      <ChevronDown size={13} className={"pp-chev" + (abierto ? " pp-chev-open" : "")} />
+                    </button>
+                  ) : (
+                    <>
+                      {t.titulo}
+                      {esRev && <span className="pp-rev-badge">R{t.revision}</span>}
+                    </>
+                  )}
                   {/* Desglose de pasos: solo el conteo y la barra. Los títulos
                       internos de las subtareas NO se le muestran al cliente. */}
                   {!t.hecho && t.subTotal > 0 && (
@@ -96,6 +121,18 @@ export function PedidoProgreso({ concepto, tareas, hechas, total, pct, entregado
                       </span>
                       <span className="pp-sub-txt">{t.subHechas} de {t.subTotal} pasos</span>
                     </span>
+                  )}
+                  {abierto && (
+                    <ul className="pp-pasos">
+                      {t.pasos.map((paso) => (
+                        <li key={paso.id} className={"pp-paso" + (paso.hecho ? " pp-paso-done" : "")}>
+                          <span className="pp-paso-ic">
+                            {paso.hecho ? <Check size={10} strokeWidth={3} /> : <span className="pp-paso-dot" />}
+                          </span>
+                          {paso.titulo}
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </span>
               </li>
@@ -226,6 +263,23 @@ const CSS = `
 .pp-sub-fill { display:block; height:100%; border-radius:99px; background:#c42f42;
   transition:width .9s cubic-bezier(.16,1,.3,1); }
 .pp-sub-txt { display:block; margin-top:4px; font-size:11.5px; color:rgba(255,255,255,.5); }
+
+/* Canción desplegable: el cliente la abre y ve en qué paso va. */
+.pp-toggle { display:inline-flex; align-items:center; gap:7px; background:none; border:0; padding:0;
+  color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.pp-toggle:hover { color:#fff; }
+.pp-toggle:focus-visible { outline:2px solid rgba(255,255,255,.35); outline-offset:3px; border-radius:4px; }
+.pp-chev { flex:none; opacity:.45; transition:transform .2s ease; }
+.pp-chev-open { transform:rotate(180deg); opacity:.85; }
+.pp-pasos { list-style:none; margin:9px 0 0; padding:0; display:grid; gap:6px; }
+.pp-paso { display:flex; align-items:center; gap:8px; font-size:12.5px; line-height:1.25;
+  color:rgba(255,255,255,.62); }
+.pp-paso-done { color:rgba(255,255,255,.42); }
+.pp-paso-ic { flex:none; width:15px; height:15px; border-radius:99px; color:#fff;
+  border:1px solid rgba(255,255,255,.22); display:inline-flex; align-items:center; justify-content:center; }
+.pp-paso-done .pp-paso-ic { background:#c42f42; border-color:#c42f42; }
+.pp-paso-dot { width:4px; height:4px; border-radius:99px; background:rgba(255,255,255,.3); }
+@media (prefers-reduced-motion: reduce) { .pp-chev { transition:none; } }
 .pp-rev .pp-sub-fill { background:#f59e0b; }
 @media (prefers-reduced-motion: reduce) { .pp-sub-fill { transition:none; } }
 .pp-done .pp-label { color:rgba(255,255,255,.55); }
