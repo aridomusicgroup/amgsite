@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Check, Loader2, Plus, X } from "lucide-react";
 import type { PagoMusicoRow, VentaParaPago } from "@/lib/erp-data";
 import { MEDIOS_PAGO } from "@/lib/medios-pago";
+import { restaPorPagar, totalAbonado } from "@/lib/abonos-musico";
 import { toast } from "@/lib/toast";
 
 const peso = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
@@ -39,18 +40,29 @@ function Fila({ p }: { p: PagoMusicoRow }) {
   const router = useRouter();
   const [pagando, setPagando] = useState(false);
   const [medio, setMedio] = useState("");
+  const [parte, setParte] = useState(false); // false = todo lo que resta · true = sólo una parte
+  const [cuanto, setCuanto] = useState("");
   const [busy, setBusy] = useState(false);
   const instrumento = instrumentoDe(p.nota);
   const detalle = [p.venta, p.beat, p.cliente].filter(Boolean).join(" · ");
+  const abonado = totalAbonado(p.abonos);
+  const resta = restaPorPagar(p.monto, p.pagado, p.abonos);
 
   const marcarPagado = async () => {
     if (!medio) { toast("Elige el medio de pago"); return; }
+    const monto = parte ? Number(cuanto) : resta;
+    if (parte && !(monto > 0 && monto < resta)) { toast(`La parte debe ser mayor a 0 y menor a ${peso(resta)}`); return; }
     setBusy(true);
-    const err = await enviar("PATCH", { id: p.id, pagado: true, medio_pago: medio, fecha: hoy() });
+    // Con anticipos previos, liquidar también es un abono: así queda la historia completa.
+    const err = parte || abonado > 0
+      ? await enviar("PATCH", { id: p.id, abono: { monto, medio_pago: medio, fecha: hoy() } })
+      : await enviar("PATCH", { id: p.id, pagado: true, medio_pago: medio, fecha: hoy() });
     setBusy(false);
     if (err) { toast("⚠️ " + err); return; }
-    toast(`✓ Pagado a ${p.musico || "músico"}`);
+    toast(parte ? `✓ Anticipo de ${peso(monto)} a ${p.musico || "músico"} · resta ${peso(resta - monto)}` : `✓ Pagado a ${p.musico || "músico"}`);
     setPagando(false);
+    setParte(false);
+    setCuanto("");
     router.refresh();
   };
 
@@ -58,7 +70,7 @@ function Fila({ p }: { p: PagoMusicoRow }) {
     <li className="bg-white/[0.03] border border-white/8 rounded-xl px-4 py-2.5">
       <div className="flex items-center gap-3 text-sm">
         <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${p.pagado ? "bg-green-500/15 text-green-300" : "bg-amber-500/15 text-amber-300"}`}>
-          {p.pagado ? "Pagado" : "Pendiente"}
+          {p.pagado ? "Pagado" : abonado > 0 ? "Con anticipo" : "Pendiente"}
         </span>
         <span className="text-white/85 min-w-0 truncate">{p.musico || "Músico"}</span>
         {instrumento && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-lgb-red/15 text-red-200 shrink-0">{instrumento}</span>}
@@ -77,25 +89,54 @@ function Fila({ p }: { p: PagoMusicoRow }) {
           {p.proyecto && <span className="text-white/45"> · 🎬 {p.proyecto}</span>}
         </p>
       )}
+      {p.abonos.length > 0 && (
+        <p className="text-[11px] mt-1 text-white/55">
+          {p.abonos.map((a, i) => (
+            <span key={i} className="mr-2">Anticipo {peso(a.monto)} · {fechaCorta(a.fecha)}{a.medio_pago ? ` · ${a.medio_pago}` : ""}</span>
+          ))}
+          {!p.pagado && <b className="text-amber-300 font-medium">Resta {peso(resta)}</b>}
+        </p>
+      )}
       {pagando && (
-        <div className="mt-2 flex items-center gap-2 flex-wrap">
-          <select value={medio} onChange={(e) => setMedio(e.target.value)} autoFocus aria-label="Medio de pago"
-            className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm">
-            <option value="" className="bg-lgb-dark">¿Cómo se le pagó?</option>
-            {MEDIOS_PAGO.map((m) => <option key={m} value={m} className="bg-lgb-dark">{m}</option>)}
-          </select>
-          <button onClick={marcarPagado} disabled={busy}
-            className="flex items-center gap-1.5 rounded-lg bg-lgb-red hover:bg-red-700 px-3 py-1.5 text-xs font-medium disabled:opacity-50">
-            {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Marcar pagado hoy
-          </button>
-          <button onClick={() => setPagando(false)} className="text-xs text-white/45 hover:text-white">Cancelar</button>
+        <div className="mt-2 space-y-2">
+          <div className="flex gap-1.5" role="group" aria-label="Cuánto se le paga">
+            {[{ v: false, t: `Todo (${peso(resta)})` }, { v: true, t: "Sólo una parte" }].map((o) => (
+              <button key={String(o.v)} type="button" onClick={() => setParte(o.v)} aria-pressed={parte === o.v}
+                className={`rounded-full px-3 py-1 text-xs ${parte === o.v ? "bg-white/15 text-white" : "bg-white/5 text-white/50 hover:text-white"}`}>
+                {o.t}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {parte && (
+              <input type="number" min={0} step="any" value={cuanto} onChange={(e) => setCuanto(e.target.value)} autoFocus
+                placeholder={`¿Cuánto? (mitad ${peso(resta / 2)})`} aria-label="Monto del anticipo"
+                className="w-44 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm" />
+            )}
+            <select value={medio} onChange={(e) => setMedio(e.target.value)} aria-label="Medio de pago"
+              className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm">
+              <option value="" className="bg-lgb-dark">¿Cómo se le pagó?</option>
+              {MEDIOS_PAGO.map((m) => <option key={m} value={m} className="bg-lgb-dark">{m}</option>)}
+            </select>
+            <button onClick={marcarPagado} disabled={busy}
+              className="flex items-center gap-1.5 rounded-lg bg-lgb-red hover:bg-red-700 px-3 py-1.5 text-xs font-medium disabled:opacity-50">
+              {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} {parte ? "Registrar anticipo" : "Marcar pagado hoy"}
+            </button>
+            <button onClick={() => setPagando(false)} className="text-xs text-white/45 hover:text-white">Cancelar</button>
+          </div>
         </div>
       )}
     </li>
   );
 }
 
-const VACIO = { ventaId: "", musico: "", monto: "", yaPagado: true, medio: "", fecha: hoy() };
+type EstadoPago = "pagado" | "parte" | "pendiente";
+const ESTADOS: { v: EstadoPago; t: string }[] = [
+  { v: "pagado", t: "Ya se le pagó todo" },
+  { v: "parte", t: "Le di una parte" },
+  { v: "pendiente", t: "Queda pendiente" },
+];
+const VACIO = { ventaId: "", musico: "", monto: "", estado: "pagado" as EstadoPago, anticipo: "", medio: "", fecha: hoy() };
 
 /** Registrar un pago a músico sin tener que entrar a la venta. */
 function NuevoPagoMusico({ ventas, onClose }: { ventas: VentaParaPago[]; onClose: () => void }) {
@@ -142,16 +183,25 @@ function NuevoPagoMusico({ ventas, onClose }: { ventas: VentaParaPago[]; onClose
     if (!f.ventaId) { setError("Elige de qué venta es el pago."); return; }
     if (!f.musico.trim()) { setError("Escribe a qué músico."); return; }
     if (!(Number(f.monto) > 0)) { setError("Pon un monto válido."); return; }
-    if (f.yaPagado && !f.medio) { setError("Elige cómo se le pagó."); return; }
+    const total = Number(f.monto);
+    const anticipo = Number(f.anticipo);
+    if (f.estado === "parte" && !(anticipo > 0 && anticipo < total)) {
+      setError(`La parte que le diste debe ser mayor a 0 y menor a ${peso(total)}.`); return;
+    }
+    if (f.estado !== "pendiente" && !f.medio) { setError("Elige cómo se le pagó."); return; }
     setSaving(true);
     setError(null);
+    const pagado = f.estado === "pagado";
     const err = await enviar("POST", {
       venta_id: f.ventaId, musico: f.musico.trim(), monto: f.monto,
-      pagado: f.yaPagado, medio_pago: f.yaPagado ? f.medio : "", fecha: f.yaPagado ? f.fecha : null,
+      pagado, medio_pago: pagado ? f.medio : "", fecha: pagado ? f.fecha : null,
+      ...(f.estado === "parte" ? { anticipo, anticipo_medio: f.medio, anticipo_fecha: f.fecha } : {}),
     });
     setSaving(false);
     if (err) { setError(err); return; }
-    toast(f.yaPagado ? "✓ Pago a músico registrado" : "✓ Registrado como pendiente");
+    toast(f.estado === "pagado" ? "✓ Pago a músico registrado"
+      : f.estado === "parte" ? `✓ Anticipo de ${peso(anticipo)} · resta ${peso(total - anticipo)}`
+      : "✓ Registrado como pendiente");
     router.refresh();
     onClose();
   };
@@ -222,17 +272,39 @@ function NuevoPagoMusico({ ventas, onClose }: { ventas: VentaParaPago[]; onClose
           </div>
         </div>
 
-        <fieldset className="flex gap-2" aria-label="Estado del pago">
-          {[{ v: true, t: "Ya se le pagó" }, { v: false, t: "Queda pendiente" }].map((o) => (
-            <button key={String(o.v)} type="button" onClick={() => setF((p) => ({ ...p, yaPagado: o.v }))}
-              aria-pressed={f.yaPagado === o.v}
-              className={`rounded-full px-3.5 py-1.5 text-sm ${f.yaPagado === o.v ? "bg-white/15 text-white" : "bg-white/5 text-white/50 hover:text-white"}`}>
+        <fieldset className="flex flex-wrap gap-2" aria-label="Estado del pago">
+          {ESTADOS.map((o) => (
+            <button key={o.v} type="button" onClick={() => setF((p) => ({ ...p, estado: o.v }))}
+              aria-pressed={f.estado === o.v}
+              className={`rounded-full px-3.5 py-1.5 text-sm ${f.estado === o.v ? "bg-white/15 text-white" : "bg-white/5 text-white/50 hover:text-white"}`}>
               {o.t}
             </button>
           ))}
         </fieldset>
 
-        {f.yaPagado && (
+        {f.estado === "parte" && (
+          <div>
+            <label className={lbl}>¿Cuánto le diste? *</label>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input type="number" min={0} step="any" value={f.anticipo}
+                onChange={(e) => setF((p) => ({ ...p, anticipo: e.target.value }))}
+                placeholder="0" className={`${inp} max-w-40`} />
+              {Number(f.monto) > 0 && (
+                <>
+                  <button type="button" onClick={() => setF((p) => ({ ...p, anticipo: String(Math.round(Number(p.monto) / 2)) }))}
+                    className="rounded-full bg-white/8 px-2.5 py-1 text-xs text-white/65 hover:text-white">
+                    La mitad ({peso(Number(f.monto) / 2)})
+                  </button>
+                  {Number(f.anticipo) > 0 && Number(f.anticipo) < Number(f.monto) && (
+                    <span className="text-sm text-amber-300">Resta {peso(Number(f.monto) - Number(f.anticipo))}</span>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {f.estado !== "pendiente" && (
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>¿Cómo se le pagó? *</label>

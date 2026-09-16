@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2, Check, Clock, ChevronUp, X, Pencil } from "lucide-react";
 import { toast } from "@/lib/toast";
+import { limpiarAbonos, restaPorPagar, totalAbonado } from "@/lib/abonos-musico";
 
 interface PagoMusico {
   id: string;
@@ -15,6 +16,7 @@ interface PagoMusico {
   medio_pago: string | null;
   pagado: boolean;
   nota: string | null;
+  abonos?: unknown;
 }
 
 const peso = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
@@ -72,7 +74,8 @@ export function PagosMusicoSection({ ventaId, extras }: { ventaId: string; extra
   }, []);
 
   const total = (pagos ?? []).reduce((a, p) => a + (Number(p.monto) || 0), 0);
-  const pendiente = (pagos ?? []).filter((p) => !p.pagado).reduce((a, p) => a + (Number(p.monto) || 0), 0);
+  // Lo que falta darles: los anticipos (Finanzas → Pagos) ya salieron.
+  const pendiente = (pagos ?? []).reduce((a, p) => a + restaPorPagar(Number(p.monto) || 0, p.pagado, limpiarAbonos(p.abonos)), 0);
 
   // Autocompletar = músicos usados ∪ catálogo.
   const allNames = [...new Set([...names, ...catalogo.map((m) => m.nombre)])].sort((a, b) => a.localeCompare(b, "es"));
@@ -239,6 +242,11 @@ export function PagosMusicoSection({ ventaId, extras }: { ventaId: string; extra
                   {p.pagado && p.medio_pago && <span className="text-white/35 text-[10px] shrink-0 hidden sm:inline">{p.medio_pago}</span>}
                   {p.fecha && <span className="text-white/35 text-[10px] shrink-0 hidden sm:inline">{p.fecha.slice(5)}</span>}
                 </div>
+                {!p.pagado && totalAbonado(limpiarAbonos(p.abonos)) > 0 && (
+                  <span className="text-amber-300 text-[10px] shrink-0" title="Ya se le dio un anticipo">
+                    anticipo {peso(totalAbonado(limpiarAbonos(p.abonos)))} · resta {peso(restaPorPagar(Number(p.monto) || 0, false, limpiarAbonos(p.abonos)))}
+                  </span>
+                )}
                 <span className="text-white font-medium shrink-0">{peso(p.monto)}</span>
                 <button onClick={() => { setEditId(editId === p.id ? null : p.id); setNuevoMusico(p.musico_id || ""); }}
                   className="text-white/25 hover:text-white shrink-0 p-1" title="Cambiar de músico">

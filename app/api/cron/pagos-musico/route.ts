@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { pushAEmails } from "@/lib/push";
 import { adminEmails } from "@/lib/supabase/auth-server";
 import { registrarActividad } from "@/lib/actividad";
+import { limpiarAbonos, restaPorPagar } from "@/lib/abonos-musico";
 import { pagosMusicoPendientes, type PagoMusicoLite } from "@/lib/pagos-musico-recordatorio";
 
 export const dynamic = "force-dynamic";
@@ -33,15 +34,15 @@ export async function GET(req: NextRequest) {
   const ahora = new Date().toISOString();
   const hoy = ahora.slice(0, 10);
 
-  const { data: pagos } = await sb
-    .from("pagos_musico")
-    .select("id, musico, monto, created_at")
-    .eq("pagado", false);
+  // Con anticipos, lo que se avisa es lo que resta. Sin la columna nueva, el total.
+  const leer = (cols: string) => sb.from("pagos_musico").select(cols).eq("pagado", false);
+  let { data: pagos, error } = await leer("id, musico, monto, created_at, abonos");
+  if (error) ({ data: pagos, error } = await leer("id, musico, monto, created_at"));
 
-  const pendientesLite: PagoMusicoLite[] = (pagos ?? []).map((p) => ({
+  const pendientesLite: PagoMusicoLite[] = ((pagos ?? []) as unknown as Record<string, unknown>[]).map((p) => ({
     id: p.id as string,
     musico: (p.musico as string | null) ?? null,
-    monto: Number(p.monto) || 0,
+    monto: restaPorPagar(Number(p.monto) || 0, false, limpiarAbonos(p.abonos)),
     createdAt: (p.created_at as string) ?? ahora,
   }));
   const pendientes = pagosMusicoPendientes(pendientesLite, ahora);

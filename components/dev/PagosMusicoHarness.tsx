@@ -9,8 +9,9 @@ const VENTAS: VentaParaPago[] = [
   { id: "v3", folio: "I0084", fecha: "2026-09-02", concepto: "CHANEL", cliente: "Rocha", extras: null },
 ];
 const PAGOS: PagoMusicoRow[] = [
-  { id: "p1", venta: "I0086", beat: "TRiP MX", cliente: "Juan José Pemberthy", proyecto: "TRiP MX", musico: "Adal", monto: 1500, fecha: null, medio_pago: null, pagado: false, nota: "Auto: tololoche" },
-  { id: "p2", venta: "I0085", beat: "Beat personalizado", cliente: "El Chapo", proyecto: null, musico: "Martín", monto: 800, fecha: "2026-09-11", medio_pago: "Transferencia", pagado: true, nota: null },
+  { id: "p0", venta: "I0086", beat: "TRiP MX", cliente: "Juan José Pemberthy", proyecto: "TRiP MX", musico: "Rodrigo", monto: 2000, fecha: null, medio_pago: null, pagado: false, nota: null, abonos: [{ monto: 1000, fecha: "2026-09-15", medio_pago: "Efectivo" }] },
+  { id: "p1", venta: "I0086", beat: "TRiP MX", cliente: "Juan José Pemberthy", proyecto: "TRiP MX", musico: "Adal", monto: 1500, fecha: null, medio_pago: null, pagado: false, nota: "Auto: tololoche", abonos: [] },
+  { id: "p2", venta: "I0085", beat: "Beat personalizado", cliente: "El Chapo", proyecto: null, musico: "Martín", monto: 800, fecha: "2026-09-11", medio_pago: "Transferencia", pagado: true, nota: null, abonos: [] },
 ];
 
 export function PagosMusicoHarness() {

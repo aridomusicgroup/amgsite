@@ -6,6 +6,7 @@ import { ENTIDADES_SENSIBLES } from "@/lib/actividad-modulos";
 import { pasoDe, ESPERA_PROYECTO, ESPERA_TEMA, type EstadoEntrega, type PasoEntrega } from "@/lib/pasos-entrega";
 import { mapaDeEntregas, claveUnidad, type ResumenEntrega } from "@/lib/entrega-estado";
 import { AJUSTES_DEFAULT, type AjustesBolsas, type EscalonSueldo, type MesFinanzas } from "@/lib/bolsas";
+import { limpiarAbonos, restaPorPagar, type AbonoMusico } from "@/lib/abonos-musico";
 
 export type { DashProyecto };
 
@@ -457,6 +458,8 @@ export interface PagoMusicoRow {
   id: string; venta: string | null; beat: string | null; cliente: string | null; proyecto: string | null;
   musico: string | null;
   monto: number; fecha: string | null; medio_pago: string | null; pagado: boolean; nota: string | null;
+  /** Anticipos que ya se le dieron de este pago (vacío si no hubo). */
+  abonos: AbonoMusico[];
 }
 
 const quarterOf = (fecha: string) => {
@@ -479,7 +482,13 @@ export async function getFinanzasERP() {
     sb.from("ingresos").select("id, folio, fecha, fuente, concepto, moneda, monto_mxn, recurrente, nota").order("fecha", { ascending: false }),
     // Pagos a músicos (COGS itemizado). Trae venta + cliente + proyecto ligado.
     // Si la tabla no existe, .data es null → [].
-    sb.from("pagos_musico").select("id, monto, fecha, medio_pago, pagado, nota, musico, ventas(folio, beat_nombre, contactos(nombre), proyectos(titulo))").order("fecha", { ascending: false }),
+    // `abonos` (anticipos) es columna nueva: sin supabase-pagos-musico-anticipos.sql se pide sin ella.
+    (async () => {
+      const REL = "ventas(folio, beat_nombre, contactos(nombre), proyectos(titulo))";
+      const leer = (cols: string) => sb.from("pagos_musico").select(`${cols}, ${REL}`).order("fecha", { ascending: false });
+      const conAbonos = await leer("id, monto, fecha, medio_pago, pagado, nota, musico, abonos");
+      return conAbonos.error ? leer("id, monto, fecha, medio_pago, pagado, nota, musico") : conAbonos;
+    })(),
     // Repartos ya hechos, con lo que recibió cada socio.
     sb.from("repartos").select("id, periodo, estado, notas, created_at, reparto_socio(socio_id, monto, estado, fecha_pago)").order("created_at", { ascending: false }),
     // Ajustes de las bolsas (supabase-bolsas.sql). Sin la tabla → valores por defecto.
@@ -599,7 +608,7 @@ export async function getFinanzasERP() {
   // venta (por eso NO se restan otra vez aquí); esta lista es solo para verlos.
   const pagosMusico: PagoMusicoRow[] = [];
   let musicoTot = 0, musicoPendiente = 0;
-  for (const p of pagosMusicoRes.data ?? []) {
+  for (const p of (pagosMusicoRes.data ?? []) as unknown as FilaLibre[]) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const v = (p.ventas as any) ?? null;
     // proyectos embebido es arreglo (relación inversa por venta_id) → tomamos el 1º.
@@ -616,9 +625,11 @@ export async function getFinanzasERP() {
       proyecto: (proy?.titulo as string | null) ?? null,
       musico: (p.musico as string | null) ?? null, monto, fecha: (p.fecha as string | null) ?? null,
       medio_pago: (p.medio_pago as string | null) ?? null, pagado, nota: (p.nota as string | null) ?? null,
+      abonos: limpiarAbonos(p.abonos),
     });
     musicoTot += monto;
-    if (!pagado) musicoPendiente += monto;
+    // Lo pendiente es lo que falta darle, no el total: un anticipo ya salió.
+    musicoPendiente += restaPorPagar(monto, pagado, limpiarAbonos(p.abonos));
   }
 
   // Repartos ya hechos (tablas `repartos` + `reparto_socio`), por trimestre.

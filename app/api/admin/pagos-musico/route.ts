@@ -3,6 +3,7 @@ import { getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
 import { cambiarMusicoDeVenta } from "@/lib/musico-asignar";
+import { limpiarAbonos, totalAbonado, type AbonoMusico } from "@/lib/abonos-musico";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,20 @@ async function delCatalogo(sb: SB, nombre: string): Promise<{ id: string; instru
   return { id: m.id as string, instrumento: inst.length === 1 ? inst[0] : null };
 }
 
+const FALTA_SQL = "Para anticipos falta correr supabase-pagos-musico-anticipos.sql.";
+const faltaColumnaAbonos = (msg: string) => /abonos/i.test(msg);
+
+/** Un anticipo tal como llega del formulario. null si no trae monto. */
+function abonoDe(b: { monto?: unknown; medio_pago?: unknown; fecha?: unknown } | null | undefined): AbonoMusico | null {
+  const monto = Math.round((Number(b?.monto) || 0) * 100) / 100;
+  if (!(monto > 0)) return null;
+  return {
+    monto,
+    medio_pago: String(b?.medio_pago || "").trim() || null,
+    fecha: String(b?.fecha || "").trim() || new Date().toISOString().slice(0, 10),
+  };
+}
+
 async function folioDeVenta(sb: SB, ventaId: string): Promise<string> {
   const { data: v } = await sb.from("ventas").select("folio, beat_nombre").eq("id", ventaId).single();
   return (v?.folio as string) || (v?.beat_nombre as string) || "venta";
@@ -57,7 +72,8 @@ export async function GET(req: NextRequest) {
 
   const sb = supabaseAdmin();
   const lista = (cols: string) => sb.from("pagos_musico").select(cols).eq("venta_id", ventaId).order("created_at", { ascending: true });
-  let { data, error } = await lista("id, venta_id, musico, musico_id, instrumento, monto, fecha, medio_pago, pagado, nota");
+  let { data, error } = await lista("id, venta_id, musico, musico_id, instrumento, monto, fecha, medio_pago, pagado, nota, abonos");
+  if (error) ({ data, error } = await lista("id, venta_id, musico, musico_id, instrumento, monto, fecha, medio_pago, pagado, nota"));
   if (error) ({ data, error } = await lista("id, venta_id, musico, monto, fecha, medio_pago, pagado, nota"));
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ pagos: data ?? [] });
@@ -78,7 +94,11 @@ export async function POST(req: NextRequest) {
   // Se liga al catálogo. Capturado sólo con el nombre, "Asignar a un músico" no
   // lo reconocía como contratado ni sabía qué instrumento tocaba (pasó en I0085).
   const cat = nombre ? await delCatalogo(sb, nombre) : null;
-  const fila = {
+  // Anticipo: se le dio sólo una parte. Si cubre todo, es un pago completo.
+  const anticipo = b.pagado === false ? abonoDe({ monto: b.anticipo, medio_pago: b.anticipo_medio, fecha: b.anticipo_fecha }) : null;
+  if (anticipo && !anticipo.medio_pago) return NextResponse.json({ error: "Elige cómo se le dio el anticipo." }, { status: 400 });
+  const liquidado = anticipo !== null && anticipo.monto >= monto;
+  const fila: Record<string, unknown> = {
     venta_id: ventaId,
     musico: nombre,
     musico_id: cat?.id ?? null,
@@ -89,7 +109,12 @@ export async function POST(req: NextRequest) {
     pagado: b.pagado === undefined ? true : Boolean(b.pagado),
     nota: (b.nota || "").trim() || null,
   };
+  if (liquidado) Object.assign(fila, { pagado: true, medio_pago: anticipo!.medio_pago, fecha: anticipo!.fecha });
+  else if (anticipo) fila.abonos = [anticipo];
   let { error } = await sb.from("pagos_musico").insert(fila);
+  if (error && anticipo && !liquidado && faltaColumnaAbonos(error.message)) {
+    return NextResponse.json({ error: FALTA_SQL }, { status: 503 });
+  }
   if (error && /schema cache/i.test(error.message)) {
     const { musico_id: _i, instrumento: _n, ...viejo } = fila;
     void _i; void _n;
@@ -104,7 +129,8 @@ export async function POST(req: NextRequest) {
     const folio = await folioDeVenta(sb, ventaId);
     await registrarActividad(sb, {
       tipo: "pago_musico_registrado",
-      titulo: `${quien} registró un pago a músico ${b.musico ? `(${b.musico}) ` : ""}de ${peso(monto)} en ${folio}${b.pagado === false ? " · PENDIENTE" : ""}`,
+      titulo: `${quien} registró un pago a músico ${b.musico ? `(${b.musico}) ` : ""}de ${peso(monto)} en ${folio}${
+        anticipo && !liquidado ? ` · anticipo de ${peso(anticipo.monto)}` : b.pagado === false ? " · PENDIENTE" : ""}`,
       actor, entidad: "musico", entidad_id: ventaId, entidad_nombre: folio,
       meta: { monto, musico: b.musico ?? null, pagado: b.pagado !== false },
     });
@@ -121,6 +147,9 @@ export async function PATCH(req: NextRequest) {
   const b = await req.json().catch(() => ({}));
   const id = String(b.id || "").trim();
   if (!id) return NextResponse.json({ error: "Falta el id." }, { status: 400 });
+
+  // Anticipo / abono: se le da una parte de lo que se le debe.
+  if (b.abono) return registrarAbono(actor, id, b.abono);
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if ("musico" in b) patch.musico = b.musico ? String(b.musico).trim() : null;
@@ -159,6 +188,8 @@ export async function PATCH(req: NextRequest) {
 
   const { data: upd, error } = await sb.from("pagos_musico").update(patch).eq("id", id).select("venta_id, musico").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Volver a pendiente borra los anticipos: si no, quedaría "pendiente" sin deber nada.
+  if (patch.pagado === false) await sb.from("pagos_musico").update({ abonos: [] }).eq("id", id);
 
   const ventaId = upd?.venta_id as string;
   const total = ventaId ? await recomputeCostoExtra(sb, ventaId) : 0;
@@ -181,6 +212,53 @@ export async function PATCH(req: NextRequest) {
   } catch { /* bitácora best-effort */ }
 
   return NextResponse.json({ ok: true, costo_extra: total, movido });
+}
+
+/** Suma un anticipo a un pago pendiente. Si con él se completa, queda pagado. */
+async function registrarAbono(actor: string, id: string, crudo: unknown): Promise<NextResponse> {
+  const abono = abonoDe(crudo as Record<string, unknown>);
+  if (!abono) return NextResponse.json({ error: "Pon cuánto se le dio." }, { status: 400 });
+  if (!abono.medio_pago) return NextResponse.json({ error: "Elige cómo se le pagó." }, { status: 400 });
+
+  const sb = supabaseAdmin();
+  const { data: prev, error: errLeer } = await sb.from("pagos_musico")
+    .select("venta_id, musico, monto, pagado, abonos").eq("id", id).maybeSingle();
+  if (errLeer) {
+    return faltaColumnaAbonos(errLeer.message)
+      ? NextResponse.json({ error: FALTA_SQL }, { status: 503 })
+      : NextResponse.json({ error: errLeer.message }, { status: 500 });
+  }
+  if (!prev) return NextResponse.json({ error: "Ese pago ya no existe." }, { status: 404 });
+  if (prev.pagado) return NextResponse.json({ error: "Ese pago ya está liquidado." }, { status: 409 });
+
+  const previos = limpiarAbonos(prev.abonos);
+  const monto = Number(prev.monto) || 0;
+  const debia = monto - totalAbonado(previos);
+  if (abono.monto - debia > 0.01) {
+    return NextResponse.json({ error: `Es más de lo que se le debe (${peso(debia)}).` }, { status: 400 });
+  }
+  const abonos = [...previos, abono];
+  const resta = Math.max(0, debia - abono.monto);
+  const liquidado = resta <= 0.01;
+  const patch: Record<string, unknown> = { abonos, updated_at: new Date().toISOString() };
+  if (liquidado) Object.assign(patch, { pagado: true, medio_pago: abono.medio_pago, fecha: abono.fecha });
+
+  const { error } = await sb.from("pagos_musico").update(patch).eq("id", id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  try {
+    const quien = await nombreDeActor(sb, actor);
+    const folio = prev.venta_id ? await folioDeVenta(sb, prev.venta_id as string) : "venta";
+    await registrarActividad(sb, {
+      tipo: "pago_musico_editado",
+      titulo: `${quien} dio ${peso(abono.monto)} a ${prev.musico || "un músico"} en ${folio} · ${
+        liquidado ? "queda LIQUIDADO" : `resta ${peso(resta)}`}`,
+      actor, entidad: "musico", entidad_id: (prev.venta_id as string) ?? null, entidad_nombre: folio,
+      meta: { abono, liquidado, resta },
+    });
+  } catch { /* bitácora best-effort */ }
+
+  return NextResponse.json({ ok: true, liquidado, resta });
 }
 
 // ── DELETE : elimina un pago ──
