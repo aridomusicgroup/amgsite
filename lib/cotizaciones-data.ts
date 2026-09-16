@@ -33,6 +33,8 @@ export interface Cotizacion {
   /** Solo cuando tipo = "ep_album": cuál de los dos es. null = sin especificar (cotizaciones viejas). */
   ep_album_formato: "ep" | "album" | null;
   contacto_id: string | null;
+  /** Cómo llegó el cliente ligado (contactos.origen). null = no se sabe todavía. */
+  contacto_origen?: string | null;
   cliente_nombre: string | null;
   cliente_email: string | null;
   cliente_telefono: string | null;
@@ -107,12 +109,12 @@ function asItems(v: unknown): QuoteItem[] {
 
 export async function getCotizaciones(): Promise<Cotizacion[]> {
   const sb = supabaseAdmin();
-  const { data } = await sb
-    .from("cotizaciones")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(500);
-  return (data ?? []).map((c) => ({
+  const leer = (cols: string) => sb.from("cotizaciones").select(cols)
+    .order("created_at", { ascending: false }).limit(500);
+  // El origen del cliente viene por la relación; si falla, la lista sale igual sin él.
+  let { data, error } = await leer("*, contactos(origen)");
+  if (error) ({ data, error } = await leer("*"));
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map((c) => ({
     id: c.id as string,
     folio: (c.folio as string | null) ?? null,
     tipo: (c.tipo as ContractTipo | null) ?? null,
@@ -120,6 +122,7 @@ export async function getCotizaciones(): Promise<Cotizacion[]> {
     num_canciones: c.num_canciones != null ? Number(c.num_canciones) : null,
     ep_album_formato: (c.ep_album_formato as "ep" | "album" | null) ?? null,
     contacto_id: (c.contacto_id as string | null) ?? null,
+    contacto_origen: ((c.contactos as { origen?: string | null } | null)?.origen as string | null) ?? null,
     cliente_nombre: (c.cliente_nombre as string | null) ?? null,
     cliente_email: (c.cliente_email as string | null) ?? null,
     cliente_telefono: (c.cliente_telefono as string | null) ?? null,

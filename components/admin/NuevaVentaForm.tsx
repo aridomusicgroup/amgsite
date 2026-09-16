@@ -6,6 +6,7 @@ import { InstrumentosPicker } from "@/components/admin/InstrumentosPicker";
 import { inferirInstrumentos } from "@/lib/servicios";
 import { aMxn, esExtranjera, convertir, factorConversion, TIPO_CAMBIO_FALLBACK } from "@/lib/tipo-cambio";
 import { MEDIOS_PAGO } from "@/lib/medios-pago";
+import { OrigenCliente, ORIGEN_VACIO, type OrigenValor } from "@/components/admin/OrigenCliente";
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 
@@ -40,6 +41,8 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ ...EMPTY });
+  /** Cómo llegó el cliente (Instagram, TikTok…), aparte del canal donde se cerró. */
+  const [origen, setOrigen] = useState<OrigenValor>(ORIGEN_VACIO);
   /** Quién toca cada instrumento. Lo llena el propio InstrumentosPicker. */
   const [musicosElegidos, setMusicosElegidos] = useState<{ instrumento: string; musico_id: string }[]>([]);
   const [saving, setSaving] = useState(false);
@@ -132,6 +135,7 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...f,
+          ...origen,
           inventario_beat_id: beatMatch?.id ?? null,
           anticipo: f.estado_pago === "anticipo" ? f.anticipo : "",
           instrumentos: f.extras, // el selector alimenta las tareas "Grabar {instrumento}"
@@ -148,6 +152,7 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
         if (d.proyecto) partes.push(`proyecto ${d.proyecto} creado`);
         setOk(partes.join(" · "));
         setF({ ...EMPTY });
+        setOrigen(ORIGEN_VACIO);
         router.refresh();
       }
     } catch {
@@ -206,7 +211,7 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
           <input type="tel" value={f.telefono} onChange={set("telefono")} placeholder="477 123 4567" className={inp} />
         </div>
         <div>
-          <label className={lbl}>Canal</label>
+          <label className={lbl}>Dónde se cerró</label>
           <select value={f.canal} onChange={set("canal")} className={inp}>
             <option value="whatsapp" className="bg-lgb-dark">WhatsApp</option>
             <option value="instagram" className="bg-lgb-dark">Instagram</option>
@@ -215,6 +220,7 @@ export function NuevaVentaForm({ beats, tcSugerido = TIPO_CAMBIO_FALLBACK }: {
             <option value="facebook" className="bg-lgb-dark">Facebook</option>
           </select>
         </div>
+        <OrigenCliente value={origen} onChange={setOrigen} requerido inputClass={inp} labelClass={lbl} />
         <div>
           <label className={lbl}>Tipo</label>
           <input list="tipos" value={f.tipo} onChange={onTipo} placeholder="Beat personalizado" className={inp} />

@@ -15,6 +15,8 @@ import { armarTemas, temasDeLaCotizacion, type TemaPlan } from "@/lib/armar-proy
 import { limpiarTemas } from "@/lib/temas";
 import { limpiarCompas } from "@/lib/compas";
 import { papeleraCarpeta } from "@/lib/drive-oauth";
+import { normalizarOrigen } from "@/lib/origenes";
+import { fijarOrigenContacto } from "@/lib/origen-contacto";
 
 const peso = (n: unknown) => `$${(Number(n) || 0).toLocaleString("es-MX")}`;
 
@@ -72,7 +74,7 @@ export async function POST(req: NextRequest) {
     } else {
       const { data: nuevo } = await sb
         .from("contactos")
-        .insert({ nombre: cliente || null, email: email || null, telefono: telefono || null, etapa: "cliente", origen: b.canal || null })
+        .insert({ nombre: cliente || null, email: email || null, telefono: telefono || null, etapa: "cliente", origen: normalizarOrigen(b.origen) ?? (b.canal || null) })
         .select("id")
         .single();
       contactoId = nuevo?.id ?? null;
@@ -147,6 +149,14 @@ export async function POST(req: NextRequest) {
     }
     await sb.from("cotizaciones").update(patchCot).eq("id", b.cotizacion_id);
   }
+
+  // ── Cómo llegó el cliente: llena lo que su ficha no tuviera (reel, link) ──
+  let contactoOrigen = contactoId;
+  if (!contactoOrigen && b.cotizacion_id) {
+    const { data: cot } = await sb.from("cotizaciones").select("contacto_id").eq("id", b.cotizacion_id).maybeSingle();
+    contactoOrigen = (cot?.contacto_id as string | null) ?? null;
+  }
+  await fijarOrigenContacto(sb, contactoOrigen, b);
 
   // ── Anticipo: si lo dieron parcial, registra el primer pago (resto = saldo) ──
   // Sin anticipo (o anticipo ≥ total) la venta queda sin pagos = cobrada al 100%.

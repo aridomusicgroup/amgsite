@@ -21,6 +21,8 @@ import { ESQUEMAS_PAGO, ESQUEMA_LABEL, tramosDe, type EsquemaPago } from "@/lib/
 import { MEDIOS_PAGO } from "@/lib/medios-pago";
 import { TemasEditor } from "@/components/admin/TemasEditor";
 import { CompasSelect } from "@/components/admin/CompasSelect";
+import { OrigenCliente, ORIGEN_VACIO, type OrigenValor } from "@/components/admin/OrigenCliente";
+import { ORIGEN_LABEL } from "@/lib/origenes";
 import { ajustarTemas, temasDeCotizacion, type Tema } from "@/lib/temas";
 
 // ── Tipos de props (datos ya serializados desde el server) ──
@@ -1312,6 +1314,9 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
     () => equipo.filter((e) => e.rol === "socio").map((e) => e.id),
   );
   const [anticipo, setAnticipo] = useState(0);
+  // Cómo llegó el cliente. Sólo se pide si su ficha todavía no lo dice.
+  const [origen, setOrigen] = useState<OrigenValor>(ORIGEN_VACIO);
+  const pideOrigen = !c.contacto_origen;
   const [crearProyecto, setCrearProyecto] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1324,9 +1329,11 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
   const save = async () => {
     const problema = validarTipoCambio(c.moneda, Number(tipoCambio) || 0);
     if (problema) { setErr(problema); return; }
+    if (pideOrigen && !origen.origen) { setErr("Elige cómo llegó el cliente."); return; }
     setSaving(true); setErr(null);
     try {
       await api("/api/admin/ventas", "POST", {
+        ...(pideOrigen ? origen : {}),
         fecha,
         cotizacion_id: c.id,
         cliente: c.cliente_nombre, email: c.cliente_email, telefono: c.cliente_telefono,
@@ -1470,6 +1477,13 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
         <Field label="Anticipo (opcional)"><input type="number" min={0} value={anticipo} onChange={(e) => setAnticipo(Number(e.target.value) || 0)} className="input" /></Field>
       </div>
       <Field label="Quién cerró (opcional)"><input value={quienCerro} onChange={(e) => setQuienCerro(e.target.value)} className="input" placeholder="Eliud, Rocha…" /></Field>
+      {pideOrigen ? (
+        <div className="grid grid-cols-2 gap-3 mt-2">
+          <OrigenCliente value={origen} onChange={setOrigen} requerido inputClass="input" labelClass="block text-white/60 text-xs mb-1" />
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-white/45">Llegó por: <b className="text-white/70">{ORIGEN_LABEL[c.contacto_origen ?? ""] ?? c.contacto_origen}</b></p>
+      )}
       <label className="flex items-center gap-2 mt-3 cursor-pointer text-sm text-white/70">
         <input type="checkbox" checked={crearProyecto} onChange={(e) => setCrearProyecto(e.target.checked)} className="accent-lgb-red w-4 h-4" />
         Crear también el proyecto de producción y sus tareas

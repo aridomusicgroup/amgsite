@@ -3,6 +3,7 @@ import { getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
 import { anclarCarpeta, type CarpetaPendiente } from "@/lib/carpeta-reaper";
+import { limpiarEnlace } from "@/lib/origenes";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,16 @@ export async function PATCH(req: NextRequest) {
     }
   }
   const { data: upd, error } = await sb.from("contactos").update(patch).eq("id", id).select("nombre, email").single();
+  // Reel / link de origen: aparte, porque sin supabase-origen-clientes.sql esas
+  // columnas no existen y no deben tumbar el resto de la edición.
+  if (!error && ("origen_post_id" in b || "origen_enlace" in b)) {
+    const origen = patch.origen ?? null;
+    const postId = /^[0-9a-f-]{36}$/i.test(String(b.origen_post_id ?? "")) ? String(b.origen_post_id) : null;
+    await sb.from("contactos").update({
+      origen_post_id: origen === "instagram" ? postId : null,
+      origen_enlace: origen && origen !== "instagram" ? limpiarEnlace(b.origen_enlace) : null,
+    }).eq("id", id);
+  }
   if (!error) {
     try {
       const quien = await nombreDeActor(sb, actor);

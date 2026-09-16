@@ -82,6 +82,10 @@ export interface Contacto {
   direccion: string | null;
   etapa: string;
   origen: string | null;
+  /** Reel de Instagram del que llegó (social_posts.id). */
+  origenPostId: string | null;
+  /** Link del video de TikTok/YouTube/Facebook del que llegó. */
+  origenEnlace: string | null;
   servicio_interes: string | null;
   motivo_perdida: string | null;
   ltv: number;
@@ -153,6 +157,10 @@ export async function getContactos(): Promise<Contacto[]> {
     // despliegue hasta que alguien corra supabase-cobranza.sql.
     (async () => {
       const COLS = "id, nombre, telefono, email, direccion, etapa, origen, servicio_interes, motivo_perdida, ltv, created_at, proxima_accion, proxima_fecha";
+      // Reel/link de origen también son nuevos (supabase-origen-clientes.sql).
+      const conOrigen = await sb.from("contactos").select(`${COLS}, no_contactar, origen_post_id, origen_enlace`)
+        .is("merged_into", null).order("ltv", { ascending: false }).limit(2000);
+      if (!conOrigen.error) return conOrigen;
       const conMarca = await sb.from("contactos").select(`${COLS}, no_contactar`)
         .is("merged_into", null).order("ltv", { ascending: false }).limit(2000);
       if (!conMarca.error) return conMarca;
@@ -235,6 +243,8 @@ export async function getContactos(): Promise<Contacto[]> {
     proximaAccion: (c.proxima_accion as string | null) ?? null,
     proximaFecha: (c.proxima_fecha as string | null) ?? null,
     noContactar: (c as Record<string, unknown>).no_contactar === true,
+    origenPostId: ((c as Record<string, unknown>).origen_post_id as string | null) ?? null,
+    origenEnlace: ((c as Record<string, unknown>).origen_enlace as string | null) ?? null,
     saldo: saldoBy.get(c.id as string) ?? 0,
     saldoDias: (() => {
       const f = saldoDesdeBy.get(c.id as string);

@@ -5,6 +5,8 @@ import { Search, Phone, Mail, TrendingUp, Merge, Download, Loader2, Pencil, Tras
 import type { Contacto } from "@/lib/erp-data";
 import { ETAPA_LABEL } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
+import { ORIGEN_LABEL } from "@/lib/origenes";
+import { OrigenCliente, ORIGEN_VACIO, type OrigenValor } from "./OrigenCliente";
 import { atenderRespuesta } from "@/lib/entrega-cliente";
 import { ClienteCorreosExtra } from "./ClienteCorreosExtra";
 import { AvisoCorreoPedido } from "./AvisoCorreoPedido";
@@ -21,11 +23,6 @@ const ETAPA_STYLE: Record<string, string> = {
   inactivo: "bg-white/5 text-white/35",
 };
 
-const ORIGEN_LABEL: Record<string, string> = {
-  whatsapp: "WhatsApp", instagram: "Instagram", tiktok: "TikTok",
-  beatstars: "BeatStars", facebook: "Facebook", sitio: "Sitio web",
-};
-const ORIGENES = ["whatsapp", "instagram", "tiktok", "beatstars", "facebook", "sitio"];
 const ETAPAS_EDIT = ["lead", "negociacion", "cliente", "recurrente", "perdido", "inactivo"];
 
 const peso = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
@@ -81,7 +78,8 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
     setHistorialId(destacado);
   }, [destacado]);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [ef, setEf] = useState({ nombre: "", telefono: "", email: "", direccion: "", etapa: "", origen: "" });
+  const [ef, setEf] = useState({ nombre: "", telefono: "", email: "", direccion: "", etapa: "" });
+  const [eo, setEo] = useState<OrigenValor>(ORIGEN_VACIO);
   const [editSaving, setEditSaving] = useState(false);
   const [editErr, setEditErr] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -103,14 +101,14 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
   const origenes = useMemo(() => {
     const s = new Set<string>();
     for (const c of contactos) if (c.origen) s.add(c.origen);
-    return ["todos", ...s];
+    return ["todos", "sin_origen", ...s];
   }, [contactos]);
 
   const list = useMemo(() => {
     const term = q.trim().toLowerCase();
     const out = contactos.filter((c) => {
       if (etapa !== "todos" && c.etapa !== etapa) return false;
-      if (origen !== "todos" && c.origen !== origen) return false;
+      if (origen === "sin_origen" ? Boolean(c.origen) : origen !== "todos" && c.origen !== origen) return false;
       if (soloConsolidados && c.mergedFrom.length === 0) return false;
 
       // Foco de seguimiento: qué toca trabajar hoy.
@@ -223,8 +221,8 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
       email: c.email || "",
       direccion: c.direccion || "",
       etapa: c.etapa || "",
-      origen: c.origen || "",
     });
+    setEo({ origen: c.origen || "", origen_post_id: c.origenPostId || "", origen_enlace: c.origenEnlace || "" });
     setEditErr(null);
   };
   const setE = (k: keyof typeof ef) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -236,7 +234,7 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
       const r = await fetch("/api/admin/contactos", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...ef }),
+        body: JSON.stringify({ id, ...ef, ...eo }),
       });
       // Antes de leer el cuerpo: si se renombró al cliente, pregunta por su carpeta de REAPER.
       if (r.ok) void atenderRespuesta(r);
@@ -299,7 +297,7 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
       {/* Segmentación de marketing */}
       <div className="flex gap-2 flex-wrap items-center mb-2">
         <select value={origen} onChange={(e) => setOrigen(e.target.value)} className={sel}>
-          {origenes.map((o) => <option key={o} value={o} className="bg-lgb-dark">{o === "todos" ? "Todos los canales" : ORIGEN_LABEL[o] ?? o}</option>)}
+          {origenes.map((o) => <option key={o} value={o} className="bg-lgb-dark">{o === "todos" ? "Todos los orígenes" : o === "sin_origen" ? "Sin origen" : ORIGEN_LABEL[o] ?? o}</option>)}
         </select>
         <select value={contacto} onChange={(e) => setContacto(e.target.value)} className={sel}>
           <option value="todos" className="bg-lgb-dark">Contactabilidad</option>
@@ -495,13 +493,7 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
                         {ETAPAS_EDIT.map((s) => <option key={s} value={s} className="bg-lgb-dark">{ETAPA_LABEL[s] ?? s}</option>)}
                       </select>
                     </div>
-                    <div>
-                      <label className={lblS}>Canal de origen</label>
-                      <select value={ef.origen} onChange={setE("origen")} className={inp}>
-                        <option value="" className="bg-lgb-dark">—</option>
-                        {ORIGENES.map((o) => <option key={o} value={o} className="bg-lgb-dark">{ORIGEN_LABEL[o]}</option>)}
-                      </select>
-                    </div>
+                    <OrigenCliente value={eo} onChange={setEo} inputClass={inp} labelClass={lblS} />
                   </div>
                   {c.email && <AvisoCorreoPedido contactoId={c.id} email={c.email} />}
                   {c.email && <ClienteCorreosExtra principalEmail={c.email} />}
