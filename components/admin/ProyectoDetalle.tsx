@@ -201,7 +201,7 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
 
       <EditarProyectoModal open={editOpen} proyecto={proyecto} equipo={equipo} ventas={ventas} isAdmin={isAdmin} onClose={() => setEditOpen(false)} />
       <ConfirmCascadeDialog
-        open={deleteOpen} proyectoId={proyecto.id} proyectoTitulo={proyecto.titulo}
+        open={deleteOpen} tipo="proyecto" id={proyecto.id} titulo={proyecto.titulo}
         onClose={() => setDeleteOpen(false)}
         onConfirmed={() => { toast("✓ Proyecto eliminado"); router.push("/admin/produccion"); }}
       />

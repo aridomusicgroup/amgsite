@@ -326,7 +326,7 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "Falta el id del proyecto." }, { status: 400 });
 
   const sb = supabaseAdmin();
-  const { data: proy } = await sb.from("proyectos").select("titulo, folio, venta_id, drive_folder_id").eq("id", id).single();
+  const { data: proy } = await sb.from("proyectos").select("titulo, folio, venta_id, drive_folder_id, order_id").eq("id", id).single();
   if (!proy) return NextResponse.json({ error: "Proyecto no encontrado." }, { status: 404 });
 
   if (b.eliminarDrive && proy.drive_folder_id) {
@@ -335,6 +335,13 @@ export async function DELETE(req: NextRequest) {
   if (b.eliminarContrato) {
     const { error: errContrato } = await sb.from("contratos").delete().eq("proyecto_id", id);
     if (errContrato) return NextResponse.json({ error: `No se pudo borrar el contrato: ${errContrato.message}` }, { status: 500 });
+  }
+  if (b.eliminarPedido && proy.order_id) {
+    // Sin esto, el cliente seguía viendo el pedido en su panel después de que
+    // el proyecto ya no existía. `expenses` no tiene cascade: se suelta antes.
+    await sb.from("expenses").update({ order_id: null }).eq("order_id", proy.order_id);
+    const { error: errPedido } = await sb.from("orders").delete().eq("id", proy.order_id); // order_items por cascade
+    if (errPedido) return NextResponse.json({ error: `No se pudo borrar el pedido: ${errPedido.message}` }, { status: 500 });
   }
   if (b.eliminarVenta && proy.venta_id) {
     // La FK de interacciones a ventas NO tiene cascade (mismo caso que el borrado
@@ -357,7 +364,10 @@ export async function DELETE(req: NextRequest) {
       titulo: `${await nombreDeActor(sb, email)} eliminó el proyecto "${proy.titulo}" (${proy.folio ?? "sin folio"})`,
       actor: email,
       entidad_nombre: `${proy.folio ?? ""} ${proy.titulo}`.trim(),
-      meta: { eliminarVenta: !!b.eliminarVenta, eliminarContrato: !!b.eliminarContrato, eliminarDrive: !!b.eliminarDrive },
+      meta: {
+        eliminarVenta: !!b.eliminarVenta, eliminarContrato: !!b.eliminarContrato,
+        eliminarDrive: !!b.eliminarDrive, eliminarPedido: !!b.eliminarPedido,
+      },
     });
   } catch { /* bitácora best-effort, y ya se confirmó que el borrado sí ocurrió */ }
 

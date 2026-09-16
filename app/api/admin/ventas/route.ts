@@ -14,6 +14,7 @@ import { normalizarMedio } from "@/lib/medios-pago";
 import { armarTemas, temasDeLaCotizacion, type TemaPlan } from "@/lib/armar-proyecto";
 import { limpiarTemas } from "@/lib/temas";
 import { limpiarCompas } from "@/lib/compas";
+import { papeleraCarpeta } from "@/lib/drive-oauth";
 
 const peso = (n: unknown) => `$${(Number(n) || 0).toLocaleString("es-MX")}`;
 
@@ -367,6 +368,36 @@ export async function DELETE(req: NextRequest) {
     await revertirFidelidadDeVenta(sb, venta.contacto_id, id, Number(venta.total_mxn) || 0);
   }
 
+  // Lo que cuelga de la venta, según lo que se haya palomeado en el diálogo.
+  // Antes esto NO existía: borrar una venta dejaba su proyecto sin venta, el
+  // contrato colgando y el pedido vivo en el panel del cliente.
+  const { data: proys } = await sb.from("proyectos")
+    .select("id, drive_folder_id, order_id").eq("venta_id", id);
+  const proyectos = proys ?? [];
+
+  if (b.eliminarDrive) {
+    for (const p of proyectos) {
+      if (p.drive_folder_id) await papeleraCarpeta(p.drive_folder_id as string).catch(() => false);
+    }
+  }
+  if (b.eliminarContrato) {
+    await sb.from("contratos").delete().eq("venta_id", id);
+    if (proyectos.length) await sb.from("contratos").delete().in("proyecto_id", proyectos.map((p) => p.id as string));
+  }
+  if (b.eliminarPedido) {
+    const pedidos = [...new Set(proyectos.map((p) => p.order_id as string | null).filter(Boolean))] as string[];
+    for (const pedidoId of pedidos) {
+      // `expenses` no tiene cascade sobre order_id: se suelta antes de borrar.
+      await sb.from("expenses").update({ order_id: null }).eq("order_id", pedidoId);
+      await sb.from("orders").delete().eq("id", pedidoId); // order_items por cascade
+    }
+  }
+  if (b.eliminarProyecto && proyectos.length) {
+    // Tareas, subtareas, recordatorios, renders y asignaciones van por cascade.
+    const { error: errProy } = await sb.from("proyectos").delete().in("id", proyectos.map((p) => p.id as string));
+    if (errProy) return NextResponse.json({ error: `No se pudo borrar el proyecto: ${errProy.message}` }, { status: 500 });
+  }
+
   // Libera referencias en interacciones (la FK no tiene cascade → evita el bloqueo).
   await sb.from("interacciones").update({ venta_id: null }).eq("venta_id", id);
   // Comisión asociada (egreso BSC-…) de ventas de BeatStars.
@@ -383,6 +414,10 @@ export async function DELETE(req: NextRequest) {
       tipo: "venta_eliminada",
       titulo: `${quien} eliminó la venta ${venta.folio ?? ""}`,
       actor, entidad: "venta", entidad_id: id, entidad_nombre: (venta.folio as string) ?? null,
+      meta: {
+        eliminarProyecto: !!b.eliminarProyecto, eliminarContrato: !!b.eliminarContrato,
+        eliminarPedido: !!b.eliminarPedido, eliminarDrive: !!b.eliminarDrive,
+      },
     });
   } catch { /* bitácora best-effort */ }
 

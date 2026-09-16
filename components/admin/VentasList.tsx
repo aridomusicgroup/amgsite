@@ -7,6 +7,7 @@ import { toast } from "@/lib/toast";
 import { atenderRespuesta } from "@/lib/entrega-cliente";
 import { PagosMusicoSection } from "./PagosMusicoSection";
 import { PagosClienteSection } from "./PagosClienteSection";
+import { ConfirmCascadeDialog } from "@/components/admin/ui/ConfirmCascadeDialog";
 
 const peso = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -54,8 +55,6 @@ export function VentasList({ ventas }: { ventas: Venta[] }) {
   const [editSaving, setEditSaving] = useState(false);
   const [editErr, setEditErr] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelPress = () => {
@@ -162,23 +161,9 @@ export function VentasList({ ventas }: { ventas: Venta[] }) {
     }
   };
 
-  const doDelete = async (id: string) => {
-    setDeleting(true); setDeleteErr(null);
-    try {
-      const r = await fetch("/api/admin/ventas", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      const d = await r.json();
-      if (!r.ok) setDeleteErr(d.error || "No se pudo eliminar.");
-      else { setConfirmDeleteId(null); router.refresh(); toast("✓ Venta eliminada"); }
-    } catch {
-      setDeleteErr("Error de conexión.");
-    } finally {
-      setDeleting(false);
-    }
-  };
+  // Borrar una venta abre la MISMA ventana que un proyecto: dice qué se va con
+  // ella (proyecto, contrato, pedido del cliente, Drive) y deja desmarcar lo
+  // que se quiera conservar. La llamada la hace esa ventana.
 
   const inp = "bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-lgb-red";
   const lblS = "block text-[10px] text-white/40 mb-1";
@@ -343,7 +328,7 @@ export function VentasList({ ventas }: { ventas: Venta[] }) {
                     <button onClick={() => abrirEdit(v)} className="flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-white px-3 py-1.5 rounded-lg text-xs font-medium">
                       <Pencil size={13} /> Editar
                     </button>
-                    <button onClick={() => { setConfirmDeleteId(v.id); setActionsId(null); setDeleteErr(null); }} className="flex items-center gap-1.5 bg-red-500/15 hover:bg-red-500/25 text-red-300 px-3 py-1.5 rounded-lg text-xs font-medium">
+                    <button onClick={() => { setConfirmDeleteId(v.id); setActionsId(null); }} className="flex items-center gap-1.5 bg-red-500/15 hover:bg-red-500/25 text-red-300 px-3 py-1.5 rounded-lg text-xs font-medium">
                       <Trash2 size={13} /> Eliminar
                     </button>
                     <button onClick={() => setActionsId(null)} className="text-white/40 hover:text-white text-xs px-2 py-1.5">Cerrar</button>
@@ -404,26 +389,15 @@ export function VentasList({ ventas }: { ventas: Venta[] }) {
                 </div>
               )}
 
-              {/* Confirmación de borrado */}
-              {confirmDeleteId === v.id && (
-                <div className="mt-3 pt-3 border-t border-red-500/20 flex flex-wrap items-center gap-3">
-                  <p className="text-sm text-white/80">
-                    ¿Eliminar esta venta? <span className="text-white/40">No se puede deshacer.</span>
-                  </p>
-                  <div className="flex gap-2 ml-auto">
-                    <button
-                      onClick={() => doDelete(v.id)}
-                      disabled={deleting}
-                      className="flex items-center gap-1.5 bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50"
-                    >
-                      {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                      Sí, eliminar
-                    </button>
-                    <button onClick={() => setConfirmDeleteId(null)} className="text-white/50 hover:text-white text-xs px-3 py-1.5">Cancelar</button>
-                  </div>
-                  {deleteErr && <p className="text-red-400 text-xs w-full">{deleteErr}</p>}
-                </div>
-              )}
+              {/* Borrado con dependencias (proyecto, contrato, pedido, Drive) */}
+              <ConfirmCascadeDialog
+                open={confirmDeleteId === v.id}
+                tipo="venta"
+                id={v.id}
+                titulo={v.beat_nombre || v.folio || "esta venta"}
+                onClose={() => setConfirmDeleteId(null)}
+                onConfirmed={() => { setConfirmDeleteId(null); router.refresh(); toast("✓ Venta eliminada"); }}
+              />
             </li>
           );
         })}

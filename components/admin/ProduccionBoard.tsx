@@ -800,7 +800,7 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
           </div>
 
           <ConfirmCascadeDialog
-            open={confirming} proyectoId={p.id} proyectoTitulo={p.titulo}
+            open={confirming} tipo="proyecto" id={p.id} titulo={p.titulo}
             onClose={() => setConfirming(false)}
             onConfirmed={() => { setConfirming(false); toast("✓ Proyecto eliminado"); router.refresh(); }}
           />

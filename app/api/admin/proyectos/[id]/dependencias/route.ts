@@ -14,11 +14,13 @@ export async function GET(_req: NextRequest, { params }: Props) {
   const { id } = await params;
 
   const sb = supabaseAdmin();
-  const { data: p } = await sb.from("proyectos").select("venta_id, drive_folder_id").eq("id", id).single();
+  const { data: p } = await sb.from("proyectos").select("venta_id, drive_folder_id, order_id").eq("id", id).single();
   if (!p) return NextResponse.json({ error: "Proyecto no encontrado" }, { status: 404 });
 
   const ventaId = (p.venta_id as string | null) ?? null;
   const driveCarpetaId = (p.drive_folder_id as string | null) ?? null;
+  // El pedido del sitio: es lo que el cliente ve en su panel.
+  const pedidoId = (p.order_id as string | null) ?? null;
 
   const [tareasRes, contratosRes, ventaRes, pagosRes, pagosMusicoRes, archivos] = await Promise.all([
     sb.from("proyecto_tareas").select("id").eq("proyecto_id", id),
@@ -49,6 +51,9 @@ export async function GET(_req: NextRequest, { params }: Props) {
     recordatorios: recordatoriosRes.count ?? 0,
     renderJobs: renderJobsRes.count ?? 0,
     renderInventario: renderInvRes.count ?? 0,
+    proyectos: 0,
+    proyectosTitulos: [] as string[],
+    pedidos: pedidoId ? 1 : 0,
     ventas: ventaId ? 1 : 0,
     pagos: typeof pagosRes.count === "number" ? pagosRes.count : 0,
     montoTotalMxn: ventaRes.data ? Number(ventaRes.data.total_mxn) || 0 : 0,
