@@ -23,6 +23,7 @@ import { tramosConEstado, siguientePendiente } from "@/lib/cotizacion-pagos";
 import { esEsquemaValido, type EsquemaPago } from "@/lib/esquema-pago";
 import { crearVentaDesdeCotizacionPagada } from "@/lib/venta-desde-cotizacion";
 import { comisionStripeMxn, registrarComisionStripeEgreso } from "@/lib/stripe-comision";
+import { comisionIntlDeMeta, registrarComisionIntlIngreso } from "@/lib/comision-intl-server";
 import { liberarEntregas } from "@/lib/entrega";
 
 /**
@@ -93,7 +94,12 @@ export async function POST(req: NextRequest) {
   const email = (session.customer_details?.email ?? "").toLowerCase();
   const name = session.customer_details?.name ?? null;
   const phone = session.customer_details?.phone ?? null;
-  const total = (session.amount_total ?? 0) / 100;
+  // Lo que pagó el cliente incluye la comisión internacional (7%): se separa
+  // para que la VENTA valga el precio del producto y la comisión se registre
+  // como otro ingreso (ver registrarComisionIntlIngreso).
+  const comisionIntl = comisionIntlDeMeta(meta);
+  const pagado = (session.amount_total ?? 0) / 100;
+  const total = Math.round((pagado - comisionIntl) * 100) / 100;
   const currency = session.currency ?? "mxn";
   const note = meta.nota || null;
   const summary =
@@ -129,7 +135,8 @@ export async function POST(req: NextRequest) {
             // descarga): nace entregado y no se queda como pendiente en Pedidos
             // ni como "Recibido" en el panel del cliente.
             status: type === "beat" ? "entregado" : "nuevo",
-            total,
+            // El pedido guarda lo que de verdad se le cobró al cliente.
+            total: pagado,
             currency: currency.toUpperCase(),
             summary,
             note,
@@ -222,6 +229,10 @@ export async function POST(req: NextRequest) {
         if (!ventaYaExistia) {
           await registrarPagoDeContado(sb, contactoId, totalMxn, { ventaId });
           if (ventaId) await registrarComisionStripeEgreso(sb, ventaId, ventaFolio, camposVenta.fecha, comisionMxn);
+          await registrarComisionIntlIngreso(sb, {
+            sessionId: session.id, monto: comisionIntl, monedaPago: currency.toUpperCase(),
+            fx: FX, folio: ventaFolio, fecha: camposVenta.fecha,
+          });
         }
 
         if (contactoId) {
@@ -487,7 +498,10 @@ async function handleSaldoVenta(stripe: Stripe, session: Stripe.Checkout.Session
     }
     if (yaRegistrado) return NextResponse.json({ received: true });
 
-    const monto = (session.amount_total ?? 0) / 100;
+    // El link de saldo de un cliente de fuera cobra el saldo + 7%: al ledger
+    // sólo entra el saldo (la comisión va como otro ingreso).
+    const comisionIntl = comisionIntlDeMeta(session.metadata);
+    const monto = Math.round(((session.amount_total ?? 0) / 100 - comisionIntl) * 100) / 100;
     if (!(monto > 0)) return NextResponse.json({ received: true });
 
     const { data: venta } = await sb.from("ventas").select("folio, total_mxn, beat_nombre").eq("id", ventaId).single();
@@ -529,6 +543,10 @@ async function handleSaldoVenta(stripe: Stripe, session: Stripe.Checkout.Session
     await registrarComisionStripeEgreso(
       sb, ventaId, (venta?.folio as string) ?? "", new Date().toISOString().slice(0, 10), comisionMxn, "Saldo",
     );
+    await registrarComisionIntlIngreso(sb, {
+      sessionId: session.id, monto: comisionIntl, monedaPago: (session.currency ?? "mxn").toUpperCase(),
+      fx: 18, folio: (venta?.folio as string) ?? "Saldo", fecha: new Date().toISOString().slice(0, 10),
+    });
     await sincronizarFidelidadVenta(sb, ventaId);
 
     const saldoDespues = Math.max(0, saldoAntes - monto);
@@ -568,7 +586,10 @@ async function handleCotizacionPago(stripe: Stripe, session: Stripe.Checkout.Ses
       .maybeSingle();
     if (yaRegistrado) return NextResponse.json({ received: true });
 
-    const monto = (session.amount_total ?? 0) / 100;
+    // Cotización en dólares: el link cobra el tramo + 7%. El tramo se registra
+    // por su monto real; la comisión, como otro ingreso.
+    const comisionIntl = comisionIntlDeMeta(meta);
+    const monto = Math.round(((session.amount_total ?? 0) / 100 - comisionIntl) * 100) / 100;
     const tramoIndex = Number(meta.tramo_index);
     // Best-effort: la cuenta de Stripe liquida en MXN casi siempre, así que el
     // fallback de tipo de cambio (18) rara vez se usa de verdad — ver comisionStripeMxn.
@@ -607,6 +628,10 @@ async function handleCotizacionPago(stripe: Stripe, session: Stripe.Checkout.Ses
     // — ver crearVentaDesdeCotizacionPagada. Es idempotente: en tramos
     // posteriores solo suma el pago a la venta que ya existe.
     const resultado = await crearVentaDesdeCotizacionPagada(sb, cotizacionId, monto, comisionMxn, session.id);
+    await registrarComisionIntlIngreso(sb, {
+      sessionId: session.id, monto: comisionIntl, monedaPago: (session.currency ?? "mxn").toUpperCase(),
+      fx: 18, folio: folio || "Cotización", fecha: new Date().toISOString().slice(0, 10),
+    });
     if (resultado) {
       await registrarComisionStripeEgreso(sb, resultado.ventaId, resultado.ventaFolio, new Date().toISOString().slice(0, 10), comisionMxn, meta.tramo_label || null);
       // Si con este tramo quedó liquidada y había archivos retenidos, se le

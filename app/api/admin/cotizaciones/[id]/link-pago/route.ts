@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { esEsquemaValido, type EsquemaPago } from "@/lib/esquema-pago";
 import { tramosConEstado, siguientePendiente } from "@/lib/cotizacion-pagos";
 import { DOMAINS } from "@/lib/site";
+import { esMonedaInternacional, montoComisionIntl, LABEL_COMISION_INTL } from "@/lib/comision-internacional";
 
 export const dynamic = "force-dynamic";
 
@@ -19,12 +20,12 @@ async function staff(): Promise<string | null> {
 async function cargarCotizacion(sb: any, id: string) {
   const { data } = await sb
     .from("cotizaciones")
-    .select("id, folio, moneda, total, esquema_pago, num_canciones")
+    .select("id, folio, moneda, total, esquema_pago, num_canciones, comision_pct")
     .eq("id", id)
     .single();
   return data as {
     id: string; folio: string | null; moneda: string; total: number;
-    esquema_pago: string | null; num_canciones: number | null;
+    esquema_pago: string | null; num_canciones: number | null; comision_pct: number | null;
   } | null;
 }
 
@@ -68,6 +69,12 @@ export async function POST(_req: NextRequest, { params }: Props) {
   if (!pendiente) return NextResponse.json({ error: "Esta cotización ya está pagada por completo." }, { status: 400 });
   if (pendiente.monto <= 0) return NextResponse.json({ error: "El monto de ese tramo es $0." }, { status: 400 });
 
+  // Cotización en dólares = cliente de fuera: lleva comisión internacional.
+  // Si la cotización YA la trae en su total (la casilla del formulario), no se
+  // vuelve a sumar aquí: sería cobrarle el 7% dos veces.
+  const yaLaTrae = (Number(c.comision_pct) || 0) > 0;
+  const comisionIntl = esMonedaInternacional(c.moneda) && !yaLaTrae ? montoComisionIntl(pendiente.monto) : 0;
+
   const stripe = new Stripe(secretKey);
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
@@ -80,12 +87,21 @@ export async function POST(_req: NextRequest, { params }: Props) {
         },
         quantity: 1,
       },
+      ...(comisionIntl > 0 ? [{
+        price_data: {
+          currency: (c.moneda || "MXN").toLowerCase(),
+          unit_amount: Math.round(comisionIntl * 100),
+          product_data: { name: LABEL_COMISION_INTL.es },
+        },
+        quantity: 1,
+      }] : []),
     ],
     success_url: `${DOMAINS.main}/cotizador/gracias?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: DOMAINS.main,
     metadata: {
       tipo: "cotizacion_pago",
       cotizacion_id: id,
+      ...(comisionIntl > 0 ? { comision_intl: String(comisionIntl) } : {}),
       tramo_index: String(pendiente.index),
       tramo_label: pendiente.label.slice(0, 200),
       resumen: `${c.folio} · ${pendiente.label}`.slice(0, 480),

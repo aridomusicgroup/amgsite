@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { X, Trash2, ShoppingBag, CreditCard, ExternalLink } from "lucide-react";
 import { useCartStore } from "@/lib/store";
@@ -8,6 +8,7 @@ import { DIRECT_CHECKOUT_ENABLED } from "@/lib/site";
 import { isDirectExclusive } from "@/lib/exclusive";
 import { getAttribution } from "@/lib/attribution";
 import { track } from "@/lib/track";
+import { LABEL_COMISION_INTL, montoComisionIntl } from "@/lib/comision-internacional";
 
 export function LGBCart() {
   const { items, removeItem, clearCart, toggleCart, total } = useCartStore();
@@ -15,6 +16,21 @@ export function LGBCart() {
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cartTotal = total();
+  /**
+   * Fuera de México el cobro en dólares cuesta más (tarjeta internacional +
+   * conversión), así que lleva 7%. Se pregunta al servidor —el navegador no
+   * sabe el país— y el monto real lo vuelve a calcular él al cobrar.
+   */
+  const [internacional, setInternacional] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/pais", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (vivo && d) setInternacional(Boolean(d.internacional)); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+  const comision = internacional ? montoComisionIntl(cartTotal) : 0;
   // Stripe si el interruptor maestro está encendido, o si el carrito tiene una
   // exclusiva directa (beat nuevo) — esa siempre cobra por Stripe.
   const stripeCheckout =
@@ -169,10 +185,16 @@ export function LGBCart() {
         {/* Footer */}
         {items.length > 0 && (
           <div className="px-5 py-4 border-t border-white/5">
+            {comision > 0 && (
+              <div className="flex justify-between items-center mb-2 text-sm">
+                <span className="text-white/45">{LABEL_COMISION_INTL[lang]}</span>
+                <span className="text-white/70">${comision.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between items-center mb-4">
               <span className="text-white/50 text-sm">Total</span>
               <span className="text-white font-coolvetica text-2xl">
-                ${cartTotal.toFixed(2)}
+                ${(cartTotal + comision).toFixed(2)}
                 <span className="text-white/30 text-xs font-sans ml-1">USD</span>
               </span>
             </div>

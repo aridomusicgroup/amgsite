@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { linkDeSaldo } from "@/lib/cobranza";
+import { comisionIntlDeSaldo } from "@/lib/comision-intl-server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -40,7 +41,7 @@ export async function POST(_req: NextRequest, { params }: Props) {
 
   const { data: v } = await sb
     .from("ventas")
-    .select("id, folio, total_mxn, beat_nombre, tipo, contacto_id")
+    .select("id, folio, total_mxn, beat_nombre, tipo, contacto_id, moneda")
     .eq("id", id)
     .maybeSingle();
   if (!v) return NextResponse.json({ error: "Esa venta ya no existe." }, { status: 404 });
@@ -66,7 +67,10 @@ export async function POST(_req: NextRequest, { params }: Props) {
   // Un solo generador de links, compartido con la escalera de cobranza: dos
   // versiones del cálculo del saldo es cómo se acaba cobrando el monto
   // equivocado.
-  const url = await linkDeSaldo({ ventaId: id, folio: v.folio ?? "Venta", concepto, saldo });
+  const url = await linkDeSaldo({
+    ventaId: id, folio: v.folio ?? "Venta", concepto, saldo,
+    comisionIntl: await comisionIntlDeSaldo(sb, id, saldo),
+  });
   if (!url) return NextResponse.json({ error: "No se pudo generar el link de Stripe." }, { status: 502 });
 
   return NextResponse.json({ ok: true, url, saldo, folio: v.folio, concepto });

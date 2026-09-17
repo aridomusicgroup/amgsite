@@ -2,6 +2,8 @@ import "server-only";
 import Stripe from "stripe";
 import { Resend } from "resend";
 import { DOMAINS } from "@/lib/site";
+import { LABEL_COMISION_INTL } from "@/lib/comision-internacional";
+import { comisionIntlDeSaldo } from "@/lib/comision-intl-server";
 import { saldoRecordatorioEmail, saldoAcomodoEmail, saldoCierreEmail } from "@/lib/emails";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,6 +48,8 @@ export interface Deudor {
   email: string | null;
   noContactar: boolean;
   orderId: string | null;
+  /** Moneda de la venta: en USD el link de pago lleva comisión internacional. */
+  moneda: string;
   /** Toques ya enviados, en orden. */
   enviados: { toque: number; fecha: string }[];
   /** El siguiente que toca, o null si ya se agotaron los tres. */
@@ -69,7 +73,7 @@ const dias = (f: string) => Math.floor((Date.now() - new Date(f).getTime()) / 86
  */
 export async function deudores(sb: SB): Promise<Deudor[]> {
   const [{ data: ventas }, { data: pagos }] = await Promise.all([
-    sb.from("ventas").select("id, folio, fecha, contacto_id, total_mxn, beat_nombre, tipo").limit(1000),
+    sb.from("ventas").select("id, folio, fecha, contacto_id, total_mxn, beat_nombre, tipo, moneda").limit(1000),
     sb.from("pagos").select("venta_id, monto_mxn"),
   ]);
 
@@ -158,6 +162,7 @@ export async function deudores(sb: SB): Promise<Deudor[]> {
       email: email || null,
       noContactar: Boolean(c?.no_contactar),
       orderId: orderPor.get(v.id as string) ?? null,
+      moneda: String(v.moneda || "MXN").toUpperCase(),
       enviados,
       siguiente,
       listo: Boolean(siguiente) && desde >= espera && !bloqueo,
@@ -179,6 +184,8 @@ export interface SaldoVenta {
   tienePagos: boolean;
   folio: string;
   concepto: string;
+  /** Moneda de la venta: si no es MXN, el cliente es de fuera y el link lleva comisión. */
+  moneda: string;
 }
 
 /**
@@ -190,7 +197,7 @@ export interface SaldoVenta {
  */
 export async function saldoDeVenta(sb: SB, ventaId: string): Promise<SaldoVenta | null> {
   const [{ data: v }, { data: pagos }] = await Promise.all([
-    sb.from("ventas").select("id, folio, total_mxn, beat_nombre, tipo").eq("id", ventaId).maybeSingle(),
+    sb.from("ventas").select("id, folio, total_mxn, beat_nombre, tipo, moneda").eq("id", ventaId).maybeSingle(),
     sb.from("pagos").select("monto_mxn").eq("venta_id", ventaId),
   ]);
   if (!v) return null;
@@ -206,6 +213,7 @@ export async function saldoDeVenta(sb: SB, ventaId: string): Promise<SaldoVenta 
     tienePagos,
     folio: (v.folio as string) || "Venta",
     concepto: String(v.beat_nombre || v.tipo || "tu producción"),
+    moneda: String(v.moneda || "MXN").toUpperCase(),
   };
 }
 
@@ -219,10 +227,13 @@ export async function saldoDeVenta(sb: SB, ventaId: string): Promise<SaldoVenta 
  * el link les cobraría el anticipo otra vez.
  */
 export async function linkDeSaldo(
-  d: { ventaId: string; folio: string; concepto: string; saldo: number },
+  d: { ventaId: string; folio: string; concepto: string; saldo: number; comisionIntl?: number },
 ): Promise<string | null> {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey || d.saldo <= 0.5) return null;
+  // La comisión internacional llega ya calculada (comisionIntlDeSaldo): aquí no
+  // se adivina, porque una venta que viene de cotización pudo traerla incluida.
+  const comisionIntl = Math.max(0, Number(d.comisionIntl) || 0);
   try {
     const stripe = new Stripe(secretKey);
     const session = await stripe.checkout.sessions.create({
@@ -234,13 +245,22 @@ export async function linkDeSaldo(
           product_data: { name: `${d.folio} · Saldo de ${d.concepto}` },
         },
         quantity: 1,
-      }],
+      },
+      ...(comisionIntl > 0 ? [{
+        price_data: {
+          currency: "mxn",
+          unit_amount: Math.round(comisionIntl * 100),
+          product_data: { name: LABEL_COMISION_INTL.es },
+        },
+        quantity: 1,
+      }] : [])],
       success_url: `${DOMAINS.main}/cotizador/gracias?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: DOMAINS.main,
       metadata: {
         tipo: "saldo_venta",
         venta_id: d.ventaId,
         saldo: String(d.saldo),
+        ...(comisionIntl > 0 ? { comision_intl: String(comisionIntl) } : {}),
         resumen: `${d.folio} · saldo de ${d.concepto}`.slice(0, 480),
       },
     });
@@ -253,7 +273,11 @@ export async function linkDeSaldo(
 }
 
 /** El correo que toca, ya armado. Exportado para poder previsualizarlo sin mandar. */
-export function correoDeToque(toque: 1 | 2 | 3, d: Deudor, urlPago: string | null) {
+export function correoDeToque(
+  toque: 1 | 2 | 3,
+  d: Deudor & { comisionIntl?: number },
+  urlPago: string | null,
+) {
   const datos = {
     nombre: d.nombre ? d.nombre.split(" ")[0] : null,
     concepto: d.concepto,
@@ -261,6 +285,7 @@ export function correoDeToque(toque: 1 | 2 | 3, d: Deudor, urlPago: string | nul
     total: d.total,
     cobrado: d.cobrado,
     saldo: d.saldo,
+    comisionIntl: d.comisionIntl ?? 0,
     urlPago,
     urlPanel: d.orderId ? `${DOMAINS.main}/cuenta/pedido/${d.orderId}` : null,
   };
@@ -297,8 +322,10 @@ export async function mandarToque(
   const key = process.env.RESEND_API_KEY;
   if (!key) return { ok: false, error: "Correo no configurado (RESEND_API_KEY)." };
 
-  const urlPago = await linkDeSaldo(d);
-  const mail = correoDeToque(toque, d, urlPago);
+  // Se calcula una sola vez: el link la cobra y el correo la anuncia.
+  const comisionIntl = await comisionIntlDeSaldo(sb, d.ventaId, d.saldo);
+  const urlPago = await linkDeSaldo({ ...d, comisionIntl });
+  const mail = correoDeToque(toque, { ...d, comisionIntl }, urlPago);
 
   try {
     await new Resend(key).emails.send({ from: FROM, to: [d.email], subject: mail.subject, html: mail.html });

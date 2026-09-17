@@ -24,6 +24,7 @@ import { CompasSelect } from "@/components/admin/CompasSelect";
 import { OrigenCliente, ORIGEN_VACIO, type OrigenValor } from "@/components/admin/OrigenCliente";
 import { ORIGEN_LABEL } from "@/lib/origenes";
 import { ajustarTemas, temasDeCotizacion, type Tema } from "@/lib/temas";
+import { esMonedaInternacional } from "@/lib/comision-internacional";
 
 // ── Tipos de props (datos ya serializados desde el server) ──
 interface ClienteLite { id: string; nombre: string; email: string | null; telefono: string | null; direccion: string | null }
@@ -712,6 +713,14 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
   const [items, setItems] = useState<QuoteItem[]>(initial?.items ?? []);
   const [descuento, setDescuento] = useState(initial?.descuento ?? 0);
   const [comisionPct, setComisionPct] = useState(initial?.comision_pct ?? 0);
+  /**
+   * Cotizar en dólares = cliente de fuera, y ahí cobrar cuesta ~7% (tarjeta
+   * internacional + conversión). Se enciende sola; se puede apagar a mano.
+   */
+  const ponerMoneda = (m: string) => {
+    setMoneda(m);
+    if (esMonedaInternacional(m)) setComisionPct((p) => (p > 0 ? p : COMISION_PAYPAL));
+  };
   const [vigencia, setVigencia] = useState(initial?.vigencia_dias ?? 15);
   const [notas, setNotas] = useState(initial?.notas ?? "");
   // Quién toca cada instrumento cotizado. La venta que se crea sola al pagar por
@@ -836,7 +845,7 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
         </div>
       )}
       <ClienteFields {...{ nombre, email, telefono, direccion, clientes, pickCliente, setEmail, setTelefono, setDireccion }} />
-      <MonedaYCambio moneda={moneda} setMoneda={setMoneda} tipoCambio={tipoCambio}
+      <MonedaYCambio moneda={moneda} setMoneda={ponerMoneda} tipoCambio={tipoCambio}
         setTipoCambio={setTipoCambio} monto={total} sugerido={tcSugerido}
         onReexpresar={(factor) => {
           // Cotizaste 6,000 pesos y elegiste USD: los conceptos y el descuento

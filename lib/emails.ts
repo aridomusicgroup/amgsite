@@ -841,9 +841,23 @@ interface DatosSaldo {
   urlPago: string | null;
   /** Su panel, cuando la venta tiene pedido ligado. */
   urlPanel: string | null;
+  /** Comisión por pago internacional que el link de Stripe suma al saldo (0 = ninguna). */
+  comisionIntl?: number;
 }
 
 const pesoMx = (n: number) => `$${Math.round(n).toLocaleString("es-MX")}`;
+
+/**
+ * Aviso de la comisión por pago internacional: el botón dice el saldo, pero
+ * Stripe le va a cobrar el 7% encima. Se dice ANTES de que le pique.
+ */
+const avisoComisionIntl = (d: { saldo: number; comisionIntl?: number }) =>
+  (d.comisionIntl ?? 0) > 0
+    ? `<p style="color:#777;font-size:12px;margin:10px 0 0;line-height:1.6;">
+         Pagando con tarjeta desde fuera de México se suma la comisión bancaria
+         internacional (7%): ${pesoMx(d.comisionIntl!)} — total ${pesoMx(d.saldo + d.comisionIntl!)}.
+       </p>`
+    : "";
 
 /**
  * El recuadro de tres renglones: total, pagado, falta.
@@ -899,6 +913,7 @@ export function saldoRecordatorioEmail(d: DatosSaldo): { subject: string; html: 
       </p>
       ${cuentaHtml(d)}
       ${d.urlPago ? botonSaldo(d.urlPago, `Pagar ${pesoMx(d.saldo)}`) : ""}
+      ${avisoComisionIntl(d)}
       <p style="color:#777;font-size:12px;margin:16px 0 0;line-height:1.6;">
         ¿Prefieres transferencia u otro método? Respóndenos este correo y te pasamos los datos.
         ${d.urlPanel ? `<br />También puedes ver tu proyecto en <a href="${d.urlPanel}" style="color:#c42f42;text-decoration:none;">tu cuenta</a>.` : ""}
@@ -933,6 +948,7 @@ export function saldoAcomodoEmail(d: DatosSaldo): { subject: string; html: strin
       </p>
       ${cuentaHtml(d)}
       ${d.urlPago ? botonSaldo(d.urlPago, `Pagar ${pesoMx(d.saldo)}`) : ""}
+      ${avisoComisionIntl(d)}
       <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:10px 0 4px;">
         <a href="mailto:${SOCIALS.email}?subject=Saldo%20de%20${encodeURIComponent(d.folio)}" style="display:inline-block;border:1px solid #333;color:#ccc;font-size:14px;text-decoration:none;padding:11px 26px;border-radius:10px;">Escríbenos y lo acomodamos</a>
       </td></tr></table>
@@ -1037,6 +1053,7 @@ export function entregaRetenidaEmail(d: DatosSaldo & { conStems: boolean }): { s
       </p>
       ${cuentaHtml(d)}
       ${d.urlPago ? botonSaldo(d.urlPago, `Pagar ${pesoMx(d.saldo)} y descargar`) : ""}
+      ${avisoComisionIntl(d)}
       <p style="color:#777;font-size:12px;margin:16px 0 0;line-height:1.6;">
         ${d.urlPago ? "¿Prefieres transferencia u otro método?" : "Para liquidar,"} respóndenos este correo y te pasamos los datos.
         ${d.urlPanel ? `<br />Tu proyecto está en <a href="${d.urlPanel}" style="color:#c42f42;text-decoration:none;">tu cuenta</a>.` : ""}

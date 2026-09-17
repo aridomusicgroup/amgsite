@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { saldoDeVenta, linkDeSaldo } from "@/lib/cobranza";
+import { comisionIntlDeSaldo } from "@/lib/comision-intl-server";
 import { cuentaCobro } from "@/lib/entrega";
 import { ventaDeToken } from "@/lib/pago-token";
 import { DOMAINS } from "@/lib/site";
@@ -33,6 +34,10 @@ export async function GET(_req: NextRequest, { params }: Props) {
   const falta = s ? cuentaCobro(s).saldo : 0;
   if (!s || falta <= 0.5) return NextResponse.redirect(cuenta, 303);
 
-  const url = await linkDeSaldo({ ventaId, folio: s.folio, concepto: s.concepto, saldo: falta });
+  const sb = supabaseAdmin();
+  const url = await linkDeSaldo({
+    ventaId, folio: s.folio, concepto: s.concepto, saldo: falta,
+    comisionIntl: await comisionIntlDeSaldo(sb, ventaId, falta),
+  });
   return NextResponse.redirect(url ?? cuenta, 303);
 }

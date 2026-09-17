@@ -6,6 +6,7 @@ import { attribMetadata, type Attrib } from "@/lib/attribution-server";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { isDirectExclusive, EXCLUSIVE_DIRECT_PRICE } from "@/lib/exclusive";
 import { DOMAINS } from "@/lib/site";
+import { esPaisInternacional, montoComisionIntl, LABEL_COMISION_INTL } from "@/lib/comision-internacional";
 
 /**
  * Stripe Checkout — direct beat sales.
@@ -98,6 +99,24 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // ── Comisión por pago internacional ──
+  // La tienda cobra en USD a todos, así que lo que define si lleva comisión es
+  // de dónde compra: el país lo dice Vercel (no el navegador, que se puede
+  // manipular). Sin país conocido no se cobra.
+  const pais = req.headers.get("x-vercel-ip-country")?.slice(0, 2).toUpperCase() || null;
+  const subtotal = lineItems.reduce((a, li) => a + (li.price_data?.unit_amount ?? 0) / 100, 0);
+  const comisionIntl = esPaisInternacional(pais) ? montoComisionIntl(subtotal) : 0;
+  if (comisionIntl > 0) {
+    lineItems.push({
+      quantity: 1,
+      price_data: {
+        currency: "usd",
+        unit_amount: Math.round(comisionIntl * 100),
+        product_data: { name: LABEL_COMISION_INTL[lang] },
+      },
+    });
+  }
+
   const stripe = new Stripe(secretKey);
   const origin = DOMAINS.beats; // dominio fijo, no confiar en el header Origin
 
@@ -117,6 +136,9 @@ export async function POST(req: NextRequest) {
     metadata: {
       order: JSON.stringify(items),
       lang,
+      // Para que la venta se registre por el precio real y la comisión se
+      // guarde aparte como otro ingreso (ver el webhook).
+      ...(comisionIntl > 0 ? { comision_intl: String(comisionIntl), pais: pais ?? "" } : {}),
       ...attribMetadata(body.attrib),
     },
   });
