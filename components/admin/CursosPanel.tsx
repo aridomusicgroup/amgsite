@@ -27,7 +27,10 @@ export function CursosPanel({ cursos }: Props) {
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <p className="text-white/40 text-sm">{cursos.length} curso{cursos.length === 1 ? "" : "s"}</p>
+        <div className="flex items-center gap-3">
+          <p className="text-white/50 text-sm">{cursos.length} curso{cursos.length === 1 ? "" : "s"}</p>
+          <Link href="/admin/cursos/entregas" className="text-xs px-3 py-1.5 rounded-full bg-white/8 text-white/60 hover:text-white">Entregas</Link>
+        </div>
         <button
           onClick={() => setCreando(true)}
           className="flex items-center gap-2 bg-lgb-red text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-red-600 transition-colors cursor-pointer"
@@ -50,8 +53,11 @@ export function CursosPanel({ cursos }: Props) {
               className="rounded-2xl border border-white/8 bg-white/[0.03] p-5 hover:border-white/20 transition-colors"
             >
               <div className="flex items-start justify-between gap-2 mb-2">
-                <p className="font-coolvetica text-lg leading-snug">{c.titulo}</p>
-                <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full ${c.activo ? "bg-green-500/15 text-green-400" : "bg-white/10 text-white/40"}`}>
+                <p className="font-coolvetica text-lg leading-snug">
+                  {c.titulo}
+                  {c.tipo === "mentoria" && <span className="ml-2 align-middle text-[11px] font-sans px-2 py-0.5 rounded-full bg-white/8 text-white/60">Mentoría</span>}
+                </p>
+                <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full ${c.activo ? "bg-green-500/15 text-green-400" : "bg-white/10 text-white/50"}`}>
                   {c.activo ? "Activo" : "Oculto"}
                 </span>
               </div>

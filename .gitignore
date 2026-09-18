@@ -44,3 +44,8 @@ next-env.d.ts
 
 # graphify cache (regenerable, not source)
 graphify-out/
+
+# alphaTab: lo copia scripts/copy-alphatab.mjs en postinstall
+/public/alphatab/
+# video de muestra del banco de pruebas /dev/curso (se genera con ffmpeg)
+/public/dev/

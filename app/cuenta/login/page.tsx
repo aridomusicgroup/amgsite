@@ -6,6 +6,16 @@ import { Mail, Lock, Loader2, CheckCircle2, ArrowLeft } from "lucide-react";
 
 type Modo = "login" | "enlace";
 
+/**
+ * A dónde volver después de entrar (?siguiente=/cuenta/curso/…, lo usan los
+ * correos de Cursos). Sólo rutas propias de /cuenta: nunca un dominio ajeno.
+ */
+function destinoTrasLogin(): string {
+  if (typeof window === "undefined") return "/cuenta";
+  const s = new URLSearchParams(window.location.search).get("siguiente") ?? "";
+  return /^\/cuenta(\/[A-Za-z0-9/_-]*)?$/.test(s) ? s : "/cuenta";
+}
+
 export default function CuentaLogin() {
   const router = useRouter();
   const [modo, setModo] = useState<Modo>("login");
@@ -30,7 +40,7 @@ export default function CuentaLogin() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.error || "No se pudo entrar."); return; }
-      router.push("/cuenta");
+      router.push(destinoTrasLogin());
       router.refresh();
     } catch {
       setError("No se pudo conectar. Intenta de nuevo.");

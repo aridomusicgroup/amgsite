@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminEmail } from "@/lib/supabase/auth-server";
+import { moduloPermitido } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { esUno, RUTAS } from "@/lib/cursos-tipos";
 
 export const dynamic = "force-dynamic";
 
 // ── Agregar un módulo a un curso ──
 export async function POST(req: NextRequest) {
-  if (!(await getAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!(await moduloPermitido("/admin/cursos"))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const b = await req.json().catch(() => ({}));
   const cursoId = String(b.curso_id || "").trim();
@@ -17,14 +18,16 @@ export async function POST(req: NextRequest) {
   const { data: ult } = await sb.from("curso_modulos").select("orden").eq("curso_id", cursoId).order("orden", { ascending: false }).limit(1);
   const orden = (Number(ult?.[0]?.orden) || 0) + 1;
 
-  const { data, error } = await sb.from("curso_modulos").insert({ curso_id: cursoId, titulo, orden }).select("id").single();
+  const fila: Record<string, unknown> = { curso_id: cursoId, titulo, orden };
+  if (esUno(RUTAS, b.ruta)) fila.ruta = b.ruta;
+  const { data, error } = await sb.from("curso_modulos").insert(fila).select("id").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, id: data?.id });
 }
 
-// ── Editar título / reordenar módulos ──
+// ── Editar título, ruta y descripción / reordenar módulos ──
 export async function PATCH(req: NextRequest) {
-  if (!(await getAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!(await moduloPermitido("/admin/cursos"))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const b = await req.json().catch(() => ({}));
   const sb = supabaseAdmin();
@@ -38,16 +41,20 @@ export async function PATCH(req: NextRequest) {
 
   const id = String(b.id || "").trim();
   if (!id) return NextResponse.json({ error: "Falta el id del módulo." }, { status: 400 });
-  if (!b.titulo || !String(b.titulo).trim()) return NextResponse.json({ error: "Falta el título." }, { status: 400 });
+  const patch: Record<string, unknown> = {};
+  if (b.titulo && String(b.titulo).trim()) patch.titulo = String(b.titulo).trim().slice(0, 200);
+  if (esUno(RUTAS, b.ruta)) patch.ruta = b.ruta;
+  if ("descripcion" in b) patch.descripcion = b.descripcion ? String(b.descripcion).trim().slice(0, 1000) : null;
+  if (!Object.keys(patch).length) return NextResponse.json({ error: "Nada que actualizar." }, { status: 400 });
 
-  const { error } = await sb.from("curso_modulos").update({ titulo: String(b.titulo).trim() }).eq("id", id);
+  const { error } = await sb.from("curso_modulos").update(patch).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
 
 // ── Borrar un módulo (en cascada: sus lecciones) ──
 export async function DELETE(req: NextRequest) {
-  if (!(await getAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!(await moduloPermitido("/admin/cursos"))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const b = await req.json().catch(() => ({}));
   const id = String(b.id || new URL(req.url).searchParams.get("id") || "").trim();

@@ -137,12 +137,18 @@ export default async function CuentaPage() {
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{c.titulo}</p>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <div className="w-24 h-1 rounded-full bg-white/10 overflow-hidden">
-                        <div className="h-full bg-lgb-red rounded-full" style={{ width: `${c.pct}%` }} />
+                    {c.tipo === "mentoria" ? (
+                      <p className="text-white/50 text-[11px] mt-1.5">
+                        {c.venceEn ? `Vigente hasta el ${new Date(c.venceEn).toLocaleDateString("es-MX", { day: "numeric", month: "long" })}` : "Mentoría en vivo"}
+                      </p>
+                    ) : (
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <div className="w-24 h-1 rounded-full bg-white/10 overflow-hidden">
+                          <div className="h-full bg-lgb-red rounded-full" style={{ width: `${c.pct}%` }} />
+                        </div>
+                        <span className="text-white/40 text-[11px]">{c.pct}%</span>
                       </div>
-                      <span className="text-white/40 text-[11px]">{c.pct}%</span>
-                    </div>
+                    )}
                   </div>
                 </a>
               ))}

@@ -14,6 +14,7 @@ export const dynamic = "force-dynamic";
  *
  *   ?v=<id del video>   opcional: de qué video vino (se guarda tal cual)
  *   ?a=sitio            en vez de WhatsApp, manda al sitio (con utm_source)
+ *   ?a=curso&c=<slug>   manda a la página de venta de ese curso (Reels de Datos Crack)
  */
 export async function GET(req: NextRequest, ctx: { params: Promise<{ canal: string }> }) {
   const { canal: crudo } = await ctx.params;
@@ -30,6 +31,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ canal: stri
   try {
     await supabaseAdmin().from("clics_enlace").insert({ canal, ref, pais });
   } catch { /* la tabla aún no existe o Supabase no responde */ }
+
+  // ?a=curso&c=<slug>: los Datos Crack (Reels) llevan a la página de venta del curso.
+  const slugCurso = (url.searchParams.get("c") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 80);
+  if (url.searchParams.get("a") === "curso" && slugCurso) {
+    const campana = ref ? `&utm_campaign=${encodeURIComponent(ref)}` : "";
+    return NextResponse.redirect(`https://aridomusicgroup.com/cursos/${slugCurso}?utm_source=${canal}&utm_medium=reel${campana}`, 302);
+  }
 
   if (url.searchParams.get("a") === "sitio") {
     return NextResponse.redirect(`https://aridomusicgroup.com/?utm_source=${canal}&utm_medium=bio`, 302);

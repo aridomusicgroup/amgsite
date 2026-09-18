@@ -31,7 +31,10 @@ export type ActividadTipo =
   // Equipo
   | "usuario_agregado" | "usuario_editado" | "usuario_eliminado"
   // Almacenamiento
-  | "almacenamiento_tipo_editado" | "almacenamiento_override_editado";
+  | "almacenamiento_tipo_editado" | "almacenamiento_override_editado"
+  // Cursos
+  | "curso_acceso_dado" | "curso_acceso_renovado" | "curso_acceso_quitado"
+  | "curso_entrega_recibida" | "curso_retro_enviada" | "curso_vendido";
 
 // Se mudaron al módulo puro (lo importa el navegador); se re-exportan de aquí.
 export { ENTIDADES_SENSIBLES };

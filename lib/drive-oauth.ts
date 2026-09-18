@@ -408,3 +408,67 @@ export async function quitarPublico(fileId: string): Promise<boolean> {
   });
   return res.ok || res.status === 404;
 }
+
+/**
+ * Abre una subida resumible DESDE EL SERVIDOR y devuelve sólo la URL de esa
+ * sesión: con ella el navegador puede subir los bytes de ESE archivo y nada
+ * más. Es la alternativa segura a `tokenParaNavegador` (ese token abre todo lo
+ * que la app ha creado). `origin` hace que Google acepte el PUT del navegador
+ * de ese dominio (CORS). La usan las entregas de Cursos.
+ */
+export async function iniciarSubidaResumible(d: {
+  nombre: string;
+  mime: string;
+  bytes: number;
+  parentId: string;
+  origin: string;
+}): Promise<string | null> {
+  const token = await getAccessToken();
+  if (!token) return null;
+  const res = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,size,mimeType,parents",
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json; charset=UTF-8",
+        "x-upload-content-type": d.mime,
+        "x-upload-content-length": String(d.bytes),
+        origin: d.origin,
+      },
+      body: JSON.stringify({ name: d.nombre, parents: [d.parentId] }),
+    },
+  );
+  if (!res.ok) {
+    console.error("[drive] no se pudo abrir la subida:", res.status, (await res.text().catch(() => "")).slice(0, 200));
+    return null;
+  }
+  return res.headers.get("location");
+}
+
+/** Nombre, tamaño, tipo y carpetas de un archivo creado por la app (para confirmar una subida). */
+export async function metadatosArchivo(fileId: string): Promise<{ id: string; name: string; size: number | null; mimeType: string; parents: string[] } | null> {
+  const token = await getAccessToken();
+  if (!token || !/^[A-Za-z0-9_-]{10,}$/.test(fileId)) return null;
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,size,mimeType,parents,trashed&supportsAllDrives=true`,
+    { headers: { authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) return null;
+  const j = await res.json().catch(() => null);
+  if (!j?.id || j.trashed) return null;
+  return { id: j.id, name: String(j.name ?? ""), size: j.size != null ? Number(j.size) : null, mimeType: String(j.mimeType ?? ""), parents: (j.parents as string[]) ?? [] };
+}
+
+/**
+ * Descarga (o un rango de) un archivo que creó la app, con el token del
+ * servidor. La cuenta de servicio no ve lo que suben los alumnos (vive en el
+ * Drive de la cuenta de OAuth), así que la revisión de entregas pasa por aquí.
+ */
+export async function descargarArchivoApp(fileId: string, rangeHeader?: string | null): Promise<Response | null> {
+  const token = await getAccessToken();
+  if (!token) return null;
+  const headers: Record<string, string> = { authorization: `Bearer ${token}` };
+  if (rangeHeader) headers.range = rangeHeader;
+  return fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`, { headers });
+}

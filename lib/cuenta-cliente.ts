@@ -30,7 +30,7 @@ export async function emailsDeCliente(email: string): Promise<string[]> {
   }
 }
 
-/** Un correo puede acceder si él (o un correo ligado) tiene ≥1 compra O contrato. */
+/** Un correo puede acceder si él (o un correo ligado) tiene ≥1 compra, contrato o curso vigente. */
 export async function clienteElegible(email: string): Promise<boolean> {
   const emails = await emailsDeCliente(email);
   if (!emails.length) return false;
@@ -44,6 +44,17 @@ export async function clienteElegible(email: string): Promise<boolean> {
     const { data: ctr } = await sb.from("contratos").select("id").in("cliente_email", emails).limit(1);
     if (ctr && ctr.length) return true;
   } catch { /* sin contratos */ }
+  // Quien SOLO compró un curso (sin pedidos ni contratos) también necesita
+  // entrar: sin esto nunca le llegaba el enlace para crear su contraseña.
+  try {
+    const { data: acc, error } = await sb.from("curso_accesos").select("vence_en").in("email", emails);
+    if (!error && (acc ?? []).some((a) => !a.vence_en || Date.parse(a.vence_en as string) > Date.now())) return true;
+    if (error) {
+      // SQL de cursos v2 sin correr todavía: sin vencimientos, cualquier acceso vale.
+      const { data: acc1 } = await sb.from("curso_accesos").select("id").in("email", emails).limit(1);
+      if (acc1 && acc1.length) return true;
+    }
+  } catch { /* sin cursos */ }
   return false;
 }
 

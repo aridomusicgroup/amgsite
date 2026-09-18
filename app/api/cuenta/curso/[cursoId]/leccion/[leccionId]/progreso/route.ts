@@ -1,22 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCustomerEmail } from "@/lib/cuenta-auth";
-import { clienteTieneCurso, leccionParaStream, marcarProgreso } from "@/lib/cursos-cliente";
+import { guardarPosicion, marcarProgreso } from "@/lib/cursos-cliente";
+import { alumnoDeLeccion } from "@/lib/curso-guard";
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ cursoId: string; leccionId: string }> };
 
-/** Marca una lección como vista (o no) para el cliente en sesión. */
+/**
+ * Progreso del alumno en una lección:
+ *  - `{ visto: true|false }` la marca (o desmarca) como vista.
+ *  - `{ segundos: n }` guarda dónde se quedó en el video, para retomar ahí.
+ */
 export async function POST(req: NextRequest, { params }: Props) {
-  const email = await getCustomerEmail();
-  if (!email) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-
   const { cursoId, leccionId } = await params;
-  const leccion = await leccionParaStream(leccionId);
-  if (!leccion || leccion.cursoId !== cursoId) return NextResponse.json({ error: "Lección no encontrada." }, { status: 404 });
-  if (!(await clienteTieneCurso(email, cursoId))) return NextResponse.json({ error: "No tienes acceso a este curso." }, { status: 403 });
+  const g = await alumnoDeLeccion(cursoId, leccionId);
+  if (!g.ok) return g.res;
 
   const b = await req.json().catch(() => ({}));
-  await marcarProgreso(email, leccionId, b.visto !== false);
+  if (typeof b.segundos === "number" && Number.isFinite(b.segundos)) {
+    await guardarPosicion(g.email, leccionId, b.segundos);
+    return NextResponse.json({ ok: true });
+  }
+  // Un quiz sólo se marca visto al aprobarlo (ver /quiz), no a mano.
+  if (g.leccion.tipo === "quiz") return NextResponse.json({ error: "El quiz se marca al aprobarlo." }, { status: 400 });
+  await marcarProgreso(g.email, leccionId, b.visto !== false);
   return NextResponse.json({ ok: true });
 }

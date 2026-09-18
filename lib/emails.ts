@@ -49,7 +49,8 @@ const preheaderHtml = (texto: string) => `
     ${escHtml(texto)}${"&#8199;&#65279;&#847; ".repeat(60)}
   </div>`;
 
-const wrap = (content: string, preheader?: string) => `
+/** Marco de marca (logo + pie) de TODA plantilla; lo reusan las plantillas de Cursos. */
+export const wrap = (content: string, preheader?: string) => `
 <!DOCTYPE html>
 <html lang="es">
 <body style="margin:0;padding:0;background:#0a0a0a;font-family:Arial,Helvetica,sans-serif;">

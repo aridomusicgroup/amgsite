@@ -13,7 +13,8 @@ const csp = [
   "connect-src 'self' https://*.supabase.co https://*.beatstars.com https://api.stripe.com https://*.vercel-insights.com https://vitals.vercel-insights.com https://us.i.posthog.com https://us-assets.i.posthog.com https://*.clarity.ms https://c.bing.com https://www.googleapis.com",
   "media-src 'self' https://*.beatstars.com blob:",
   "worker-src 'self' blob:",
-  "frame-src https://js.stripe.com https://checkout.stripe.com https://www.youtube-nocookie.com https://www.youtube.com",
+  // 'self': los PDFs de las lecciones de Cursos se muestran en un iframe del propio sitio.
+  "frame-src 'self' https://js.stripe.com https://checkout.stripe.com https://www.youtube-nocookie.com https://www.youtube.com",
   "form-action 'self' https://checkout.stripe.com",
   "frame-ancestors 'self'",
   "base-uri 'self'",

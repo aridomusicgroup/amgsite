@@ -25,6 +25,7 @@ import { crearVentaDesdeCotizacionPagada } from "@/lib/venta-desde-cotizacion";
 import { comisionStripeMxn, registrarComisionStripeEgreso } from "@/lib/stripe-comision";
 import { comisionIntlDeMeta, registrarComisionIntlIngreso } from "@/lib/comision-intl-server";
 import { liberarEntregas } from "@/lib/entrega";
+import { handleCursoPago } from "@/lib/curso-venta";
 
 /**
  * Webhook de Stripe (Fase A del Sistema ARIDO):
@@ -77,6 +78,11 @@ export async function POST(req: NextRequest) {
   // pago más sobre una venta viva. Ver /api/admin/ventas/[id]/link-saldo.
   if (session.metadata?.tipo === "saldo_venta") {
     return handleSaldoVenta(stripe, session);
+  }
+
+  // ── Curso o mes de mentoría (checkout-curso): venta + acceso al curso ──
+  if (session.metadata?.tipo === "curso" || session.metadata?.tipo === "mentoria_mes") {
+    return handleCursoPago(stripe, session);
   }
 
   // Conceptos del pedido

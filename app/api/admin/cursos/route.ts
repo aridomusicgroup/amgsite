@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminEmail } from "@/lib/supabase/auth-server";
+import { moduloPermitido } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { slugDisponible } from "@/lib/cursos-admin";
 import { extraerDriveId } from "@/lib/drive-id";
+import { leerConfig } from "@/lib/cursos-tipos";
+
+const UUID = /^[0-9a-f-]{36}$/i;
 
 export const dynamic = "force-dynamic";
 
 // ── Crear curso ──
 export async function POST(req: NextRequest) {
-  if (!(await getAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!(await moduloPermitido("/admin/cursos"))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const b = await req.json().catch(() => ({}));
   const titulo = String(b.titulo || "").trim();
@@ -34,7 +37,7 @@ export async function POST(req: NextRequest) {
 
 // ── Editar curso ──
 export async function PATCH(req: NextRequest) {
-  if (!(await getAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!(await moduloPermitido("/admin/cursos"))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const b = await req.json().catch(() => ({}));
   const id = String(b.id || "").trim();
@@ -47,6 +50,17 @@ export async function PATCH(req: NextRequest) {
   if ("portada_url" in b) patch.portada_url = b.portada_url ? String(b.portada_url).trim() : null;
   if ("activo" in b) patch.activo = Boolean(b.activo);
   if ("drive_folder" in b) patch.drive_folder_id = b.drive_folder ? extraerDriveId(String(b.drive_folder)) : null;
+  if ("revisiones_incluidas" in b) {
+    const n = Math.floor(Number(b.revisiones_incluidas));
+    if (!(n >= 0 && n <= 20)) return NextResponse.json({ error: "Revisiones incluidas: de 0 a 20." }, { status: 400 });
+    patch.revisiones_incluidas = n;
+  }
+  if ("config" in b) {
+    // Normalizado: sólo claves conocidas y con tope (ver leerConfig).
+    const cfg = leerConfig(b.config);
+    if (cfg.mentoria.curso_id && !UUID.test(cfg.mentoria.curso_id)) cfg.mentoria.curso_id = null;
+    patch.config = cfg;
+  }
 
   const sb = supabaseAdmin();
   const { error } = await sb.from("cursos").update(patch).eq("id", id);
@@ -56,7 +70,7 @@ export async function PATCH(req: NextRequest) {
 
 // ── Borrar curso (en cascada: módulos, lecciones, accesos, progreso) ──
 export async function DELETE(req: NextRequest) {
-  if (!(await getAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!(await moduloPermitido("/admin/cursos"))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const b = await req.json().catch(() => ({}));
   const id = String(b.id || new URL(req.url).searchParams.get("id") || "").trim();
