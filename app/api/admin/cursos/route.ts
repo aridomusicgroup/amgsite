@@ -49,7 +49,7 @@ export async function PATCH(req: NextRequest) {
   // Oculto · Preventa · A la venta (y el lanzamiento, con su correo).
   if ("estado" in b) {
     if (!ESTADOS_ADMIN.includes(b.estado)) return NextResponse.json({ error: "Estado inválido." }, { status: 400 });
-    const r = await cambiarEstadoCurso(sb, { id, estado: b.estado as EstadoAdmin, avisar: b.avisar === true, actor: staffEmail });
+    const r = await cambiarEstadoCurso(sb, { id, estado: b.estado as EstadoAdmin, avisar: b.avisar === true, actor: staffEmail, preventa: b.preventa });
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
     return NextResponse.json({ ok: true, lanzado: r.lanzado, avisados: r.avisados });
   }

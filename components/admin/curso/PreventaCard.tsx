@@ -1,5 +1,4 @@
 "use client";
-import { useState } from "react";
 import { ChevronDown, Copy } from "lucide-react";
 import type { CursoDetalle } from "@/lib/cursos-admin";
 import { descuentoPct, pesos, textoCierre, type ConfigPreventa } from "@/lib/cursos-tipos";
@@ -29,7 +28,11 @@ export const formAPreventa = (f: PreventaForm, actual: ConfigPreventa): ConfigPr
 /** Resumen del estado de la preventa tal como la ve el público (lo calcula el servidor). */
 function lineaEstado(c: CursoDetalle): string {
   const v = c.venta;
-  if (!c.config.preventa.activa) return "El curso ya se lanzó: se vende al precio normal.";
+  if (!c.config.preventa.activa) {
+    return c.activo
+      ? "Se vende al precio normal. Para abrir una preventa, pon aquí el precio de fundador y elige “Preventa” arriba."
+      : "Pon aquí el precio de fundador y elige “Preventa” arriba: se guarda solo.";
+  }
   if (v.estado === "oculto") return "Oculto: nadie ve la página todavía. Elige “Preventa” arriba para abrirla.";
   if (v.estado === "preventa_cerrada") {
     return v.motivoCierre === "cupo" ? "Cerrada: se llenó el cupo. Ya no vende hasta el lanzamiento."
@@ -45,15 +48,16 @@ function lineaEstado(c: CursoDetalle): string {
 /**
  * Datos de la preventa del curso: precio fundador, cierre, cupo, lanzamiento
  * y bonos, más quién ya compró y quién pidió que le avisaran. Se guarda con el
- * botón “Guardar” de la cabecera.
+ * botón “Guardar” de la cabecera, o solo al elegir “Preventa” en el selector.
  */
-export function PreventaCard({ curso, valor, onChange, precioRegular }: {
+export function PreventaCard({ curso, valor, onChange, precioRegular, abierta, onToggle }: {
   curso: CursoDetalle;
   valor: PreventaForm;
   onChange: (v: PreventaForm) => void;
   precioRegular: number | null;
+  abierta: boolean;
+  onToggle: () => void;
 }) {
-  const [abierta, setAbierta] = useState(curso.config.preventa.activa || !curso.activo);
   const desc = descuentoPct(Number(valor.precio) || null, precioRegular);
   const set = (k: keyof PreventaForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange({ ...valor, [k]: e.target.value });
 
@@ -68,7 +72,7 @@ export function PreventaCard({ curso, valor, onChange, precioRegular }: {
 
   return (
     <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.02] p-4">
-      <button onClick={() => setAbierta((v) => !v)} className="flex items-center gap-1 text-sm font-medium cursor-pointer">
+      <button onClick={onToggle} className="flex items-center gap-1 text-sm font-medium cursor-pointer">
         <ChevronDown size={14} className={abierta ? "rotate-180" : ""} /> Preventa
       </button>
       <p className="text-white/40 text-xs mt-1">{lineaEstado(curso)}</p>

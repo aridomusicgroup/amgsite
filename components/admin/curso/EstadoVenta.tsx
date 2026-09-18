@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Rocket, Loader2 } from "lucide-react";
 import type { CursoDetalle } from "@/lib/cursos-admin";
-import { pesos } from "@/lib/cursos-tipos";
+import { pesos, type ConfigPreventa } from "@/lib/cursos-tipos";
 import { toast } from "@/lib/toast";
 import { api, errorDe } from "./api";
 
@@ -19,22 +19,31 @@ const OPCIONES: { id: Estado; label: string; activo: string }[] = [
  * lanzamiento: abre las lecciones a los fundadores, el precio vuelve al
  * normal y (si se elige) les llega el correo de “ya abrió”.
  */
-export function EstadoVenta({ curso, onSaved }: { curso: CursoDetalle; onSaved: () => void }) {
+export function EstadoVenta({ curso, preventa, onFaltaPrecio, onSaved }: {
+  curso: CursoDetalle;
+  /** Lo que está escrito ahora en la tarjeta Preventa: se guarda al activarla (sin pasar por “Guardar”). */
+  preventa: ConfigPreventa;
+  onFaltaPrecio: () => void;
+  onSaved: () => void;
+}) {
   const actual: Estado = !curso.activo ? "oculto" : curso.config.preventa.activa ? "preventa" : "venta";
   const [lanzando, setLanzando] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const publicadas = curso.modulos.flatMap((m) => m.lecciones).filter((l) => l.publicada).length;
   const listaSinComprar = curso.avisame.filter((e) => !curso.accesos.some((a) => a.email.toLowerCase() === e)).length;
 
   const cambiar = async (estado: Estado, avisar = false) => {
-    setBusy(true);
+    setBusy(true); setErr(null);
     try {
-      const r = await api<{ avisados: { fundadores: number; lista: number } | null }>("/api/admin/cursos", "PATCH", { id: curso.id, estado, avisar });
+      const r = await api<{ avisados: { fundadores: number; lista: number } | null }>("/api/admin/cursos", "PATCH", {
+        id: curso.id, estado, avisar, ...(estado === "preventa" ? { preventa } : {}),
+      });
       if (r.avisados) toast(`Lanzado · correo a ${r.avisados.fundadores} alumnos y ${r.avisados.lista} de la lista`);
       setLanzando(false);
       onSaved();
     } catch (e) {
-      toast(errorDe(e));
+      setErr(errorDe(e));
     } finally {
       setBusy(false);
     }
@@ -42,6 +51,11 @@ export function EstadoVenta({ curso, onSaved }: { curso: CursoDetalle; onSaved: 
 
   const elegir = (estado: Estado) => {
     if (estado === actual || busy) return;
+    setErr(null);
+    if (estado === "preventa" && !preventa.precio) {
+      onFaltaPrecio();
+      return setErr("Primero pon el precio de fundador en la tarjeta “Preventa” de abajo.");
+    }
     // Lanzar (desde preventa, aunque esté oculto) pide confirmación con aviso.
     if (estado === "venta" && curso.config.preventa.activa) return setLanzando(true);
     if (estado === "preventa" && !curso.config.preventa.activa && curso.accesos.length > 0
@@ -59,6 +73,7 @@ export function EstadoVenta({ curso, onSaved }: { curso: CursoDetalle; onSaved: 
           </button>
         ))}
       </div>
+      {err && <p role="alert" className="basis-full text-xs text-red-400">{err}</p>}
 
       {lanzando && (
         <div className="basis-full rounded-xl border border-white/10 bg-white/[0.03] p-4 mt-1">

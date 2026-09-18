@@ -1,6 +1,6 @@
 import "server-only";
 import { revalidatePath } from "next/cache";
-import { hoyMx, leerConfig, validarPreventa } from "@/lib/cursos-tipos";
+import { hoyMx, leerConfig, leerPreventa, validarPreventa } from "@/lib/cursos-tipos";
 import { correosConAcceso, listaAvisame } from "@/lib/curso-preventa";
 import { cursoAbiertoEmail, cursoAbiertoLeadEmail, enviarMasivo } from "@/lib/emails-cursos";
 import { registrarActividad } from "@/lib/actividad";
@@ -25,7 +25,7 @@ type Resultado =
 
 export async function cambiarEstadoCurso(
   sb: SB,
-  d: { id: string; estado: EstadoAdmin; avisar: boolean; actor: string | null },
+  d: { id: string; estado: EstadoAdmin; avisar: boolean; actor: string | null; preventa?: unknown },
 ): Promise<Resultado> {
   const { data: c } = await sb.from("cursos").select("id, slug, titulo, tipo, activo, precio_mxn, config").eq("id", d.id).maybeSingle();
   if (!c) return { ok: false, error: "Curso no encontrado.", status: 404 };
@@ -33,9 +33,14 @@ export async function cambiarEstadoCurso(
   const regular = c.precio_mxn == null ? null : Number(c.precio_mxn);
   const antes: EstadoAdmin = !c.activo ? "oculto" : config.preventa.activa ? "preventa" : "venta";
 
+  // Al abrir la preventa el panel manda lo escrito en su tarjeta (sin pasar por “Guardar”).
+  if (d.estado === "preventa" && d.preventa !== undefined) {
+    config.preventa = { ...leerPreventa(d.preventa), activa: config.preventa.activa };
+  }
+
   if (d.estado === "preventa") {
     if (c.tipo === "mentoria") return { ok: false, error: "La mentoría no tiene preventa.", status: 400 };
-    if (!config.preventa.precio) return { ok: false, error: "Pon el precio de preventa y guarda antes de activarla.", status: 400 };
+    if (!config.preventa.precio) return { ok: false, error: "Primero pon el precio de fundador en la tarjeta “Preventa”.", status: 400 };
     const err = validarPreventa(config.preventa, regular);
     if (err) return { ok: false, error: err, status: 400 };
   }

@@ -74,6 +74,12 @@ const cursoAdmin: CursoDetalle = {
   venta: venta(), fundadores: 13, avisame: ["lead1@ejemplo.com", "lead2@ejemplo.com", "alumno@ejemplo.com"], estrenosAvisados: [],
 };
 
+// El mismo curso ya a la venta y sin preventa (como Docerola hoy): para probar abrirla.
+const cursoSinPreventa: CursoDetalle = {
+  ...cursoAdmin, config: { ...config, preventa: leerPreventa({}) }, fundadores: 0,
+  venta: estadoVenta({ activo: true, preventa: leerPreventa({}), precioRegular: 1490, vendidos: 0, hoy }),
+};
+
 const aCliente = (l: CursoLeccion, i: number): LeccionCliente => ({
   id: l.id, titulo: l.titulo, tipo: l.tipo, etiqueta: l.etiqueta, opcional: l.opcional, cta: l.cta, urlExterna: null,
   duracionSeg: l.duracionSeg, tieneArchivo: true, visto: i < 6, segundos: 0, datos: {},
@@ -140,9 +146,10 @@ if (typeof window !== "undefined" && !(window as unknown as { __bancoCurso?: boo
   };
 }
 
-type Vista = "editor" | "entregas" | "inicio" | "preventa" | "leccion" | "tab" | "quiz" | "entrega" | "venta" | "cerrada" | "lanzada" | "sitio";
+type Vista = "editor" | "editor2" | "entregas" | "inicio" | "preventa" | "leccion" | "tab" | "quiz" | "entrega" | "venta" | "cerrada" | "lanzada" | "sitio";
 const VISTAS: { id: Vista; label: string; admin?: boolean }[] = [
   { id: "editor", label: "Admin · editor", admin: true },
+  { id: "editor2", label: "Admin · sin preventa", admin: true },
   { id: "entregas", label: "Admin · entregas", admin: true },
   { id: "inicio", label: "Alumno · inicio" },
   { id: "leccion", label: "Alumno · video" },
@@ -165,6 +172,7 @@ export function CursoHarness() {
 
   const contenido = {
     editor: <CursoEditor curso={cursoAdmin} servicioEmail="lector@cuenta-servicio.iam.gserviceaccount.com" />,
+    editor2: <CursoEditor curso={cursoSinPreventa} servicioEmail={null} />,
     entregas: <EntregasBandeja entregas={entregasAdmin} cursos={[{ id: "c1", titulo: CURSO.titulo }]} cursoId="" estado="" />,
     inicio: (
       <div className="max-w-2xl mx-auto flex flex-col gap-5">
@@ -213,7 +221,7 @@ export function CursoHarness() {
           </button>
         )}
       </div>
-      <div className={PAGINA_COMPLETA.includes(vista) ? "" : "p-4 sm:p-8"}>{contenido}</div>
+      <div key={vista} className={PAGINA_COMPLETA.includes(vista) ? "" : "p-4 sm:p-8"}>{contenido}</div>
     </div>
   );
 }

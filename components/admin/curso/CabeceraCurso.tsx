@@ -32,6 +32,8 @@ export function CabeceraCurso({ curso, servicioEmail, onSaved }: { curso: CursoD
   ) as Record<string, string>);
   const [verLanding, setVerLanding] = useState(false);
   const [preventa, setPreventa] = useState(() => preventaAForm(curso.config.preventa));
+  // Cerrada sólo si ya se lanzó y hubo ventas; si no, a la vista para poder abrir la preventa.
+  const [verPreventa, setVerPreventa] = useState(curso.config.preventa.activa || !curso.activo || curso.fundadores === 0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -81,7 +83,10 @@ export function CabeceraCurso({ curso, servicioEmail, onSaved }: { curso: CursoD
               <UsersRound size={13} /> {curso.interesados} quieren mentoría
             </span>
           )}
-          {esCurso ? <EstadoVenta curso={curso} onSaved={onSaved} /> : (
+          {esCurso ? (
+            <EstadoVenta curso={curso} preventa={formAPreventa(preventa, curso.config.preventa)}
+              onFaltaPrecio={() => setVerPreventa(true)} onSaved={onSaved} />
+          ) : (
             <button onClick={toggleActivo}
               className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full transition-colors cursor-pointer ${curso.activo ? "bg-green-500/15 text-green-400" : "bg-white/10 text-white/50"}`}>
               {curso.activo ? <Eye size={13} /> : <EyeOff size={13} />}
@@ -123,7 +128,8 @@ export function CabeceraCurso({ curso, servicioEmail, onSaved }: { curso: CursoD
       </div>
 
       {esCurso && (
-        <PreventaCard curso={curso} valor={preventa} onChange={setPreventa} precioRegular={Number(precio) > 0 ? Number(precio) : null} />
+        <PreventaCard curso={curso} valor={preventa} onChange={setPreventa} precioRegular={Number(precio) > 0 ? Number(precio) : null}
+          abierta={verPreventa} onToggle={() => setVerPreventa((v) => !v)} />
       )}
 
       {esCurso && (
