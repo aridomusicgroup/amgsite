@@ -4,6 +4,9 @@ import type { CursoPublico } from "@/lib/cursos-publico";
 import { ETIQUETA_DE, esRellenar, formatoTiempo, parseFaqs, renglones } from "@/lib/cursos-tipos";
 import { SOCIALS } from "@/lib/site";
 import { BotonComprar } from "@/components/cursos/BotonComprar";
+import { PrecioCurso } from "@/components/cursos/PrecioCurso";
+import { PreventaInfo } from "@/components/cursos/PreventaInfo";
+import { AvisameForm } from "@/components/cursos/AvisameForm";
 
 /*
  * La página de venta de un curso, separada de su ruta para poder revisarla en
@@ -36,6 +39,10 @@ export function VentaCurso({ c }: { c: CursoPublico }) {
   const faqs = parseFaqs(L.faqs);
   const gratis = c.modulos.flatMap((m) => m.lecciones).filter((l) => l.gratis);
   const trailer = gratis[0] ?? null;
+  const v = c.venta;
+  const etiqueta = v.estado === "preventa"
+    ? `Preventa fundador${v.lanzamiento ? ` · lanzamiento: ${v.lanzamiento}` : ""}`
+    : v.estado === "preventa_cerrada" ? "Muy pronto · curso en línea" : "Curso en línea · a tu ritmo";
 
   return (
     <main className="min-h-screen bg-lgb-black text-white">
@@ -46,12 +53,12 @@ export function VentaCurso({ c }: { c: CursoPublico }) {
 
       {/* Hero */}
       <section className="max-w-3xl mx-auto px-4 sm:px-6 pt-12 pb-10">
-        <p className="text-[11px] uppercase tracking-[0.2em] text-lgb-red mb-3">Curso en línea · a tu ritmo</p>
+        <p className="text-[11px] uppercase tracking-[0.2em] text-lgb-red mb-3">{etiqueta}</p>
         <h1 className="font-coolvetica text-4xl sm:text-6xl leading-[0.95] mb-4">{c.titulo}</h1>
         {c.descripcion && <p className="text-lg text-white/75 leading-relaxed mb-3">{c.descripcion}</p>}
         {promesa && <p className="text-white/60 leading-relaxed mb-6">{promesa}</p>}
         <Stats c={c} />
-        <Compra c={c} className="mt-8 max-w-sm" />
+        <Compra c={c} conAviso className="mt-8 max-w-sm" />
       </section>
 
       {trailer && (
@@ -70,6 +77,9 @@ export function VentaCurso({ c }: { c: CursoPublico }) {
           )}
         </section>
       )}
+
+      {/* Cerrada ya no vende: explicar cómo apartar sólo confundiría. */}
+      {v.estado === "preventa" && <PreventaInfo venta={v} bonos={c.bonos} />}
 
       {/* Método */}
       <section className="border-y border-white/8 bg-white/[0.02]">
@@ -94,7 +104,7 @@ export function VentaCurso({ c }: { c: CursoPublico }) {
       </section>
 
       {/* Temario */}
-      <section className="max-w-3xl mx-auto px-4 sm:px-6 py-14">
+      <section id="temario" className="max-w-3xl mx-auto px-4 sm:px-6 py-14 scroll-mt-4">
         <h2 className="font-coolvetica text-3xl mb-2">El temario completo</h2>
         <p className="text-white/60 mb-6">
           Ruta principal para tocar, y rutas opcionales para ir a fondo (📚) y demostrar lo aprendido (🏆). Entre lecciones, ⚡ Datos Crack: la ciencia de tu docerola en 45 segundos.
@@ -170,9 +180,13 @@ export function VentaCurso({ c }: { c: CursoPublico }) {
 
       <section className="border-t border-white/8">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-14 text-center">
-          <h2 className="font-coolvetica text-3xl mb-2">Empieza hoy</h2>
-          <p className="text-white/60 mb-6">En 20 minutos ya estás rasgueando tu primer tumbado.</p>
-          <Compra c={c} className="max-w-sm mx-auto" />
+          <h2 className="font-coolvetica text-3xl mb-2">
+            {v.estado === "preventa" ? "Aparta tu lugar de fundador" : v.estado === "preventa_cerrada" ? "Te avisamos cuando abra" : "Empieza hoy"}
+          </h2>
+          <p className="text-white/60 mb-6">
+            {v.estado === "preventa" ? "El precio sube el día del lanzamiento." : v.estado === "preventa_cerrada" ? "Deja tu correo y eres de los primeros en saber." : "En 20 minutos ya estás rasgueando tu primer tumbado."}
+          </p>
+          <Compra c={c} className="max-w-sm mx-auto text-left" />
         </div>
       </section>
     </main>
@@ -198,8 +212,27 @@ function Stats({ c }: { c: CursoPublico }) {
   );
 }
 
-function Compra({ c, className }: { c: CursoPublico; className?: string }) {
-  if (c.precioMxn && c.precioMxn > 0) return <BotonComprar cursoId={c.id} precio={c.precioMxn} className={className} />;
+/** Precio + botón según el estado de venta. `conAviso`: en preventa, también el “Avísame” para los que aún no compran. */
+function Compra({ c, className, conAviso = false }: { c: CursoPublico; className?: string; conAviso?: boolean }) {
+  const v = c.venta;
+  if (v.estado === "preventa_cerrada") {
+    return (
+      <div className={className}>
+        <PrecioCurso venta={v} className="mb-4" />
+        <AvisameForm cursoId={c.id} texto="Déjanos tu correo y te avisamos el día que abra." />
+      </div>
+    );
+  }
+  if (v.estado === "preventa" && v.precio) {
+    return (
+      <div className={className}>
+        <PrecioCurso venta={v} className="mb-4" />
+        <BotonComprar cursoId={c.id} precio={v.precio} preventa />
+        {conAviso && <AvisameForm cursoId={c.id} texto="¿Todavía no? Te avisamos antes de que cierre la preventa." className="mt-6" />}
+      </div>
+    );
+  }
+  if (v.precio) return <BotonComprar cursoId={c.id} precio={v.precio} className={className} />;
   return (
     <div className={className}>
       <a href={wa(`Hola, me interesa el curso ${c.titulo}.`)} target="_blank" rel="noopener noreferrer"

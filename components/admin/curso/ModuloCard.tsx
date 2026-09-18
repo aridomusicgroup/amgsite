@@ -6,7 +6,7 @@ import { RUTAS, TIPOS_LECCION, TIPO_LABEL, ETIQUETAS, type Etiqueta, type Ruta, 
 import { inp } from "@/components/admin/tareas/estilos";
 import { toast } from "@/lib/toast";
 import { api, errorDe } from "./api";
-import { LeccionRow } from "./LeccionRow";
+import { LeccionRow, type Estrenos } from "./LeccionRow";
 
 /** Reordena mandando el arreglo completo de ids en su nuevo orden. */
 function intercambiar(ids: string[], id: string, dir: -1 | 1): string[] | null {
@@ -18,8 +18,9 @@ function intercambiar(ids: string[], id: string, dir: -1 | 1): string[] | null {
   return copia;
 }
 
-export function ModuloCard({ cursoId, modulo, modulos, visibles, filtrando, esPrimero, esUltimo, onChanged }: {
+export function ModuloCard({ cursoId, modulo, modulos, visibles, filtrando, esPrimero, esUltimo, onChanged, estrenos }: {
   cursoId: string;
+  estrenos: Estrenos;
   modulo: CursoModulo;
   modulos: CursoModulo[];
   visibles: CursoLeccion[];
@@ -97,6 +98,7 @@ export function ModuloCard({ cursoId, modulo, modulos, visibles, filtrando, esPr
             esUltimo={l.id === modulo.lecciones.at(-1)?.id}
             onMover={(dir) => moverLeccion(l.id, dir)}
             onChanged={onChanged}
+            estrenos={estrenos}
           />
         ))}
         {modulo.lecciones.length === 0 && <p className="text-white/30 text-xs py-1">Sin lecciones todavía.</p>}

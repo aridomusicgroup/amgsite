@@ -24,7 +24,8 @@ export default async function LeccionPage({ params }: Props) {
 
   const todas = curso.modulos.flatMap((m) => m.lecciones.map((l) => ({ l, modulo: m.titulo })));
   const i = todas.findIndex((x) => x.l.id === leccionId);
-  if (i < 0) notFound();
+  // Lección que ya no existe, no publicada o curso en preventa: al inicio del curso.
+  if (i < 0) redirect(`/cuenta/curso/${curso.id}`);
   const { l: leccion, modulo } = todas[i];
   const anterior = todas[i - 1]?.l ?? null;
   const siguiente = todas[i + 1]?.l ?? null;

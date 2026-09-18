@@ -8,8 +8,9 @@ import { comisionIntlDeMeta, registrarComisionIntlIngreso } from "@/lib/comision
 import { adminEmails, crmEmails } from "@/lib/supabase/auth-server";
 import { pushAEmails } from "@/lib/push";
 import { registrarActividad } from "@/lib/actividad";
-import { extenderVencimiento } from "@/lib/cursos-tipos";
+import { extenderVencimiento, leerConfig } from "@/lib/cursos-tipos";
 import { bienvenidaCursoEmail, enviarCorreo } from "@/lib/emails-cursos";
+import { revalidarSitio } from "@/lib/curso-lanzamiento";
 
 /**
  * Pago confirmado de un curso o de un mes de mentoría (webhook de Stripe,
@@ -25,9 +26,11 @@ export async function handleCursoPago(stripe: Stripe, session: Stripe.Checkout.S
   if (!cursoId || !email) return NextResponse.json({ received: true });
 
   const sb = supabaseAdmin();
-  const { data: curso } = await sb.from("cursos").select("id, titulo, tipo").eq("id", cursoId).maybeSingle();
+  const { data: curso } = await sb.from("cursos").select("id, titulo, tipo, config").eq("id", cursoId).maybeSingle();
   if (!curso) return NextResponse.json({ received: true });
   const esMentoria = meta.tipo === "mentoria_mes";
+  // Compró un lugar de fundador: no ve lecciones hasta el lanzamiento.
+  const esPreventa = !esMentoria && meta.preventa === "1";
 
   const nombre = session.customer_details?.name ?? null;
   const telefono = session.customer_details?.phone ?? null;
@@ -65,7 +68,7 @@ export async function handleCursoPago(stripe: Stripe, session: Stripe.Checkout.S
     const campos = {
       folio, fecha, contacto_id: contactoId,
       tipo: esMentoria ? "Mentoría" : "Curso",
-      beat_nombre: esMentoria ? `${curso.titulo} · 1 mes` : curso.titulo,
+      beat_nombre: esMentoria ? `${curso.titulo} · 1 mes` : esPreventa ? `${curso.titulo} (preventa)` : curso.titulo,
       canal: "sitio", moneda: "MXN", monto_cobrado: total, total_mxn: total,
       medio_pago: "Stripe", quien_cerro: "Sitio", comision_stripe_mxn: comisionMxn,
     };
@@ -115,17 +118,25 @@ export async function handleCursoPago(stripe: Stripe, session: Stripe.Checkout.S
   }
 
   if (!yaProcesada) {
-    if (!esMentoria) await enviarCorreo(email, bienvenidaCursoEmail({ nombre: nombre ? nombre.split(" ")[0] : null, curso: curso.titulo, cursoId }));
+    const preventa = leerConfig(curso.config).preventa;
+    if (!esMentoria) {
+      await enviarCorreo(email, bienvenidaCursoEmail({
+        nombre: nombre ? nombre.split(" ")[0] : null, curso: curso.titulo, cursoId,
+        preventa: preventa.activa ? { lanzamiento: preventa.lanzamiento } : null,
+      }));
+    }
     await pushAEmails(sb, [...new Set([...adminEmails(), ...crmEmails()])], {
-      titulo: esMentoria ? "🔁 Pagaron un mes de mentoría" : "🎸 Vendiste el curso",
+      titulo: esMentoria ? "🔁 Pagaron un mes de mentoría" : esPreventa ? "🎸 Vendiste un lugar de preventa" : "🎸 Vendiste el curso",
       cuerpo: `${curso.titulo} · $${total.toLocaleString("es-MX")} · ${email}`,
       url: "https://admin.aridomusicgroup.com/admin/cursos",
     });
     await registrarActividad(sb, {
       tipo: "curso_vendido",
-      titulo: `${esMentoria ? "Mes de mentoría" : "Curso"} “${curso.titulo}” a ${email} por Stripe`,
+      titulo: `${esMentoria ? "Mes de mentoría" : esPreventa ? "Preventa del curso" : "Curso"} “${curso.titulo}” a ${email} por Stripe`,
       entidad: "venta", entidad_id: ventaId, entidad_nombre: folio,
     });
+    // “Quedan N lugares” en el inicio y en /cursos (la página del curso es dinámica).
+    if (esPreventa) revalidarSitio();
   }
   return NextResponse.json({ received: true });
 }

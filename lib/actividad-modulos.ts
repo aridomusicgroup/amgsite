@@ -124,6 +124,8 @@ export const DOT_ACTIVIDAD: Record<string, string> = {
   curso_entrega_recibida: "bg-amber-400",
   curso_retro_enviada: "bg-green-400",
   curso_vendido: "bg-green-400",
+  curso_estado_cambiado: "bg-blue-400",
+  curso_estreno_avisado: "bg-green-400",
   seguimiento_programado: "bg-amber-400",
   seguimiento_cerrado: "bg-white/40",
   cotizacion_enviada: "bg-amber-400",

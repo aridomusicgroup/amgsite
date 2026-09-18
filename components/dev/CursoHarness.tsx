@@ -5,7 +5,7 @@ import type { CursoDetalle, CursoLeccion, EntregaAdmin } from "@/lib/cursos-admi
 import type { LeccionCliente, ModuloCliente } from "@/lib/cursos-cliente";
 import type { CursoPublico } from "@/lib/cursos-publico";
 import {
-  camposVisibles, leerConfig, validarQuiz, validarRubrica,
+  camposVisibles, estadoVenta, hoyMx, leerConfig, leerPreventa, renglones, validarQuiz, validarRubrica,
   type Cta, type Etiqueta, type TipoLeccion,
 } from "@/lib/cursos-tipos";
 import { CursoEditor } from "@/components/admin/CursoEditor";
@@ -19,6 +19,9 @@ import { QuizAlumno } from "@/components/cuenta/curso/QuizAlumno";
 import { EntregaReto } from "@/components/cuenta/curso/EntregaReto";
 import { TabInteractiva } from "@/components/cuenta/curso/TabInteractiva";
 import { VentaCurso } from "@/components/cursos/VentaCurso";
+import { PreventaAlumno } from "@/components/cuenta/curso/PreventaAlumno";
+import { AridoCursos } from "@/components/arido/Cursos";
+import { aTarjeta } from "@/lib/cursos-tarjeta";
 import { MUSICXML_MUESTRA, VIDEO_MUESTRA } from "./curso-muestra";
 
 /**
@@ -48,7 +51,16 @@ const leccionesAdmin: CursoLeccion[][] = modulos.map((m) => m.lecciones.map((l, 
   } as CursoLeccion;
 }));
 
-const config = leerConfig({ ...CURSO.config, mentoria: { estado: "lista_espera", curso_id: "m1", precio_mes: 499 } });
+// Preventa de ejemplo: $990 en vez de $1,490, 50 lugares, cierra en 12 días.
+const hoy = hoyMx();
+const enDias = (d: number) => new Date(Date.parse(`${hoy}T12:00:00Z`) + d * 86_400_000).toISOString().slice(0, 10);
+const preventa = leerPreventa({
+  activa: true, precio: 990, cierre: enDias(12), cupo: 50, lanzamiento: "noviembre 2026",
+  bonos: ["Precio congelado en la mentoría grupal", "Sesión en vivo de lanzamiento con Q&A", "Tu nombre en los créditos del curso"].join("\n"),
+});
+const venta = (p = preventa, vendidos = 13) => estadoVenta({ activo: true, preventa: p, precioRegular: 1490, vendidos, hoy });
+
+const config = leerConfig({ ...CURSO.config, preventa, mentoria: { estado: "lista_espera", curso_id: "m1", precio_mes: 499 } });
 
 const cursoAdmin: CursoDetalle = {
   id: "c1", slug: CURSO.slug, titulo: CURSO.titulo, descripcion: CURSO.descripcion, portadaUrl: null, precioMxn: 1490,
@@ -59,6 +71,7 @@ const cursoAdmin: CursoDetalle = {
     { id: "a1", email: "alumno@ejemplo.com", origen: "venta", otorgadoPor: null, createdAt: "2026-09-10T12:00:00Z", venceEn: null },
     { id: "a2", email: "regalo@ejemplo.com", origen: "regalo", otorgadoPor: "eliud@ejemplo.com", createdAt: "2026-09-12T12:00:00Z", venceEn: null },
   ],
+  venta: venta(), fundadores: 13, avisame: ["lead1@ejemplo.com", "lead2@ejemplo.com", "alumno@ejemplo.com"], estrenosAvisados: [],
 };
 
 const aCliente = (l: CursoLeccion, i: number): LeccionCliente => ({
@@ -82,7 +95,7 @@ const entrega = todas.find((l) => l.tipo === "entrega")!;
 
 const publico: CursoPublico = {
   id: "c1", slug: CURSO.slug, titulo: CURSO.titulo, descripcion: CURSO.descripcion, portadaUrl: null, precioMxn: 1490,
-  revisionesIncluidas: 1,
+  revisionesIncluidas: 1, venta: venta(), bonos: renglones(preventa.bonos),
   config: leerConfig({ landing: {
     promesa: "En 12 semanas pasas del rasgueo básico a tocar tu propio requinto, con criterio para sacar cualquier rola.",
     para_quien: "Ya tienes docerola y quieres tocar corridos tumbados de verdad\nTe cansaste de tutoriales que no explican el porqué",
@@ -96,6 +109,9 @@ const publico: CursoPublico = {
   })),
   conteo: { lecciones: 66, capsulas: 18, profundas: 8, evaluaciones: 6, tablaturas: 2, publicadas: 20, minutos: 600 },
 };
+
+const publicoCerrado: CursoPublico = { ...publico, venta: venta(preventa, 50) };
+const publicoLanzado: CursoPublico = { ...publico, venta: venta({ ...preventa, activa: false }), bonos: [] };
 
 const entregasAdmin: EntregaAdmin[] = [
   { id: "e1", cursoId: "c1", cursoTitulo: CURSO.titulo, leccionId: entrega.id, leccionTitulo: entrega.titulo, email: "alumno@ejemplo.com",
@@ -118,12 +134,13 @@ if (typeof window !== "undefined" && !(window as unknown as { __bancoCurso?: boo
     }
     if (url.includes("/entrega/sesion")) return json({ error: "En el banco de pruebas no se sube nada." }, 400);
     if (url.includes("/api/checkout-curso")) return json({ error: "En el banco de pruebas no se cobra nada." }, 400);
+    if (url.includes("/api/cursos/aviso")) return json({ ok: true });
     if (url.includes("/api/admin/") || url.includes("/api/cuenta/")) return json({ ok: true });
     return real(input, init);
   };
 }
 
-type Vista = "editor" | "entregas" | "inicio" | "leccion" | "tab" | "quiz" | "entrega" | "venta";
+type Vista = "editor" | "entregas" | "inicio" | "preventa" | "leccion" | "tab" | "quiz" | "entrega" | "venta" | "cerrada" | "lanzada" | "sitio";
 const VISTAS: { id: Vista; label: string; admin?: boolean }[] = [
   { id: "editor", label: "Admin · editor", admin: true },
   { id: "entregas", label: "Admin · entregas", admin: true },
@@ -132,8 +149,13 @@ const VISTAS: { id: Vista; label: string; admin?: boolean }[] = [
   { id: "tab", label: "Alumno · tablatura" },
   { id: "quiz", label: "Alumno · quiz" },
   { id: "entrega", label: "Alumno · entrega" },
-  { id: "venta", label: "Página de venta" },
+  { id: "preventa", label: "Alumno · preventa" },
+  { id: "venta", label: "Venta · preventa" },
+  { id: "cerrada", label: "Venta · cerrada" },
+  { id: "lanzada", label: "Venta · lanzada" },
+  { id: "sitio", label: "Sitio · inicio" },
 ];
+const PAGINA_COMPLETA: Vista[] = ["venta", "cerrada", "lanzada", "sitio"];
 const mentoria = { estado: config.mentoria.estado, cursoId: "m1", precioMes: 499, esMiembro: false };
 
 export function CursoHarness() {
@@ -162,7 +184,20 @@ export function CursoHarness() {
     tab: <div className="max-w-3xl mx-auto"><TabInteractiva src="/dev-muestra.musicxml" /></div>,
     quiz: <div className="max-w-3xl mx-auto"><QuizAlumno cursoId="c1" leccionId={quiz.id} preguntas={quiz.preguntas} mejorPct={60} /></div>,
     entrega: <div className="max-w-3xl mx-auto"><EntregaReto cursoId="c1" leccionId={entrega.id} rubrica={entrega.rubrica} /></div>,
+    preventa: (
+      <div className="max-w-2xl mx-auto">
+        <h1 className="font-coolvetica text-3xl mb-4">{CURSO.titulo}</h1>
+        <PreventaAlumno slug={CURSO.slug} lanzamiento={preventa.lanzamiento} bonos={renglones(preventa.bonos)} />
+      </div>
+    ),
     venta: <VentaCurso c={publico} />,
+    cerrada: <VentaCurso c={publicoCerrado} />,
+    lanzada: <VentaCurso c={publicoLanzado} />,
+    sitio: (
+      <div className={`bg-[var(--bg)] ${claro ? "" : "dark"}`}>
+        <AridoCursos cursos={[aTarjeta(publico)]} />
+      </div>
+    ),
   }[vista];
 
   return (
@@ -172,13 +207,13 @@ export function CursoHarness() {
           <button key={v.id} onClick={() => setVista(v.id)}
             className={`text-xs px-3 py-1.5 rounded-full cursor-pointer ${vista === v.id ? "bg-white text-black" : "bg-white/10 text-white/70"}`}>{v.label}</button>
         ))}
-        {esAdmin && (
+        {(esAdmin || vista === "sitio") && (
           <button onClick={() => setClaro((c) => !c)} className="text-xs px-3 py-1.5 rounded-full bg-white/10 text-white/70 cursor-pointer ml-auto">
             {claro ? "Modo oscuro" : "Modo claro"}
           </button>
         )}
       </div>
-      <div className={vista === "venta" ? "" : "p-4 sm:p-8"}>{contenido}</div>
+      <div className={PAGINA_COMPLETA.includes(vista) ? "" : "p-4 sm:p-8"}>{contenido}</div>
     </div>
   );
 }

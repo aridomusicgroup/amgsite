@@ -3,8 +3,9 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   leerConfig, validarMarcadores, validarRecursos, validarRubrica,
   type ConfigCurso, type Cta, type Etiqueta, type EstadoProduccion, type Marcador, type Recurso, type Ruta,
-  type TipoCurso, type TipoLeccion,
+  type TipoCurso, type TipoLeccion, type Venta,
 } from "@/lib/cursos-tipos";
+import { contarFundadores, listaAvisame, ventaDeCurso } from "@/lib/curso-preventa";
 
 /**
  * Capa de datos de Cursos para el ADMIN (autoría + accesos + entregas). El
@@ -74,6 +75,14 @@ export interface CursoDetalle extends CursoAdmin {
   entregasPendientes: number;
   /** Cursos de tipo mentoría, para ligarla desde la cabecera. */
   mentorias: { id: string; titulo: string }[];
+  /** Estado de venta y precio vigente (misma regla que la página pública). */
+  venta: Venta;
+  /** Lugares vendidos (accesos por venta). */
+  fundadores: number;
+  /** Correos de la lista Avísame de la página de venta. */
+  avisame: string[];
+  /** Lecciones de las que ya se mandó el correo de estreno. */
+  estrenosAvisados: string[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -171,10 +180,14 @@ export async function getCursoDetalle(id: string): Promise<CursoDetalle | null> 
       ? (await sb.from("curso_accesos").select(COLS_ACC).eq("curso_id", id).order("created_at", { ascending: false })).data
       : ra.data;
 
-    const [interesados, entregasPendientes, mentorias] = await Promise.all([
-      contarSeguro(sb.from("curso_interes").select("id", { count: "exact", head: true }).eq("curso_id", id)),
+    const [interesados, entregasPendientes, mentorias, venta, fundadores, avisame, estrenos] = await Promise.all([
+      contarSeguro(sb.from("curso_interes").select("id", { count: "exact", head: true }).eq("curso_id", id).eq("producto", "mentoria")),
       contarSeguro(sb.from("curso_entregas").select("id", { count: "exact", head: true }).eq("curso_id", id).eq("estado", "enviada")),
       sb.from("cursos").select("id, titulo").eq("tipo", "mentoria").then((r: Row) => (r.error ? [] : r.data ?? [])),
+      ventaDeCurso(sb, c),
+      contarFundadores(sb, id),
+      listaAvisame(sb, id),
+      estrenosAvisados(sb, (lecciones ?? []).map((l: Row) => l.id as string)),
     ]);
 
     const porModulo = new Map<string, CursoLeccion[]>();
@@ -210,10 +223,21 @@ export async function getCursoDetalle(id: string): Promise<CursoDetalle | null> 
       interesados,
       entregasPendientes,
       mentorias: (mentorias as Row[]).filter((m) => m.id !== id).map((m) => ({ id: m.id as string, titulo: m.titulo as string })),
+      venta,
+      fundadores,
+      avisame,
+      estrenosAvisados: estrenos,
     };
   } catch {
     return null;
   }
+}
+
+/** Lecciones (de esta lista) con correo de estreno ya mandado, según la bitácora. */
+async function estrenosAvisados(sb: Row, leccionIds: string[]): Promise<string[]> {
+  if (!leccionIds.length) return [];
+  const { data } = await sb.from("actividad").select("entidad_id").eq("tipo", "curso_estreno_avisado").in("entidad_id", leccionIds);
+  return [...new Set(((data ?? []) as Row[]).map((r) => r.entidad_id as string))];
 }
 
 async function contarSeguro(q: PromiseLike<{ count: number | null; error: unknown }>): Promise<number> {

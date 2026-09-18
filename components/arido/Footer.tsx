@@ -10,10 +10,11 @@ export function AridoFooter() {
   const { lang } = useLang();
 
   const navLinks = [
-    { label: lang === "es" ? "Inicio" : "Home", href: "#inicio" },
-    { label: lang === "es" ? "Nosotros" : "About", href: "#nosotros" },
-    { label: lang === "es" ? "Servicios" : "Services", href: "#servicios" },
-    { label: lang === "es" ? "Contacto" : "Contact", href: "#contacto" },
+    { label: lang === "es" ? "Inicio" : "Home", href: "/#inicio" },
+    { label: lang === "es" ? "Nosotros" : "About", href: "/#nosotros" },
+    { label: lang === "es" ? "Servicios" : "Services", href: "/#servicios" },
+    { label: lang === "es" ? "Cursos" : "Courses", href: "/cursos" },
+    { label: lang === "es" ? "Contacto" : "Contact", href: "/#contacto" },
   ];
 
   const lgbLinks = [

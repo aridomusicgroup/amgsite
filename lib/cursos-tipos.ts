@@ -407,6 +407,7 @@ export const CAMPOS_LANDING: { key: keyof ConfigLanding; label: string; ayuda: s
 export interface ConfigCurso {
   mentoria: ConfigMentoria;
   landing: ConfigLanding;
+  preventa: ConfigPreventa;
   /** Textos de los llamados por tipo; si falta, se usa el de fábrica. */
   cta_textos: Partial<Record<Cta, string>>;
   meta_semanal_min: number;
@@ -447,6 +448,105 @@ export function parseFaqs(texto: string): { p: string; r: string }[] {
 export const renglones = (t: string): string[] =>
   t.split(/\r?\n/).map((x) => x.replace(/^[-•*]\s*/, "").trim()).filter((x) => x && !esRellenar(x));
 
+// ── Preventa ────────────────────────────────────────────────────────────────
+
+/**
+ * El curso se vende con descuento mientras se graba. `activa` = todavía no se
+ * lanza: quien compra aparta su lugar pero no ve lecciones hasta el lanzamiento.
+ * Cupo y cierre son opcionales; al llenarse o pasar la fecha la preventa se
+ * cierra sola (ya no vende) y al lanzar se cobra el precio normal.
+ */
+export interface ConfigPreventa {
+  activa: boolean;
+  /** Precio fundador (MXN). */
+  precio: number | null;
+  /** Último día para comprar en preventa (YYYY-MM-DD, hora de México). */
+  cierre: string | null;
+  /** Lugares de fundador; null = sin límite. */
+  cupo: number | null;
+  /** Texto libre: “noviembre 2026”. */
+  lanzamiento: string;
+  /** Un bono por renglón. */
+  bonos: string;
+}
+
+const FECHA_YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+export function leerPreventa(x: unknown): ConfigPreventa {
+  const p = (typeof x === "object" && x !== null ? x : {}) as Record<string, unknown>;
+  const precio = Number(p.precio);
+  const cupo = Math.floor(Number(p.cupo));
+  const cierre = typeof p.cierre === "string" && FECHA_YMD.test(p.cierre) && !Number.isNaN(aDia(p.cierre)) ? p.cierre : null;
+  return {
+    activa: p.activa === true,
+    precio: Number.isFinite(precio) && precio > 0 ? Math.round(precio * 100) / 100 : null,
+    cierre,
+    cupo: cupo > 0 && cupo <= 100_000 ? cupo : null,
+    lanzamiento: typeof p.lanzamiento === "string" ? p.lanzamiento.trim().slice(0, 80) : "",
+    bonos: typeof p.bonos === "string" ? p.bonos.slice(0, 1500) : "",
+  };
+}
+
+/** Error de captura de la preventa, o null si está bien. */
+export function validarPreventa(p: ConfigPreventa, precioRegular: number | null): string | null {
+  if (p.precio && precioRegular && p.precio >= precioRegular) {
+    return `El precio de preventa tiene que ser menor al regular ($${precioRegular.toLocaleString("es-MX")}).`;
+  }
+  return null;
+}
+
+export type EstadoVenta = "oculto" | "preventa" | "preventa_cerrada" | "venta";
+
+export interface Venta {
+  estado: EstadoVenta;
+  /** Lo que cobra el checkout; null = no se vende en línea (cerrado o sólo WhatsApp). */
+  precio: number | null;
+  /** El precio normal, el que se cobra al lanzar (se tacha en la preventa). */
+  precioRegular: number | null;
+  cupo: number | null;
+  /** Lugares que quedan (sólo con cupo). */
+  quedan: number | null;
+  /** Días para el cierre; 0 = hoy es el último día. */
+  diasParaCierre: number | null;
+  motivoCierre: "fecha" | "cupo" | "sin_precio" | null;
+  lanzamiento: string;
+}
+
+/**
+ * La ÚNICA regla de precio de un curso: la usan la página de venta, el inicio,
+ * el checkout y el panel. `vendidos` = lugares ya vendidos (accesos por venta).
+ */
+export function estadoVenta(d: { activo: boolean; preventa: ConfigPreventa; precioRegular: number | null; vendidos: number; hoy: string }): Venta {
+  const p = d.preventa;
+  const regular = d.precioRegular && d.precioRegular > 0 ? d.precioRegular : null;
+  const base = { precioRegular: regular, cupo: null, quedan: null, diasParaCierre: null, motivoCierre: null, lanzamiento: p.lanzamiento };
+  if (!d.activo) return { ...base, estado: "oculto", precio: null };
+  if (!p.activa) return { ...base, estado: "venta", precio: regular };
+
+  const quedan = p.cupo ? Math.max(0, p.cupo - Math.max(0, d.vendidos)) : null;
+  const dias = p.cierre ? Math.round((aDia(p.cierre) - aDia(d.hoy)) / DIA_MS) : null;
+  const motivo: Venta["motivoCierre"] = !p.precio ? "sin_precio" : dias != null && dias < 0 ? "fecha" : quedan === 0 ? "cupo" : null;
+  return {
+    ...base,
+    estado: motivo ? "preventa_cerrada" : "preventa",
+    precio: motivo ? null : p.precio,
+    cupo: p.cupo,
+    quedan,
+    diasParaCierre: dias != null && dias >= 0 ? dias : null,
+    motivoCierre: motivo,
+  };
+}
+
+/** “Cierra hoy / mañana / en 5 días”. */
+export const textoCierre = (dias: number): string =>
+  dias <= 0 ? "Cierra hoy" : dias === 1 ? "Cierra mañana" : `Cierra en ${dias} días`;
+
+export const pesos = (n: number): string => `$${n.toLocaleString("es-MX")}`;
+
+/** “50” (% de descuento) si el precio es menor al regular. */
+export const descuentoPct = (precio: number | null, regular: number | null): number | null =>
+  precio && regular && regular > precio ? Math.round((1 - precio / regular) * 100) : null;
+
 export function leerConfig(x: unknown): ConfigCurso {
   const c = (typeof x === "object" && x !== null ? x : {}) as Record<string, unknown>;
   const m = (typeof c.mentoria === "object" && c.mentoria !== null ? c.mentoria : {}) as Record<string, unknown>;
@@ -468,6 +568,7 @@ export function leerConfig(x: unknown): ConfigCurso {
     cta_textos: textos,
     meta_semanal_min: meta > 0 && meta <= 3000 ? meta : 150,
     landing: leerLanding(c.landing),
+    preventa: leerPreventa(c.preventa),
     whatsapp_texto: typeof c.whatsapp_texto === "string" && c.whatsapp_texto.trim() ? c.whatsapp_texto.trim().slice(0, 300) : null,
   };
 }

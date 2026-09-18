@@ -4,7 +4,7 @@ import { BadgeCheck } from "lucide-react";
 import { certificadoPublico } from "@/lib/curso-certificados";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Verificar certificado — Árido Music Group", robots: { index: false } };
+export const metadata: Metadata = { title: "Verificar certificado", robots: { index: false } };
 
 type Props = { params: Promise<{ id: string }> };
 

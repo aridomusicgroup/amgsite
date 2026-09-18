@@ -17,6 +17,7 @@ export function AridoNavbar() {
     { label: lang === "es" ? "Inicio" : "Home", href: "/#inicio" },
     { label: lang === "es" ? "Nosotros" : "About", href: "/#nosotros" },
     { label: lang === "es" ? "Servicios" : "Services", href: "/#servicios" },
+    { label: lang === "es" ? "Cursos" : "Courses", href: "/cursos" },
     { label: lang === "es" ? "Nuestro trabajo" : "Our work", href: "/#trabajo" },
     { label: lang === "es" ? "Cotizador" : "Quote", href: "/cotizador" },
     { label: lang === "es" ? "Contacto" : "Contact", href: "/#contacto" },
@@ -82,7 +83,7 @@ export function AridoNavbar() {
         </Link>
 
         {/* Desktop nav */}
-        <ul className="hidden md:flex items-center gap-6 text-sm font-medium">
+        <ul className="hidden lg:flex items-center gap-6 text-sm font-medium whitespace-nowrap">
           {links.map((l) => (
             <li key={l.href}>
               <Link
@@ -104,7 +105,7 @@ export function AridoNavbar() {
           <LangToggle variant="arido" />
           <DarkModeToggle variant="arido" />
           <button
-            className="md:hidden text-[var(--fg)] cursor-pointer"
+            className="lg:hidden text-[var(--fg)] cursor-pointer"
             onClick={() => setOpen(!open)}
             aria-label="Menu"
           >
@@ -115,8 +116,8 @@ export function AridoNavbar() {
 
       {/* Mobile menu */}
       <div
-        className={`md:hidden overflow-hidden transition-all duration-300 bg-[var(--nav-bg)] backdrop-blur-md ${
-          open ? "max-h-96" : "max-h-0"
+        className={`lg:hidden overflow-hidden transition-all duration-300 bg-[var(--nav-bg)] backdrop-blur-md ${
+          open ? "max-h-[30rem]" : "max-h-0"
         }`}
       >
         <ul className="px-6 py-4 flex flex-col gap-4">

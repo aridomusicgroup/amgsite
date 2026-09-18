@@ -141,6 +141,10 @@ export default async function CuentaPage() {
                       <p className="text-white/50 text-[11px] mt-1.5">
                         {c.venceEn ? `Vigente hasta el ${new Date(c.venceEn).toLocaleDateString("es-MX", { day: "numeric", month: "long" })}` : "Mentoría en vivo"}
                       </p>
+                    ) : c.preventa ? (
+                      <p className="text-white/50 text-[11px] mt-1.5">
+                        Preventa · lugar apartado{c.preventa.lanzamiento ? ` · abre: ${c.preventa.lanzamiento}` : ""}
+                      </p>
                     ) : (
                       <div className="flex items-center gap-2 mt-1.5">
                         <div className="w-24 h-1 rounded-full bg-white/10 overflow-hidden">

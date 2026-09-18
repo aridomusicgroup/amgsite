@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { moduloPermitido } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { extenderVencimiento } from "@/lib/cursos-tipos";
+import { extenderVencimiento, leerConfig } from "@/lib/cursos-tipos";
 import { bienvenidaCursoEmail, enviarCorreo } from "@/lib/emails-cursos";
 import { registrarActividad } from "@/lib/actividad";
 
@@ -10,8 +10,11 @@ export const dynamic = "force-dynamic";
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 async function datosCurso(cursoId: string) {
-  const { data } = await supabaseAdmin().from("cursos").select("titulo, tipo").eq("id", cursoId).maybeSingle();
-  return data as { titulo: string; tipo?: string } | null;
+  const { data } = await supabaseAdmin().from("cursos").select("titulo, tipo, config").eq("id", cursoId).maybeSingle();
+  if (!data) return null;
+  // En preventa el correo confirma el lugar apartado en vez de mandarlo a las lecciones.
+  const p = leerConfig(data.config).preventa;
+  return { titulo: data.titulo as string, tipo: data.tipo as string | undefined, preventa: p.activa ? { lanzamiento: p.lanzamiento } : null };
 }
 
 async function nombreDe(email: string): Promise<string | null> {
@@ -48,7 +51,7 @@ export async function POST(req: NextRequest) {
     titulo: `Acceso a “${curso.titulo}” para ${email}`,
     actor: staffEmail,
   });
-  if (b.avisar !== false) await enviarCorreo(email, bienvenidaCursoEmail({ nombre: await nombreDe(email), curso: curso.titulo, cursoId }));
+  if (b.avisar !== false) await enviarCorreo(email, bienvenidaCursoEmail({ nombre: await nombreDe(email), curso: curso.titulo, cursoId, preventa: curso.preventa }));
   return NextResponse.json({ ok: true });
 }
 
@@ -69,6 +72,7 @@ export async function PATCH(req: NextRequest) {
   if (b.accion === "reenviar") {
     const ok = await enviarCorreo(acc.email as string, bienvenidaCursoEmail({
       nombre: await nombreDe(acc.email as string), curso: curso?.titulo ?? "tu curso", cursoId: acc.curso_id as string,
+      preventa: curso?.preventa ?? null,
     }));
     return ok ? NextResponse.json({ ok: true }) : NextResponse.json({ error: "No se pudo mandar el correo." }, { status: 502 });
   }

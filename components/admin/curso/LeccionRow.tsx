@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Trash2, ChevronUp, ChevronDown, Pencil, Clapperboard } from "lucide-react";
+import { Trash2, ChevronUp, ChevronDown, Pencil, Clapperboard, Megaphone } from "lucide-react";
 import type { CursoLeccion, CursoModulo } from "@/lib/cursos-admin";
 import { ESTADOS_PRODUCCION, ETIQUETA_DE, TIPO_LABEL, TIPOS_CON_ARCHIVO, camposPendientes, type EstadoProduccion } from "@/lib/cursos-tipos";
 import { toast } from "@/lib/toast";
@@ -15,9 +15,13 @@ const COLOR_ESTADO: Record<EstadoProduccion, string> = {
   editado: "bg-green-500/15 text-green-400",
 };
 
+/** Correo de estreno: sólo con el curso ya lanzado; `avisadas` = lecciones ya avisadas. */
+export interface Estrenos { habilitado: boolean; alumnos: number; avisadas: string[] }
+
 /** Un renglón de lección: etiqueta, estado de grabación, publicada y acciones. */
-export function LeccionRow({ cursoId, leccion, modulos, puedeMover, esPrimero, esUltimo, onMover, onChanged }: {
+export function LeccionRow({ cursoId, leccion, modulos, puedeMover, esPrimero, esUltimo, onMover, onChanged, estrenos }: {
   cursoId: string;
+  estrenos: Estrenos;
   leccion: CursoLeccion;
   modulos: CursoModulo[];
   puedeMover: boolean;
@@ -40,6 +44,19 @@ export function LeccionRow({ cursoId, leccion, modulos, puedeMover, esPrimero, e
     if (!confirm(`¿Borrar la lección "${leccion.titulo}" con su guion? No se puede deshacer.`)) return;
     try { await api("/api/admin/cursos/lecciones", "DELETE", { id: leccion.id }); onChanged(); }
     catch (e) { toast(errorDe(e)); }
+  };
+
+  const avisada = estrenos.avisadas.includes(leccion.id);
+  const [avisando, setAvisando] = useState(false);
+  const avisar = async () => {
+    if (!confirm(`¿Mandar el correo “Ya salió: ${leccion.titulo}” a los alumnos del curso (${estrenos.alumnos})? Sólo se puede una vez por lección.`)) return;
+    setAvisando(true);
+    try {
+      const r = await api<{ enviados: number }>("/api/admin/cursos/lecciones/avisar", "POST", { id: leccion.id });
+      toast(`Estreno avisado a ${r.enviados} alumno${r.enviados === 1 ? "" : "s"}`);
+      onChanged();
+    } catch (e) { toast(errorDe(e)); }
+    finally { setAvisando(false); }
   };
 
   const publicar = () => {
@@ -72,6 +89,14 @@ export function LeccionRow({ cursoId, leccion, modulos, puedeMover, esPrimero, e
           className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full cursor-pointer ${leccion.publicada ? "bg-green-500/15 text-green-400" : "bg-white/8 text-white/40 hover:text-white"}`}>
           {leccion.publicada ? "Publicada" : "Publicar"}
         </button>
+        {leccion.publicada && estrenos.habilitado && (avisada ? (
+          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] text-white/40" title="Ya se mandó el correo de estreno"><Megaphone size={11} /> Avisada</span>
+        ) : (
+          <button onClick={avisar} disabled={avisando} title="Mandar correo de estreno a los alumnos"
+            className="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white/8 text-white/60 hover:text-white disabled:opacity-50 cursor-pointer">
+            <Megaphone size={11} /> Avisar estreno
+          </button>
+        ))}
         <Link href={`/admin/cursos/${cursoId}/grabar/${leccion.id}`} aria-label="Modo grabación" title="Modo grabación"
           className="shrink-0 text-white/30 hover:text-white transition-colors"><Clapperboard size={13} /></Link>
         <button onClick={() => setEditando((v) => !v)} aria-label="Editar" className="shrink-0 text-white/30 hover:text-white transition-colors cursor-pointer"><Pencil size={13} /></button>

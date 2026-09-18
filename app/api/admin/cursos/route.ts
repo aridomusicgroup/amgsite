@@ -3,7 +3,8 @@ import { moduloPermitido } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { slugDisponible } from "@/lib/cursos-admin";
 import { extraerDriveId } from "@/lib/drive-id";
-import { leerConfig } from "@/lib/cursos-tipos";
+import { leerConfig, validarPreventa } from "@/lib/cursos-tipos";
+import { cambiarEstadoCurso, revalidarSitio, ESTADOS_ADMIN, type EstadoAdmin } from "@/lib/curso-lanzamiento";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -37,11 +38,21 @@ export async function POST(req: NextRequest) {
 
 // ── Editar curso ──
 export async function PATCH(req: NextRequest) {
-  if (!(await moduloPermitido("/admin/cursos"))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const staffEmail = await moduloPermitido("/admin/cursos");
+  if (!staffEmail) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const b = await req.json().catch(() => ({}));
   const id = String(b.id || "").trim();
   if (!id) return NextResponse.json({ error: "Falta el id del curso." }, { status: 400 });
+  const sb = supabaseAdmin();
+
+  // Oculto · Preventa · A la venta (y el lanzamiento, con su correo).
+  if ("estado" in b) {
+    if (!ESTADOS_ADMIN.includes(b.estado)) return NextResponse.json({ error: "Estado inválido." }, { status: 400 });
+    const r = await cambiarEstadoCurso(sb, { id, estado: b.estado as EstadoAdmin, avisar: b.avisar === true, actor: staffEmail });
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+    return NextResponse.json({ ok: true, lanzado: r.lanzado, avisados: r.avisados });
+  }
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (b.titulo && String(b.titulo).trim()) patch.titulo = String(b.titulo).trim();
@@ -59,12 +70,18 @@ export async function PATCH(req: NextRequest) {
     // Normalizado: sólo claves conocidas y con tope (ver leerConfig).
     const cfg = leerConfig(b.config);
     if (cfg.mentoria.curso_id && !UUID.test(cfg.mentoria.curso_id)) cfg.mentoria.curso_id = null;
+    // Si está en preventa lo decide sólo el selector de estado, nunca el formulario.
+    const { data: actual } = await sb.from("cursos").select("precio_mxn, config").eq("id", id).maybeSingle();
+    cfg.preventa.activa = leerConfig(actual?.config).preventa.activa;
+    const regular = "precio_mxn" in patch ? (patch.precio_mxn as number | null) : actual?.precio_mxn == null ? null : Number(actual.precio_mxn);
+    const err = validarPreventa(cfg.preventa, regular);
+    if (err) return NextResponse.json({ error: err }, { status: 400 });
     patch.config = cfg;
   }
 
-  const sb = supabaseAdmin();
   const { error } = await sb.from("cursos").update(patch).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  revalidarSitio();
   return NextResponse.json({ ok: true });
 }
 

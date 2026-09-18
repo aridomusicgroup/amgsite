@@ -7,6 +7,8 @@ import { CAMPOS_LANDING, CTA_TEXTO_DEFAULT, esRellenar, indicacion, type Cta, ty
 import { inp, lblS } from "@/components/admin/tareas/estilos";
 import { DOMAINS } from "@/lib/site";
 import { api, errorDe } from "./api";
+import { EstadoVenta } from "./EstadoVenta";
+import { PreventaCard, formAPreventa, preventaAForm } from "./PreventaCard";
 
 const ESTADOS_MENTORIA: { id: EstadoMentoria; label: string; ayuda: string }[] = [
   { id: "oculta", label: "Apagada", ayuda: "Los llamados a la mentoría no se muestran." },
@@ -14,7 +16,7 @@ const ESTADOS_MENTORIA: { id: EstadoMentoria; label: string; ayuda: string }[] =
   { id: "abierta", label: "Abierta", ayuda: "El alumno puede pagar su mes desde el curso." },
 ];
 
-/** Datos del curso, interruptor de la mentoría y textos de los llamados y de la página de venta. */
+/** Datos del curso, estado de venta y preventa, interruptor de la mentoría y textos de los llamados y de la página de venta. */
 export function CabeceraCurso({ curso, servicioEmail, onSaved }: { curso: CursoDetalle; servicioEmail: string | null; onSaved: () => void }) {
   const [titulo, setTitulo] = useState(curso.titulo);
   const [descripcion, setDescripcion] = useState(curso.descripcion ?? "");
@@ -29,6 +31,7 @@ export function CabeceraCurso({ curso, servicioEmail, onSaved }: { curso: CursoD
     CAMPOS_LANDING.map((c) => [c.key, esRellenar(curso.config.landing[c.key]) ? "" : curso.config.landing[c.key]]),
   ) as Record<string, string>);
   const [verLanding, setVerLanding] = useState(false);
+  const [preventa, setPreventa] = useState(() => preventaAForm(curso.config.preventa));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -43,6 +46,7 @@ export function CabeceraCurso({ curso, servicioEmail, onSaved }: { curso: CursoD
         revisiones_incluidas: Number(revisiones) || 0,
         config: {
           ...curso.config, mentoria, meta_semanal_min: Number(meta) || 150, cta_textos: textos,
+          preventa: formAPreventa(preventa, curso.config.preventa),
           // Lo vacío conserva la indicación de la plantilla (y no se muestra en la página).
           landing: Object.fromEntries(CAMPOS_LANDING.map((c) => [c.key, landing[c.key]?.trim() ? landing[c.key] : curso.config.landing[c.key]])),
         },
@@ -77,11 +81,13 @@ export function CabeceraCurso({ curso, servicioEmail, onSaved }: { curso: CursoD
               <UsersRound size={13} /> {curso.interesados} quieren mentoría
             </span>
           )}
-          <button onClick={toggleActivo}
-            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full transition-colors cursor-pointer ${curso.activo ? "bg-green-500/15 text-green-400" : "bg-white/10 text-white/50"}`}>
-            {curso.activo ? <Eye size={13} /> : <EyeOff size={13} />}
-            {curso.activo ? "Visible a clientes" : "Oculto"}
-          </button>
+          {esCurso ? <EstadoVenta curso={curso} onSaved={onSaved} /> : (
+            <button onClick={toggleActivo}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full transition-colors cursor-pointer ${curso.activo ? "bg-green-500/15 text-green-400" : "bg-white/10 text-white/50"}`}>
+              {curso.activo ? <Eye size={13} /> : <EyeOff size={13} />}
+              {curso.activo ? "Visible a clientes" : "Oculto"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -95,7 +101,7 @@ export function CabeceraCurso({ curso, servicioEmail, onSaved }: { curso: CursoD
           <textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} className={`${inp} resize-none`} />
         </label>
         <label className="block">
-          <span className={lblS}>Precio MXN</span>
+          <span className={lblS}>{esCurso ? "Precio normal MXN" : "Precio MXN"}</span>
           <input value={precio} onChange={(e) => setPrecio(e.target.value)} type="number" min="0" className={inp} placeholder="Sin precio = no se vende en línea" />
         </label>
         <label className="block">
@@ -115,6 +121,10 @@ export function CabeceraCurso({ curso, servicioEmail, onSaved }: { curso: CursoD
           </>
         )}
       </div>
+
+      {esCurso && (
+        <PreventaCard curso={curso} valor={preventa} onChange={setPreventa} precioRegular={Number(precio) > 0 ? Number(precio) : null} />
+      )}
 
       {esCurso && (
         <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.02] p-4">

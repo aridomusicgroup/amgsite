@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getCustomerEmail } from "@/lib/cuenta-auth";
 import { leerConfig } from "@/lib/cursos-tipos";
+import { ventaDeCurso } from "@/lib/curso-preventa";
 import { attribMetadata, type Attrib } from "@/lib/attribution-server";
 import { esPaisInternacional, montoComisionIntl, LABEL_COMISION_INTL } from "@/lib/comision-internacional";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
@@ -12,7 +13,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * Stripe Checkout (MXN, pago único) para:
- *  - `modo: "curso"`         comprar un curso desde su página de venta.
+ *  - `modo: "curso"`         comprar un curso desde su página de venta (en
+ *                            preventa, al precio fundador; ver `estadoVenta`).
  *  - `modo: "mentoria_mes"`  pagar un mes de la mentoría (sólo si está “abierta”).
  * El precio SIEMPRE sale de la base de datos, nunca del navegador. El acceso lo
  * da el webhook al confirmarse el pago (ver lib/curso-venta.ts).
@@ -30,7 +32,7 @@ export async function POST(req: NextRequest) {
   const modo = b.modo === "mentoria_mes" ? "mentoria_mes" : "curso";
 
   const sb = supabaseAdmin();
-  const { data: c } = await sb.from("cursos").select("id, slug, titulo, precio_mxn, activo, tipo").eq("id", cursoId).maybeSingle();
+  const { data: c } = await sb.from("cursos").select("id, slug, titulo, precio_mxn, activo, tipo, config").eq("id", cursoId).maybeSingle();
   if (!c) return NextResponse.json({ error: "Curso no encontrado." }, { status: 404 });
 
   let precio = 0;
@@ -38,10 +40,22 @@ export async function POST(req: NextRequest) {
   let regreso = `${DOMAINS.main}/cursos/${c.slug}`;
   let exito = `${DOMAINS.main}/cursos/${c.slug}/gracias?session_id={CHECKOUT_SESSION_ID}`;
   const email = await getCustomerEmail();
+  let esPreventa = false;
 
   if (modo === "curso") {
-    if (c.tipo === "mentoria" || !c.activo) return NextResponse.json({ error: "Este curso no está a la venta." }, { status: 400 });
-    precio = Number(c.precio_mxn) || 0;
+    if (c.tipo === "mentoria") return NextResponse.json({ error: "Este curso no está a la venta." }, { status: 400 });
+    const venta = await ventaDeCurso(sb, c);
+    if (venta.estado === "oculto") return NextResponse.json({ error: "Este curso no está a la venta." }, { status: 400 });
+    if (venta.estado === "preventa_cerrada") {
+      return NextResponse.json({ error: "La preventa ya cerró. Déjanos tu correo y te avisamos cuando abra." }, { status: 400 });
+    }
+    // El cupo es un tope suave: dos pagos al mismo tiempo pueden pasarlo por uno.
+    esPreventa = venta.estado === "preventa";
+    precio = venta.precio ?? 0;
+    if (esPreventa) {
+      nombre = `${c.titulo} · Preventa fundador`;
+      exito += "&preventa=1";
+    }
   } else {
     // El precio y el interruptor viven en el curso que liga a esta mentoría.
     if (c.tipo !== "mentoria") return NextResponse.json({ error: "No es una mentoría." }, { status: 400 });
@@ -78,6 +92,7 @@ export async function POST(req: NextRequest) {
     metadata: {
       tipo: modo,
       curso_id: cursoId,
+      ...(esPreventa ? { preventa: "1" } : {}),
       ...(email ? { email } : {}),
       lang: "es",
       ...(comisionIntl > 0 ? { comision_intl: String(comisionIntl), pais: pais ?? "" } : {}),

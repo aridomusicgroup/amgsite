@@ -10,6 +10,7 @@ import { cuentaParaAvance } from "@/lib/cursos-tipos";
 import { MapaCurso } from "@/components/cuenta/curso/MapaCurso";
 import { BitacoraPractica } from "@/components/cuenta/curso/BitacoraPractica";
 import { CtaLeccion } from "@/components/cuenta/curso/CtaLeccion";
+import { PreventaAlumno } from "@/components/cuenta/curso/PreventaAlumno";
 
 export const metadata: Metadata = { title: "Mi curso — Árido Music Group", robots: { index: false } };
 export const dynamic = "force-dynamic";
@@ -23,6 +24,20 @@ export default async function CursoClientePage({ params }: Props) {
   const { id } = await params;
   const curso = await getCursoDetalleCliente(email, id);
   if (!curso) notFound();
+
+  if (curso.preventa) {
+    return (
+      <main className="min-h-screen bg-lgb-black text-white">
+        <div className="max-w-2xl mx-auto px-4 sm:px-5 py-8">
+          <Link href="/cuenta" className="flex items-center gap-1.5 text-white/50 hover:text-white text-sm mb-6 transition-colors w-fit">
+            <ArrowLeft size={15} /> Mi cuenta
+          </Link>
+          <h1 className="font-coolvetica text-3xl mb-4">{curso.titulo}</h1>
+          <PreventaAlumno slug={curso.slug} lanzamiento={curso.preventa.lanzamiento} bonos={curso.preventa.bonos} />
+        </div>
+      </main>
+    );
+  }
 
   const emails = await correosDe(email);
   const [practica, cert] = await Promise.all([resumenPractica(emails, curso.id), elegibilidad(curso, emails)]);

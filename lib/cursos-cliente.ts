@@ -2,9 +2,9 @@ import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { emailsDeCliente } from "@/lib/cuenta-cliente";
 import {
-  accesoVigente, camposVisibles, cuentaParaAvance, esRellenar, leerConfig, validarMarcadores,
+  accesoVigente, camposVisibles, cuentaParaAvance, esRellenar, leerConfig, renglones, validarMarcadores,
   validarQuiz, validarRecursos, validarRubrica, validarDiagnostico,
-  type ConfigCurso, type Cta, type Etiqueta, type Marcador, type Ruta, type TipoCurso, type TipoLeccion, type TipoRecurso,
+  type ConfigCurso, type ConfigPreventa, type Cta, type Etiqueta, type Marcador, type Ruta, type TipoCurso, type TipoLeccion, type TipoRecurso,
 } from "@/lib/cursos-tipos";
 
 /**
@@ -29,7 +29,12 @@ export interface CursoResumen {
   tipo: TipoCurso;
   pct: number;
   venceEn: string | null;
+  /** En preventa (aún no se lanza): cuándo abre. */
+  preventa: { lanzamiento: string } | null;
 }
+
+/** Lo que ve el fundador mientras el curso no se lanza (no hay lecciones). */
+export interface PreventaCliente { lanzamiento: string; bonos: string[] }
 
 export interface PreguntaCliente { pregunta: string; opciones: string[]; audio?: number }
 
@@ -79,6 +84,8 @@ export interface CursoDetalleCliente {
   pct: number;
   /** ¿Tiene la mentoría ligada a este curso vigente? */
   esMiembro: boolean;
+  /** Curso en preventa: sin módulos hasta el lanzamiento. */
+  preventa: PreventaCliente | null;
 }
 
 interface AccesoRow { curso_id: string; vence_en: string | null }
@@ -112,8 +119,8 @@ export async function cursosDelCliente(email: string): Promise<CursoResumen[]> {
     if (!cursoIds.length) return [];
 
     const COLS = "id, slug, titulo, descripcion, portada_url";
-    const r1 = await sb.from("cursos").select(`${COLS}, tipo`).in("id", cursoIds).eq("activo", true);
-    const cursos: { id: string; slug: string; titulo: string; descripcion: string | null; portada_url: string | null; tipo?: string }[] | null = r1.error
+    const r1 = await sb.from("cursos").select(`${COLS}, tipo, config`).in("id", cursoIds).eq("activo", true);
+    const cursos: { id: string; slug: string; titulo: string; descripcion: string | null; portada_url: string | null; tipo?: string; config?: unknown }[] | null = r1.error
       ? (await sb.from("cursos").select(COLS).in("id", cursoIds).eq("activo", true)).data
       : r1.data;
     if (!cursos?.length) return [];
@@ -128,9 +135,27 @@ export async function cursosDelCliente(email: string): Promise<CursoResumen[]> {
       tipo: ((c as { tipo?: string }).tipo === "mentoria" ? "mentoria" : "curso") as TipoCurso,
       pct: pcts[i],
       venceEn: venceDe(accesos.filter((a) => a.curso_id === c.id)),
+      preventa: preventaDe(c.config),
     }));
   } catch {
     return [];
+  }
+}
+
+/** La preventa del curso si todavía no se lanza (quien compró no ve lecciones). */
+function preventaDe(config: unknown): { lanzamiento: string } | null {
+  const p = leerConfig(config).preventa;
+  return p.activa ? { lanzamiento: p.lanzamiento } : null;
+}
+
+/** ¿El curso sigue en preventa? Devuelve su configuración, o null si ya se lanzó. */
+export async function cursoEnPreventa(cursoId: string): Promise<ConfigPreventa | null> {
+  try {
+    const { data } = await supabaseAdmin().from("cursos").select("config").eq("id", cursoId).maybeSingle();
+    const p = leerConfig(data?.config).preventa;
+    return p.activa ? p : null;
+  } catch {
+    return null;
   }
 }
 
@@ -161,6 +186,18 @@ export async function getCursoDetalleCliente(email: string, cursoId: string): Pr
       .from("cursos").select("id, slug, titulo, descripcion, tipo, config, revisiones_incluidas").eq("id", cursoId).maybeSingle();
     if (!c) return null;
     const config = leerConfig(c.config);
+
+    // En preventa el fundador sólo ve su lugar apartado: ni el temario de lecciones.
+    if (config.preventa.activa) {
+      return {
+        id: c.id as string, slug: c.slug as string, titulo: c.titulo as string,
+        descripcion: (c.descripcion as string | null) ?? null,
+        tipo: c.tipo === "mentoria" ? "mentoria" : "curso",
+        config, revisionesIncluidas: Number(c.revisiones_incluidas) || 0, venceEn: venceDe(accesos),
+        modulos: [], pct: 0, esMiembro: false,
+        preventa: { lanzamiento: config.preventa.lanzamiento, bonos: renglones(config.preventa.bonos) },
+      };
+    }
 
     const { data: modulos } = await sb
       .from("curso_modulos").select("id, titulo, orden, ruta, descripcion").eq("curso_id", cursoId).order("orden", { ascending: true });
@@ -217,6 +254,7 @@ export async function getCursoDetalleCliente(email: string, cursoId: string): Pr
       })),
       pct,
       esMiembro,
+      preventa: null,
     };
   } catch {
     return null;

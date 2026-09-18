@@ -10,11 +10,15 @@ type Props = { params: Promise<{ slug: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const c = await getCursoPublico(slug);
-  if (!c) return { title: "Curso — Árido Music Group" };
+  if (!c) return { title: "Curso" };
+  const titulo = c.venta.estado === "preventa" ? `${c.titulo} — Preventa` : c.titulo;
+  // La imagen para compartir la genera opengraph-image.tsx (con precio y lugares).
   return {
-    title: `${c.titulo} — Curso en línea | Árido Music Group`,
+    title: `${titulo} — Curso en línea`,
     description: c.descripcion ?? undefined,
-    openGraph: { title: c.titulo, description: c.descripcion ?? undefined, images: c.portadaUrl ? [c.portadaUrl] : undefined },
+    alternates: { canonical: `https://aridomusicgroup.com/cursos/${c.slug}` },
+    openGraph: { title: titulo, description: c.descripcion ?? undefined, url: `https://aridomusicgroup.com/cursos/${c.slug}`, siteName: "Árido Music Group", locale: "es_MX", type: "website" },
+    twitter: { card: "summary_large_image", title: titulo, description: c.descripcion ?? undefined },
   };
 }
 

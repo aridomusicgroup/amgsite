@@ -4,7 +4,7 @@ import { Loader2, Lock } from "lucide-react";
 import { captureAttribution, getAttribution } from "@/lib/attribution";
 
 /** Botón de compra: abre el checkout de Stripe del curso (el precio lo pone el servidor). */
-export function BotonComprar({ cursoId, precio, className = "" }: { cursoId: string; precio: number; className?: string }) {
+export function BotonComprar({ cursoId, precio, preventa = false, className = "" }: { cursoId: string; precio: number; preventa?: boolean; className?: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -32,9 +32,11 @@ export function BotonComprar({ cursoId, precio, className = "" }: { cursoId: str
       <button onClick={comprar} disabled={busy}
         className="w-full inline-flex items-center justify-center gap-2 bg-lgb-red text-white px-6 py-4 rounded-full text-base font-medium hover:bg-red-700 transition-colors disabled:opacity-60 cursor-pointer">
         {busy ? <Loader2 size={18} className="animate-spin" /> : <Lock size={16} />}
-        Inscribirme · ${precio.toLocaleString("es-MX")} MXN
+        {preventa ? "Apartar mi lugar" : "Inscribirme"} · ${precio.toLocaleString("es-MX")} MXN
       </button>
-      <p className="text-[11px] text-white/50 text-center mt-2">Pago seguro con tarjeta (Stripe). Acceso inmediato en tu cuenta.</p>
+      <p className="text-[11px] text-white/50 text-center mt-2">
+        {preventa ? "Pago seguro con tarjeta (Stripe). Te llega la confirmación por correo." : "Pago seguro con tarjeta (Stripe). Acceso inmediato en tu cuenta."}
+      </p>
       {err && <p className="text-xs text-red-400 text-center mt-2">{err}</p>}
     </div>
   );

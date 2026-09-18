@@ -1,6 +1,8 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { leerConfig, type ConfigCurso, type Etiqueta, type Ruta, type TipoLeccion } from "@/lib/cursos-tipos";
+import { leerConfig, renglones, type ConfigCurso, type Etiqueta, type Ruta, type TipoLeccion, type Venta } from "@/lib/cursos-tipos";
+import { ventaDeCurso } from "@/lib/curso-preventa";
+import { aTarjeta, type CursoTarjeta } from "@/lib/cursos-tarjeta";
 
 /**
  * Lo que la página de venta pública (/cursos/<slug>) puede mostrar de un
@@ -29,6 +31,10 @@ export interface CursoPublico {
   precioMxn: number | null;
   revisionesIncluidas: number;
   config: ConfigCurso;
+  /** Estado de venta y precio vigente (preventa, cerrada o normal). */
+  venta: Venta;
+  /** Bonos de fundador (sólo en preventa). */
+  bonos: string[];
   modulos: { titulo: string; descripcion: string | null; ruta: Ruta; lecciones: LeccionPublica[] }[];
   conteo: { lecciones: number; capsulas: number; profundas: number; evaluaciones: number; tablaturas: number; publicadas: number; minutos: number };
 }
@@ -46,6 +52,9 @@ export async function getCursoPublico(slug: string): Promise<CursoPublico | null
           .select("id, modulo_id, titulo, tipo, etiqueta, opcional, preview, publicada, drive_file_id, duracion_seg, orden")
           .in("modulo_id", ids).order("orden")
       : { data: [] };
+
+    const config = leerConfig(c.config);
+    const venta = await ventaDeCurso(sb, c);
 
     const porModulo = new Map<string, LeccionPublica[]>();
     let publicadas = 0;
@@ -76,7 +85,9 @@ export async function getCursoPublico(slug: string): Promise<CursoPublico | null
       portadaUrl: (c.portada_url as string | null) ?? null,
       precioMxn: c.precio_mxn == null ? null : Number(c.precio_mxn),
       revisionesIncluidas: Number(c.revisiones_incluidas ?? 1) || 0,
-      config: leerConfig(c.config),
+      config,
+      venta,
+      bonos: config.preventa.activa ? renglones(config.preventa.bonos) : [],
       modulos: (modulos ?? []).map((m) => ({
         titulo: m.titulo as string,
         descripcion: (m.descripcion as string | null) ?? null,
@@ -95,6 +106,18 @@ export async function getCursoPublico(slug: string): Promise<CursoPublico | null
     };
   } catch {
     return null;
+  }
+}
+
+/** Cursos visibles (en preventa o a la venta) para el inicio y /cursos. Nunca truena: sin base, lista vacía. */
+export async function getCursosEnVenta(): Promise<CursoTarjeta[]> {
+  try {
+    const { data } = await supabaseAdmin().from("cursos").select("slug, tipo").eq("activo", true).order("created_at");
+    const slugs = ((data ?? []) as { slug: string; tipo?: string }[]).filter((c) => c.tipo !== "mentoria").map((c) => c.slug);
+    const cursos = await Promise.all(slugs.map(getCursoPublico));
+    return cursos.filter((c): c is CursoPublico => Boolean(c)).map(aTarjeta);
+  } catch {
+    return [];
   }
 }
 

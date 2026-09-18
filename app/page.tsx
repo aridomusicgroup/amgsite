@@ -3,10 +3,15 @@ import { AridoNavbar } from "@/components/arido/Navbar";
 import { AridoHero } from "@/components/arido/Hero";
 import { AridoAbout } from "@/components/arido/About";
 import { AridoServices } from "@/components/arido/Services";
+import { AridoCursos } from "@/components/arido/Cursos";
+import { getCursosEnVenta } from "@/lib/cursos-publico";
 import { AridoWork } from "@/components/arido/Work";
 import { LGBGateway } from "@/components/arido/LGBGateway";
 import { AridoContact } from "@/components/arido/Contact";
 import { AridoFooter } from "@/components/arido/Footer";
+
+// Estático, pero con los cursos al día: el panel y las ventas lo refrescan al momento (revalidatePath).
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "Árido Music Group — Casa Productora de Regional Mexicano",
@@ -53,7 +58,8 @@ const orgJsonLd = {
   ],
 };
 
-export default function Home() {
+export default async function Home() {
+  const cursos = await getCursosEnVenta();
   return (
     <main>
       <script
@@ -64,6 +70,7 @@ export default function Home() {
       <AridoHero />
       <AridoAbout />
       <AridoServices />
+      <AridoCursos cursos={cursos} />
       <AridoWork />
       <LGBGateway />
       <AridoContact />

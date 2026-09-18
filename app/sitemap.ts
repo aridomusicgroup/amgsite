@@ -1,6 +1,10 @@
 import type { MetadataRoute } from "next";
+import { getCursosEnVenta } from "@/lib/cursos-publico";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export const revalidate = 3600;
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const cursos = await getCursosEnVenta();
   return [
     {
       url: "https://aridomusicgroup.com",
@@ -14,6 +18,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.8,
     },
+    {
+      url: "https://aridomusicgroup.com/cursos",
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.8,
+    },
+    ...cursos.map((c) => ({
+      url: `https://aridomusicgroup.com/cursos/${c.slug}`,
+      lastModified: new Date(),
+      changeFrequency: "weekly" as const,
+      priority: 0.9,
+    })),
     {
       url: "https://beats.aridomusicgroup.com",
       lastModified: new Date(),

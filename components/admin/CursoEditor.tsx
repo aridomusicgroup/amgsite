@@ -22,6 +22,8 @@ export function CursoEditor({ curso, servicioEmail }: Props) {
   const refresh = () => router.refresh();
   const [filtro, setFiltro] = useState<FiltroProduccion>("todas");
   const todas = curso.modulos.flatMap((m) => m.lecciones);
+  // El correo de estreno sólo tiene sentido con el curso ya lanzado (en preventa nadie ve lecciones).
+  const estrenos = { habilitado: curso.tipo === "curso" && !curso.config.preventa.activa, alumnos: curso.numAlumnos, avisadas: curso.estrenosAvisados };
 
   return (
     <div className="flex flex-col gap-8">
@@ -44,6 +46,7 @@ export function CursoEditor({ curso, servicioEmail }: Props) {
               esPrimero={i === 0}
               esUltimo={i === curso.modulos.length - 1}
               onChanged={refresh}
+              estrenos={estrenos}
             />
           ))}
         </div>
