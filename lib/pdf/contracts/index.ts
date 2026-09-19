@@ -15,6 +15,7 @@ export const CONTRACT_LABELS: Record<ContractTipo, string> = {
   produccion: "Producción a la medida",
   servicio: "Servicio suelto (mezcla/master/grabación)",
   ep_album: "EP / Álbum",
+  diseno: "Diseño visual (portada, canvas, video, branding)",
   generico: "Genérico / editable",
 };
 

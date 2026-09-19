@@ -1,5 +1,6 @@
 import { requireModule } from "@/lib/supabase/auth-server";
-import { getCotizaciones, getContratos, getRastroCotizaciones } from "@/lib/cotizaciones-data";
+import { getCotizaciones, getContratos, getRastroCotizaciones, getProyectosParaDiseno } from "@/lib/cotizaciones-data";
+import { catalogoDiseno, PROVEEDOR_DISENO } from "@/lib/diseno-catalogo";
 import { tipoCambioSugerido } from "@/lib/tipo-cambio-server";
 import { getContactos, getEquipoActivo } from "@/lib/erp-data";
 import { CONTRACT_TIPOS } from "@/lib/pdf/contracts";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function CotizacionesAdminPage() {
   const session = await requireModule("/admin/cotizaciones");
 
-  const [cotizaciones, contratos, contactos, rastro, tcSugerido, equipo] = await Promise.all([
+  const [cotizaciones, contratos, contactos, rastro, tcSugerido, equipo, proyectosTema] = await Promise.all([
     getCotizaciones(),
     getContratos(),
     getContactos(),
@@ -19,6 +20,8 @@ export default async function CotizacionesAdminPage() {
     // Promedio de las últimas ventas en dólares: se propone al cotizar en USD.
     tipoCambioSugerido(),
     getEquipoActivo(),
+    // Para ligar un diseño (portada, canvas…) a la canción que produjimos.
+    getProyectosParaDiseno(),
   ]);
 
   const clientes = contactos
@@ -46,6 +49,10 @@ export default async function CotizacionesAdminPage() {
         isAdmin={session.role === "admin"}
         plantillas={plantillas}
         tcSugerido={tcSugerido}
+        // Con costos: esta página sólo la ve el staff con sesión.
+        catalogoDiseno={catalogoDiseno()}
+        proveedorDiseno={PROVEEDOR_DISENO}
+        proyectosTema={proyectosTema}
       />
     </div>
   );

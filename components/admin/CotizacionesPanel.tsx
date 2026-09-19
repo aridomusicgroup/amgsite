@@ -13,7 +13,9 @@ import servicesRaw from "@/data/services.json";
 import { InstrumentosPicker } from "@/components/admin/InstrumentosPicker";
 import { PlantillasEditor, type PlantillaItem } from "@/components/admin/PlantillasEditor";
 import { inferirInstrumentos, incluyeDePaquete } from "@/lib/servicios";
-import type { Cotizacion, Contrato, RastroCot } from "@/lib/cotizaciones-data";
+import type { Cotizacion, Contrato, RastroCot, ProyectoTema } from "@/lib/cotizaciones-data";
+import { costoSugerido, incluyeDeDiseno, llevaDiseno, tituloConTema, validarCosto, type ServicioDiseno } from "@/lib/diseno";
+import { DisenoCotizacion } from "@/components/admin/DisenoCotizacion";
 import type { QuoteItem } from "@/lib/pdf/quote";
 import { familiaDeCotizacion } from "@/lib/acuerdos/familias";
 import { aplicaDescuentoFidelidad } from "@/lib/fidelidad";
@@ -40,6 +42,12 @@ interface Props {
   isAdmin: boolean;
   plantillas: PlantillaItem[];
   equipo: MiembroEquipo[];
+  /** Diseño visual, CON el costo del diseñador (la página sólo la ve el staff). */
+  catalogoDiseno: ServicioDiseno[];
+  /** A quién se le paga el diseño (su nombre en "Pagos a músicos"). */
+  proveedorDiseno: string;
+  /** Canciones a las que se les puede ligar un diseño. */
+  proyectosTema: ProyectoTema[];
 }
 
 /** Miembro del equipo, para elegir responsables al convertir en venta. */
@@ -93,7 +101,7 @@ async function api(url: string, method: string, body?: unknown) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-export function CotizacionesPanel({ cotizaciones, contratos, clientes, tipos, rastro, isAdmin, plantillas, tcSugerido, equipo }: Props) {
+export function CotizacionesPanel({ cotizaciones, contratos, clientes, tipos, rastro, isAdmin, plantillas, tcSugerido, equipo, catalogoDiseno, proveedorDiseno, proyectosTema }: Props) {
   // Llegando de otra pantalla con ?destacar=… y ?vista=contratos, se abre la
   // pestaña correcta: si no, el resplandor caería en una lista que no se ve.
   const vistaInicial = useSearchParams().get("vista");
@@ -145,6 +153,8 @@ export function CotizacionesPanel({ cotizaciones, contratos, clientes, tipos, ra
       {tab === "cotizaciones" && (
         <CotizacionesList
           items={cotizaciones}
+          proyectosTema={proyectosTema}
+          proveedorDiseno={proveedorDiseno}
           rastro={rastro}
           isAdmin={isAdmin}
           onEdit={(c) => setCotOpen(c)}
@@ -176,6 +186,9 @@ export function CotizacionesPanel({ cotizaciones, contratos, clientes, tipos, ra
           initial={cotOpen === "new" ? null : cotOpen}
           clientes={clientes}
           tipos={tipos}
+          catalogoDiseno={catalogoDiseno}
+          proveedorDiseno={proveedorDiseno}
+          proyectosTema={proyectosTema}
           onClose={() => setCotOpen(null)}
         />
       )}
@@ -188,7 +201,9 @@ export function CotizacionesPanel({ cotizaciones, contratos, clientes, tipos, ra
         />
       )}
       {ventaOpen && (
-        <ConvertirVentaModal tcSugerido={tcSugerido} equipo={equipo} cotizacion={ventaOpen} onClose={() => setVentaOpen(null)} />
+        <ConvertirVentaModal tcSugerido={tcSugerido} equipo={equipo} cotizacion={ventaOpen} onClose={() => setVentaOpen(null)}
+          temaTitulo={proyectosTema.find((p) => p.id === ventaOpen.proyecto_origen_id)?.titulo ?? null}
+          proveedorDiseno={proveedorDiseno} />
       )}
     </div>
   );
@@ -387,8 +402,9 @@ function LinkPagoPanel({ cotizacion: c, onCerrar }: { cotizacion: Cotizacion; on
 }
 
 // ── Lista de cotizaciones ──
-function CotizacionesList({ items, rastro, isAdmin, onEdit, onConvert, onConvertVenta, onContratos }: {
-  items: Cotizacion[]; rastro: Record<string, RastroCot>; isAdmin: boolean; onContratos: () => void;
+function CotizacionesList({ items, proyectosTema, proveedorDiseno, rastro, isAdmin, onEdit, onConvert, onConvertVenta, onContratos }: {
+  items: Cotizacion[]; proyectosTema: ProyectoTema[]; proveedorDiseno: string;
+  rastro: Record<string, RastroCot>; isAdmin: boolean; onContratos: () => void;
   onEdit: (c: Cotizacion) => void; onConvert: (c: Cotizacion) => void; onConvertVenta: (c: Cotizacion) => void;
 }) {
   const destacado = useDestacar();   // llegar al documento exacto desde otra pantalla
@@ -462,6 +478,7 @@ function CotizacionesList({ items, rastro, isAdmin, onEdit, onConvert, onConvert
       {filtered.map((c) => {
         const est = COT_ESTADO[c.estado] ?? COT_ESTADO.borrador;
         const r = rastro[c.id] ?? RASTRO_VACIO;
+        const tema = c.proyecto_origen_id ? proyectosTema.find((p) => p.id === c.proyecto_origen_id) : null;
         return (
           <div key={c.id} data-destacar-id={c.id}
             className={`bg-lgb-surface border border-white/5 rounded-2xl p-3 sm:p-4 ${destacado === c.id ? "arido-destacado" : ""}`}>
@@ -473,7 +490,15 @@ function CotizacionesList({ items, rastro, isAdmin, onEdit, onConvert, onConvert
                 </p>
                 <p className="text-white/40 text-xs mt-0.5">
                   {new Date(c.created_at).toLocaleDateString("es-MX")} · {c.items.length} concepto(s)
+                  {(c.costo_proveedor ?? 0) > 0 && <> · Pago a {proveedorDiseno.split(" ")[0]} {fmt(c.costo_proveedor ?? 0)}</>}
                 </p>
+                {tema && (
+                  <p className="mt-1">
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 text-white/60">
+                      Tema: {tema.folio} · {tema.titulo}
+                    </span>
+                  </p>
+                )}
               </div>
               <div className="text-right shrink-0">
                 <div className="font-coolvetica text-lg leading-none">{fmt(c.total, c.moneda)}</div>
@@ -620,8 +645,16 @@ function ContratosList({ items, tipos, isAdmin, onEdit }: {
 }
 
 // ── Editor de line items (compartido por cotización y contrato) ──
-function ItemsEditor({ items, onChange, moneda }: { items: QuoteItem[]; onChange: (v: QuoteItem[]) => void; moneda: string }) {
+function ItemsEditor({ items, onChange, moneda, diseno = [] }: {
+  items: QuoteItem[]; onChange: (v: QuoteItem[]) => void; moneda: string;
+  /** Catálogo de diseño visual: se agrega como un grupo más del selector. */
+  diseno?: ServicioDiseno[];
+}) {
   const add = (label = "", price = 0) => onChange([...items, { label, qty: 1, unitPrice: price }]);
+  const opciones = [
+    ...CATALOGO,
+    ...diseno.map((s) => ({ group: "Diseño", label: s.nombre.es, price: s.precio })),
+  ];
   const update = (i: number, patch: Partial<QuoteItem>) => onChange(items.map((it, j) => (j === i ? { ...it, ...patch } : it)));
   const remove = (i: number) => onChange(items.filter((_, j) => j !== i));
 
@@ -631,16 +664,16 @@ function ItemsEditor({ items, onChange, moneda }: { items: QuoteItem[]; onChange
         <select
           defaultValue=""
           onChange={(e) => {
-            const opt = CATALOGO.find((c) => c.label === e.target.value);
+            const opt = opciones.find((c) => c.label === e.target.value);
             if (opt) add(opt.label, opt.price);
             e.target.value = "";
           }}
           className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white/80 cursor-pointer"
         >
           <option value="" disabled>+ Agregar del catálogo…</option>
-          {["Paquetes", "Instrumentos", "Estudio"].map((g) => (
+          {["Paquetes", "Instrumentos", "Estudio", ...(diseno.length ? ["Diseño"] : [])].map((g) => (
             <optgroup key={g} label={g}>
-              {CATALOGO.filter((c) => c.group === g).map((c) => (
+              {opciones.filter((c) => c.group === g).map((c) => (
                 <option key={c.label} value={c.label}>{c.label} — ${c.price.toLocaleString("es-MX")}</option>
               ))}
             </optgroup>
@@ -654,7 +687,8 @@ function ItemsEditor({ items, onChange, moneda }: { items: QuoteItem[]; onChange
       {items.length === 0 && <p className="text-white/30 text-xs py-3 text-center">Agrega conceptos del catálogo o líneas libres.</p>}
       <div className="flex flex-col gap-2">
         {items.map((it, i) => {
-          const inc = incluyeDePaquete(it.label);
+          const dePaquete = incluyeDePaquete(it.label);
+          const inc = dePaquete.length ? dePaquete : incluyeDeDiseno(it.label, diseno);
           return (
             <div key={i}>
               <div className="flex items-center gap-2">
@@ -694,7 +728,10 @@ function ItemsEditor({ items, onChange, moneda }: { items: QuoteItem[]; onChange
 }
 
 // ── Modal de cotización ──
-function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { initial: Cotizacion | null; clientes: ClienteLite[]; tipos: TipoLite[]; onClose: () => void; tcSugerido: number }) {
+function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalogoDiseno, proveedorDiseno, proyectosTema }: {
+  initial: Cotizacion | null; clientes: ClienteLite[]; tipos: TipoLite[]; onClose: () => void; tcSugerido: number;
+  catalogoDiseno: ServicioDiseno[]; proveedorDiseno: string; proyectosTema: ProyectoTema[];
+}) {
   const router = useRouter();
   const [tipo, setTipo] = useState(initial?.tipo ?? "");
   const [esquemaPago, setEsquemaPago] = useState(initial?.esquema_pago ?? "estandar");
@@ -727,6 +764,17 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
   // Stripe no tiene a quién preguntarle: lo toma de aquí (si no, del titular).
   const [musicos, setMusicos] = useState<{ instrumento: string; musico_id: string }[]>(initial?.musicos ?? []);
   const instrumentosCot = useMemo(() => inferirInstrumentos(items.map((i) => i.label)).join(", "), [items]);
+  // Diseño visual: de qué canción nuestra es y cuánto se le paga al diseñador.
+  // El pago sigue al catálogo mientras nadie lo escriba a mano.
+  const [origenId, setOrigenId] = useState(initial?.proyecto_origen_id ?? "");
+  const sugeridoDiseno = useMemo(() => costoSugerido(items, catalogoDiseno), [items, catalogoDiseno]);
+  const [costoManual, setCostoManual] = useState<number | null>(() => {
+    const guardado = initial?.costo_proveedor;
+    if (guardado == null) return null;
+    return Math.abs(guardado - costoSugerido(initial?.items ?? [], catalogoDiseno)) > 0.5 ? guardado : null;
+  });
+  const costoDiseno = costoManual ?? sugeridoDiseno;
+  const esDiseno = tipo === "diseno" || llevaDiseno(items, catalogoDiseno);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -767,6 +815,8 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
   // servidor al guardar, con el crédito disponible releído en ese momento.
   const creditoPrevio = aplicarCreditoChk ? Math.min(fidelidad?.creditoDisponible ?? 0, d.total) : 0;
   const total = Math.max(0, Math.round((d.total - creditoPrevio) * 100) / 100);
+  // En pesos: contra esto se compara lo que se le paga al diseñador.
+  const totalMxn = aMxn(total, moneda, Number(tipoCambio) || 0);
 
   // Si el tipo tiene acuerdo (familiaDeCotizacion), al ENVIAR esta cotización
   // sale el enlace de firma antes del anticipo — se avisa en el formulario
@@ -784,6 +834,8 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
     if (items.length === 0) { setErr("Agrega al menos un concepto."); return; }
     const problema = validarTipoCambio(moneda, Number(tipoCambio) || 0);
     if (problema) { setErr(problema); return; }
+    const problemaDiseno = esDiseno ? validarCosto(costoDiseno, totalMxn) : null;
+    if (problemaDiseno) { setErr(problemaDiseno); return; }
     setSaving(true); setErr(null);
     const body = {
       id: initial?.id, contacto_id: contactoId,
@@ -801,9 +853,13 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
       aplicar_credito: fidelidadAplica && aplicarCreditoChk,
       sin_descuento_fidelidad: fidelidadElegible && sinDescuentoFidelidad,
       musicos,
+      // El servidor lo vuelve a validar contra el total que él calcula.
+      proyecto_origen_id: esDiseno ? origenId || null : null,
+      costo_proveedor: esDiseno ? costoDiseno : null,
     };
     try {
-      await api("/api/admin/cotizaciones", initial ? "PATCH" : "POST", body);
+      const r = await api("/api/admin/cotizaciones", initial ? "PATCH" : "POST", body) as { aviso?: string | null };
+      if (r?.aviso) alert(r.aviso);
       router.refresh();
       onClose();
     } catch (e) { setErr(e instanceof Error ? e.message : "Error"); setSaving(false); }
@@ -854,13 +910,21 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido }: { in
           setDescuento((d) => convertir(Number(d) || 0, factor));
         }} />
       <div className="mt-2"><label className="text-white/60 text-xs">Conceptos</label>
-        <div className="mt-1"><ItemsEditor items={items} onChange={(nuevos) => {
+        <div className="mt-1"><ItemsEditor items={items} diseno={catalogoDiseno} onChange={(nuevos) => {
           // Con los de antes a la mano: así se sabe qué concepto es nuevo (se
           // reparte solo) y cuál despalomeaste a propósito (no regresa).
           if (tipo === "ep_album") setTemas((t) => ajustarTemas(t, numCanciones, nuevos, items));
           setItems(nuevos);
         }} moneda={moneda} /></div>
       </div>
+      {esDiseno && (
+        <DisenoCotizacion
+          proyectos={proyectosTema} contactoId={contactoId}
+          origenId={origenId} onOrigen={setOrigenId}
+          costo={costoDiseno} sugerido={sugeridoDiseno} manual={costoManual !== null} onCosto={setCostoManual}
+          totalMxn={totalMxn} proveedor={proveedorDiseno}
+        />
+      )}
       {instrumentosCot && (
         <div className="mt-2">
           <label className="text-white/60 text-xs">Quién toca <span className="text-white/30">(la venta los toma de aquí; si no eliges, va el titular)</span></label>
@@ -1272,21 +1336,30 @@ function RastroLinea({ c, r, onContratos }: { c: Cotizacion; r: RastroCot; onCon
   );
 }
 
-const VENTA_TIPOS = ["Beat personalizado", "BP + Letra", "Grabación", "Mezcla / Master", "Exclusividad", "EP", "Álbum"];
+const VENTA_TIPOS = ["Beat personalizado", "BP + Letra", "Grabación", "Mezcla / Master", "Exclusividad", "EP", "Álbum", "Diseño visual"];
+const TIPO_VENTA_DISENO = "Diseño visual";
 
 // Convierte una cotización en venta (folio I####) + proyecto con tareas (reusa /api/admin/ventas).
-function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
+function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo, temaTitulo, proveedorDiseno }: {
   cotizacion: Cotizacion; onClose: () => void; tcSugerido: number; equipo: MiembroEquipo[];
+  /** Diseño visual: el título de la canción de origen, para nombrar la venta y el proyecto. */
+  temaTitulo: string | null;
+  proveedorDiseno: string;
 }) {
   const router = useRouter();
   const hoy = new Date().toISOString().slice(0, 10);
   const [fecha, setFecha] = useState(hoy);
-  const [titulo, setTitulo] = useState(c.items[0]?.label ?? "Producción");
+  const [titulo, setTitulo] = useState(tituloConTema(c.items[0]?.label ?? "Producción", temaTitulo));
   // Una cotización de EP/álbum nace como tal: antes caía en "Beat personalizado"
   // y, cambiándolo a mano a EP, el proyecto salía sin una sola tarea (TRiP MX).
   const esDisco = c.tipo === "ep_album";
-  const [tipo, setTipo] = useState(esDisco ? (c.ep_album_formato === "album" ? "Álbum" : "EP") : "Beat personalizado");
+  const [tipo, setTipo] = useState(
+    esDisco ? (c.ep_album_formato === "album" ? "Álbum" : "EP") : c.tipo === "diseno" ? TIPO_VENTA_DISENO : "Beat personalizado",
+  );
   const tipoDisco = tipo === "EP" || tipo === "Álbum";
+  // Diseño: nace con la plantilla "Diseño visual" (brief → diseño → revisión →
+  // entrega). Ni instrumentos, ni tonalidad, ni "solo estos conceptos".
+  const tipoDiseno = tipo === TIPO_VENTA_DISENO;
   // Los temas de la cotización, editables aquí por si el nombre cambió desde que se cotizó.
   const [temas, setTemas] = useState<Tema[]>(() => temasDeCotizacion(c));
   // Se guardan en el proyecto: el previo para músico los toma de aquí en vez de
@@ -1355,11 +1428,11 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
         total_mxn: enPesos,
         medio_pago: medioPago || null, quien_cerro: quienCerro || null,
         anticipo: Number(anticipo) || 0,
-        extras: modo === "plantilla" || tipoDisco ? extras || null : null,
+        extras: tipoDiseno ? null : modo === "plantilla" || tipoDisco ? extras || null : null,
         // Plantilla → tareas "Grabar {instrumento}". Libre → una tarea por concepto.
-        instrumentos: modo === "plantilla" || tipoDisco ? extras : "",
-        musicos_elegidos: modo === "plantilla" || tipoDisco ? musicosElegidos : [],
-        tareas_libres: modo === "libre" && !tipoDisco ? tareasLibres : "",
+        instrumentos: tipoDiseno ? "" : modo === "plantilla" || tipoDisco ? extras : "",
+        musicos_elegidos: tipoDiseno ? [] : modo === "plantilla" || tipoDisco ? musicosElegidos : [],
+        tareas_libres: modo === "libre" && !tipoDisco && !tipoDiseno ? tareasLibres : "",
         // EP/Álbum: un tema = una tarea con lo que lleva ese tema.
         temas: tipoDisco ? temas : undefined,
         crear_proyecto: crearProyecto,
@@ -1408,7 +1481,17 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
           En un EP/álbum, la tonalidad, el BPM y el compás son de cada canción: se ponen al abrir el tema en Producción.
         </p>
       )}
-      {crearProyecto && !tipoDisco && (
+      {tipoDiseno && crearProyecto && (
+        <p className="mt-2 text-[11px] text-white/45">
+          El proyecto nace con la plantilla de Diseño visual: brief → diseño → revisión con el cliente → entrega.
+        </p>
+      )}
+      {(c.costo_proveedor ?? 0) > 0 && (
+        <p className="mt-1 text-[11px] text-white/45">
+          El pago a {proveedorDiseno.split(" ")[0]} ({fmt(c.costo_proveedor ?? 0)}) queda pendiente en Finanzas → Pagos.
+        </p>
+      )}
+      {crearProyecto && !tipoDisco && !tipoDiseno && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <Field label="Tonalidad (opcional)">
             <input value={tonalidad} onChange={(e) => setTonalidad(e.target.value)} maxLength={12} placeholder="Am" className="input" />
@@ -1433,7 +1516,7 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo }: {
           </div>
         </div>
       )}
-      {crearProyecto && !tipoDisco && (
+      {crearProyecto && !tipoDisco && !tipoDiseno && (
         <div className="mt-3">
           <div className="flex items-center gap-2 flex-wrap mb-2">
             <span className="text-white/60 text-xs mr-1">Tareas del proyecto:</span>

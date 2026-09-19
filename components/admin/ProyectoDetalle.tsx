@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { Pencil, Trash2, Copy } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
@@ -143,6 +144,23 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
             <span>· {ESTADO_PROY_LABEL[proyecto.estado] ?? proyecto.estado}</span>
             {proyecto.contacto && <span>· {proyecto.contacto}</span>}
           </div>
+          {/* Diseño visual: de qué canción sale, o qué diseños se le hicieron. */}
+          {(proyecto.temaOrigen || proyecto.disenos.length > 0) && (
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap text-[11px]">
+              {proyecto.temaOrigen && (
+                <Link href={`/admin/proyectos/${proyecto.temaOrigen.id}`}
+                  className="px-2 py-0.5 rounded-full bg-white/5 text-white/60 hover:text-white transition-colors">
+                  Tema de origen: {proyecto.temaOrigen.folio} · {proyecto.temaOrigen.titulo}
+                </Link>
+              )}
+              {proyecto.disenos.map((d) => (
+                <Link key={d.id} href={`/admin/proyectos/${d.id}`}
+                  className="px-2 py-0.5 rounded-full bg-white/5 text-white/60 hover:text-white transition-colors">
+                  Diseño: {d.folio} · {d.titulo}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
           {/* Etapa: la acción de todos los días, no escondida en "Editar" */}

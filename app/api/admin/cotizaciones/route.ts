@@ -12,6 +12,8 @@ import { esEsquemaValido } from "@/lib/esquema-pago";
 import { aplicaDescuentoFidelidad } from "@/lib/fidelidad";
 import { nivelDeContacto, creditoDisponible, aplicarCredito } from "@/lib/fidelidad-server";
 import { limpiarTemas } from "@/lib/temas";
+import { costoSugerido, llevaDiseno, validarCosto } from "@/lib/diseno";
+import { catalogoDiseno } from "@/lib/diseno-catalogo";
 
 const TIPOS_VALIDOS = new Set(CONTRACT_TIPOS.map((t) => t.id));
 
@@ -42,6 +44,39 @@ function parseMusicos(v: unknown): { instrumento: string; musico_id: string }[] 
     .filter((e) => e.instrumento && /^[0-9a-f-]{36}$/i.test(e.musico_id))
     .slice(0, 30);
 }
+
+/** El proyecto (canción) de origen de un diseño: id válido y que exista, o null. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function origenValido(sb: any, v: unknown): Promise<string | null> {
+  const id = String(v ?? "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const { data } = await sb.from("proyectos").select("id").eq("id", id).maybeSingle();
+  return data ? id : null;
+}
+
+/**
+ * Lo que se le paga al diseñador (MXN). Lo que escribió el staff si lo mandó;
+ * si no, lo que sale del catálogo por los conceptos de diseño; null si la
+ * cotización no lleva diseño. Se valida contra el total en pesos.
+ */
+function costoProveedorDe(
+  pedido: unknown,
+  items: { label: string; qty: number }[],
+  totalMxn: number,
+): { costo: number | null; error: string | null } {
+  const catalogo = catalogoDiseno();
+  const vacio = pedido === undefined || pedido === null || pedido === "";
+  if (vacio && !llevaDiseno(items, catalogo)) return { costo: null, error: null };
+  const costo = vacio ? costoSugerido(items, catalogo) : Number(pedido);
+  const error = validarCosto(costo, totalMxn);
+  return { costo: error ? null : redondea(costo), error };
+}
+
+/** Columnas de diseño (supabase-diseno.sql): las más nuevas, las primeras en soltarse. */
+const COLS_DISENO = ["proyecto_origen_id", "costo_proveedor"];
+const sinCols = (o: Record<string, unknown>, cols: string[]) =>
+  Object.fromEntries(Object.entries(o).filter(([k]) => !cols.includes(k)));
+const AVISO_SQL_DISENO = "Se guardó, pero sin el tema de origen ni el pago a Julio: falta correr supabase-diseno.sql.";
 
 // El total (con comisión de PayPal si aplica) vive en `lib/comision.ts`, no aquí:
 // lo tienen que calcular igual el formulario, esta ruta y el PDF que firma el
@@ -113,8 +148,14 @@ export async function POST(req: NextRequest) {
   const creditoAUsar = Math.min(disponible, d.total);
   const total = redondea(d.total - creditoAUsar);
 
+  // ── Diseño visual: el tema que produjimos y lo que se le paga al diseñador.
+  const totalMxn = aMxn(total, moneda, tipoCambio ?? 0);
+  const proveedor = costoProveedorDe(b.costo_proveedor, items, totalMxn);
+  if (proveedor.error) return NextResponse.json({ error: proveedor.error }, { status: 400 });
+  const origenId = await origenValido(sb, b.proyecto_origen_id);
+
   const folio = await nextFolio(sb, "cotizaciones", "COT-");
-  const row = {
+  const row: Record<string, unknown> = {
     folio,
     tipo,
     esquema_pago: esquemaPago,
@@ -139,31 +180,40 @@ export async function POST(req: NextRequest) {
     // Espejo en pesos: es lo que leen el Dashboard y Finanzas, que reportan
     // todo en MXN. Se guarda calculado (y no se recalcula al vuelo) para que la
     // cotización conserve el tipo de cambio con el que se hizo.
-    total_mxn: aMxn(total, moneda, tipoCambio ?? 0),
+    total_mxn: totalMxn,
     notas: (b.notas || "").trim() || null,
     vigencia_dias: Math.max(1, Number(b.vigencia_dias) || 15),
     estado,
     creado_por: email,
   };
+  // Sólo si hay algo que guardar: así una cotización normal no depende de que
+  // ya exista la columna.
+  if (origenId) row.proyecto_origen_id = origenId;
+  if (proveedor.costo !== null) row.costo_proveedor = proveedor.costo;
 
   // `tipo`/`esquema_pago`/`num_canciones`/`descuento_fidelidad`/`credito_aplicado`
   // son columnas nuevas. Si todavía no se corrieron esas migraciones, no se
   // puede tirar la creación de la cotización entera por eso — se reintenta sin
   // ellas para no dejar el flujo principal roto mientras tanto.
   let { data, error } = await sb.from("cotizaciones").insert(row).select("id, folio").single();
-  if (error && /schema cache/i.test(error.message)) {
-    // Primero sólo sin `temas` (la más nueva): no perder por ella todo lo demás.
-    const { temas: _tm, ...sinTemas } = row;
-    void _tm;
-    ({ data, error } = await sb.from("cotizaciones").insert(sinTemas).select("id, folio").single());
+  const conDiseno = COLS_DISENO.some((k) => k in row);
+  let soltoDiseno = false;
+  if (error && /schema cache/i.test(error.message) && conDiseno) {
+    // Primero sin las de diseño (las más nuevas): no perder por ellas todo lo demás.
+    soltoDiseno = true;
+    ({ data, error } = await sb.from("cotizaciones").insert(sinCols(row, COLS_DISENO)).select("id, folio").single());
   }
   if (error && /schema cache/i.test(error.message)) {
-    const { tipo: _t, esquema_pago: _e, num_canciones: _n, descuento_fidelidad: _f, credito_aplicado: _c, ep_album_formato: _ea, sin_descuento_fidelidad: _s, musicos: _m, temas: _tm, ...sinNuevas } = row;
-    void _t; void _e; void _n; void _f; void _c; void _ea; void _s; void _m; void _tm;
-    ({ data, error } = await sb.from("cotizaciones").insert(sinNuevas).select("id, folio").single());
+    // Luego sin `temas`.
+    ({ data, error } = await sb.from("cotizaciones").insert(sinCols(row, [...COLS_DISENO, "temas"])).select("id, folio").single());
+  }
+  if (error && /schema cache/i.test(error.message)) {
+    const viejas = ["tipo", "esquema_pago", "num_canciones", "descuento_fidelidad", "credito_aplicado", "ep_album_formato", "sin_descuento_fidelidad", "musicos", "temas"];
+    ({ data, error } = await sb.from("cotizaciones").insert(sinCols(row, [...COLS_DISENO, ...viejas])).select("id, folio").single());
   }
 
   if (error || !data) return NextResponse.json({ error: error?.message || "No se pudo crear." }, { status: 500 });
+  const aviso = soltoDiseno ? AVISO_SQL_DISENO : null;
 
   // Sella el crédito usado DESPUÉS de que la cotización ya existe (necesita su id).
   if (contactoId && creditoAUsar > 0.5) {
@@ -182,7 +232,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ ok: true, id: data.id, folio: data.folio });
+  return NextResponse.json({ ok: true, id: data.id, folio: data.folio, aviso });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -262,19 +312,38 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
+  // ── Diseño visual: tema de origen y pago al diseñador, contra el total YA recalculado.
+  if ("proyecto_origen_id" in b) patch.proyecto_origen_id = await origenValido(sb, b.proyecto_origen_id);
+  if ("costo_proveedor" in b) {
+    let items = patch.items as { label: string; qty: number }[] | undefined;
+    let totalMxn = patch.total_mxn as number | undefined;
+    if (items === undefined || totalMxn === undefined) {
+      const { data: cur } = await sb.from("cotizaciones").select("items, total_mxn").eq("id", id).single();
+      items ??= parseItems(cur?.items);
+      totalMxn ??= Number(cur?.total_mxn) || 0;
+    }
+    const proveedor = costoProveedorDe(b.costo_proveedor, items, totalMxn);
+    if (proveedor.error) return NextResponse.json({ error: proveedor.error }, { status: 400 });
+    patch.costo_proveedor = proveedor.costo;
+  }
+
   let { error } = await sb.from("cotizaciones").update(patch).eq("id", id);
+  let soltoDiseno = false;
+  if (error && /schema cache/i.test(error.message) && COLS_DISENO.some((k) => k in patch)) {
+    soltoDiseno = true;
+    ({ error } = await sb.from("cotizaciones").update(sinCols(patch, COLS_DISENO)).eq("id", id));
+  }
   if (error && /schema cache/i.test(error.message) && "temas" in patch) {
-    const { temas: _tm, ...sinTemas } = patch;
-    void _tm;
-    ({ error } = await sb.from("cotizaciones").update(sinTemas).eq("id", id));
+    ({ error } = await sb.from("cotizaciones").update(sinCols(patch, [...COLS_DISENO, "temas"])).eq("id", id));
   }
   if (error && /schema cache/i.test(error.message)) {
-    const { tipo: _t, esquema_pago: _e, num_canciones: _n, descuento_fidelidad: _f, credito_aplicado: _c, ep_album_formato: _ea, sin_descuento_fidelidad: _s, musicos: _m, temas: _tm, ...sinNuevas } = patch;
-    void _t; void _e; void _n; void _f; void _c; void _ea; void _s; void _m; void _tm;
-    ({ error } = await sb.from("cotizaciones").update(sinNuevas).eq("id", id));
+    const viejas = ["tipo", "esquema_pago", "num_canciones", "descuento_fidelidad", "credito_aplicado", "ep_album_formato", "sin_descuento_fidelidad", "musicos", "temas"];
+    ({ error } = await sb.from("cotizaciones").update(sinCols(patch, [...COLS_DISENO, ...viejas])).eq("id", id));
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  // Sin la migración, que el panel lo diga en vez de perder el pago a Julio en silencio.
+  const pidioDiseno = !!b.proyecto_origen_id || Number(patch.costo_proveedor) > 0;
+  return NextResponse.json({ ok: true, aviso: soltoDiseno && pidioDiseno ? AVISO_SQL_DISENO : null });
 }
 
 export async function DELETE(req: NextRequest) {

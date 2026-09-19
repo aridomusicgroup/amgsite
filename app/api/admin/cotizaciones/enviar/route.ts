@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { generateQuotePdf, QuoteItem } from "@/lib/pdf/quote";
 import { getCotizacionTerminos } from "@/lib/plantillas-data";
 import { temasDeCotizacion } from "@/lib/temas";
+import { temaDeOrigen } from "@/lib/diseno-sync";
 import { cotizacionEmail } from "@/lib/emails";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
 import { destinatariosDe } from "@/lib/destinatarios";
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
   if (!key) return NextResponse.json({ error: "Correo no configurado (RESEND_API_KEY)." }, { status: 500 });
 
   const moneda = (c.moneda as string) || "MXN";
-  const terminos = await getCotizacionTerminos();
+  const terminos = await getCotizacionTerminos(c.tipo as string | null);
   const bytes = await generateQuotePdf({
     folio: (c.folio as string) || "COT",
     fecha: c.created_at ? new Date(c.created_at as string) : new Date(),
@@ -68,6 +69,8 @@ export async function POST(req: NextRequest) {
     temas: c.tipo === "ep_album" ? temasDeCotizacion(c) : null,
     descuentoFidelidad: Number(c.descuento_fidelidad) || 0,
     creditoAplicado: Number(c.credito_aplicado) || 0,
+    tipo: (c.tipo as string | null) ?? null,
+    temaOrigen: (await temaDeOrigen(sb, c.proyecto_origen_id as string | null))?.titulo ?? null,
   });
 
   const mail = cotizacionEmail({

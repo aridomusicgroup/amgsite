@@ -159,6 +159,28 @@ SÉPTIMA. RESPONSABILIDAD DEL CLIENTE. "EL CLIENTE" es responsable del contenido
 OCTAVA. BUENA FE. Las partes manifiestan que no existe error, dolo, violencia ni mala fe, y aceptan obligarse en todos sus términos, firmando de conformidad el {{fecha}}.`,
   },
 
+  // OJO: texto redactado de forma razonable, NO revisado por abogado.
+  diseno: {
+    titulo: "CONTRATO DE SERVICIOS DE DISEÑO VISUAL",
+    cuerpo: `Contrato de servicios de diseño visual que celebran, por una parte, {{vendedor}} (Árido Music Group / Latino Gang Beats), en adelante "EL PRESTADOR"; y por la otra, {{cliente}} (Tel. {{cliente_telefono}}, correo-e {{cliente_email}}), en adelante "EL CLIENTE", conforme a las siguientes cláusulas:
+
+PRIMERA. OBJETO. "EL PRESTADOR" se obliga a realizar para "EL CLIENTE" el diseño de "{{obra}}" (portada, canvas, video, logo o identidad visual, según la cotización), para el lanzamiento y la promoción de la música de "EL CLIENTE", conforme a las referencias que este proporcione.
+
+SEGUNDA. PRECIO Y FORMA DE PAGO. El precio del servicio es de {{monto}}, cubierto conforme al esquema de pago detallado en la cotización.
+
+TERCERA. CAMBIOS. Cada pieza incluye 1 (una) ronda de cambios sin costo. Rondas adicionales o cambios fuera de lo acordado se cotizarán por separado.
+
+CUARTA. MATERIALES Y PLAZO. "EL CLIENTE" entregará los materiales necesarios (audio, letra, fotografías, logotipos y referencias). El plazo de entrega se confirma al recibir dichos materiales completos. La entrega urgente (24 o 48 horas) sólo aplica si se contrató como adicional.
+
+QUINTA. ENTREGABLES. Las piezas se entregan en los formatos para plataformas digitales indicados en la cotización. Los archivos editables (fuentes de diseño) sólo se entregan si se contrataron como adicional.
+
+SEXTA. DERECHOS DE USO. Una vez cubierto el pago total, "EL CLIENTE" podrá usar las piezas entregadas sin límite de tiempo para publicar, promocionar y comercializar su música en plataformas digitales, redes sociales, videos y material promocional. "EL PRESTADOR" podrá mostrar las piezas como parte de su portafolio, salvo que "EL CLIENTE" le pida por escrito lo contrario.
+
+SÉPTIMA. MATERIAL DEL CLIENTE. "EL CLIENTE" es responsable de las fotografías, logotipos, letras y demás material que aporte, y manifiesta contar con los derechos necesarios sobre el mismo.
+
+OCTAVA. BUENA FE. Las partes manifiestan que no existe error, dolo, violencia ni mala fe, y aceptan obligarse en todos sus términos, firmando de conformidad el {{fecha}}.`,
+  },
+
   generico: {
     titulo: "CONTRATO",
     cuerpo: `Contrato que celebran, por una parte, {{vendedor}} (Árido Music Group / Latino Gang Beats), en adelante "ÁRIDO"; y por la otra, {{cliente}} (Tel. {{cliente_telefono}}, correo-e {{cliente_email}}), en adelante "EL CLIENTE", conforme a lo siguiente:
@@ -179,4 +201,15 @@ Las partes aceptan obligarse en todos los términos anteriores, firmando de conf
 export const COTIZACION_TERMINOS_SEED =
   `Precios en {{moneda}}. Incluye 2 rondas de revisiones por servicio; ajustes adicionales se cotizan aparte. ` +
   `El tiempo de entrega se confirma al arrancar el proyecto. Para apartar, avísanos y te compartimos el enlace de pago. ` +
+  `Contacto: WhatsApp +52 488 178 0213 · latinogangbeats@gmail.com · aridomusicgroup.com`;
+
+/**
+ * Términos del pie para cotizaciones de DISEÑO VISUAL. Van en lugar de los
+ * generales porque éstos prometen 2 rondas de revisiones y el diseño incluye 1:
+ * con los dos en el mismo PDF, el cliente leería una contradicción.
+ */
+export const COTIZACION_TERMINOS_DISENO =
+  `Precios en {{moneda}}. Cada pieza incluye 1 ronda de cambios; rondas extra se cotizan aparte. ` +
+  `Se entrega en los formatos para plataformas digitales; los archivos editables sólo si se contratan como adicional. ` +
+  `El tiempo de entrega se confirma al recibir tu audio, letra y referencias; la entrega urgente (24 o 48 h) se contrata aparte. ` +
   `Contacto: WhatsApp +52 488 178 0213 · latinogangbeats@gmail.com · aridomusicgroup.com`;

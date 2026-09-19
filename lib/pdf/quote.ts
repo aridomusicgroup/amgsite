@@ -4,7 +4,9 @@ import { LOGO_ARIDO_NEGRO } from "./logo";
 import { incluyeDePaquete } from "@/lib/servicios";
 import { nombreTema } from "@/lib/temas";
 import { aplicarMerge } from "./plantilla-parse";
-import { COTIZACION_TERMINOS_SEED } from "./plantilla-seeds";
+import { COTIZACION_TERMINOS_SEED, COTIZACION_TERMINOS_DISENO } from "./plantilla-seeds";
+import { incluyeDeDiseno } from "@/lib/diseno";
+import { catalogoDisenoPublico } from "@/lib/diseno-catalogo";
 import { subtotalDe, comisionValida } from "@/lib/comision";
 import { tramosDe, ESQUEMA_LABEL, esEsquemaValido, type EsquemaPago } from "@/lib/esquema-pago";
 
@@ -47,6 +49,10 @@ export interface QuoteData {
   numCanciones?: number | null;
   /** EP/Álbum: qué lleva cada tema, para que el cliente vea lo mismo que se va a producir. */
   temas?: { nombre: string; conceptos: string[] }[] | null;
+  /** `cotizaciones.tipo`. Sin `terminos`, "diseno" cae a la semilla de diseño. */
+  tipo?: string | null;
+  /** Diseño visual: la canción que produjimos y para la que es este diseño. */
+  temaOrigen?: string | null;
 }
 
 export async function generateQuotePdf(d: QuoteData): Promise<Uint8Array> {
@@ -73,6 +79,7 @@ export async function generateQuotePdf(d: QuoteData): Promise<Uint8Array> {
   const trasDescuentos = Math.max(0, subtotal - descuento - descuentoFidelidad);
   const comision = round2(trasDescuentos * (comisionPct / 100));
   const total = round2(trasDescuentos + comision - creditoAplicado);
+  const disenos = catalogoDisenoPublico();
 
   const blocks: Block[] = [
     // Meta en 3 columnas
@@ -107,13 +114,15 @@ export async function generateQuotePdf(d: QuoteData): Promise<Uint8Array> {
 
     // Detalle
     { sectionLabel: "Detalle", spaceBefore: 14 },
+    ...(d.temaOrigen ? [{ text: `Para el tema: ${d.temaOrigen}`, size: 10, spaceBefore: 3 } as Block] : []),
     { row: { left: "Descripción", right: "Precio", th: true }, spaceBefore: 4 },
     { rule: true, spaceBefore: 2 },
     ...d.items.flatMap<Block>((i) => {
       const line = (Number(i.qty) || 0) * (Number(i.unitPrice) || 0);
       const qtyTxt = (Number(i.qty) || 0) > 1 ? ` (x${i.qty})` : "";
       const blocks: Block[] = [{ row: { left: `${i.label}${qtyTxt}`, right: fmtMoney(line, moneda) }, spaceBefore: 5 }];
-      const inc = incluyeDePaquete(i.label);
+      const dePaquete = incluyeDePaquete(i.label);
+      const inc = dePaquete.length ? dePaquete : incluyeDeDiseno(i.label, disenos);
       if (inc.length) blocks.push({ text: `Incluye: ${inc.join(" · ")}`, muted: true, size: 8.5, indent: 2, spaceBefore: 1 });
       return blocks;
     }),
@@ -186,7 +195,10 @@ export async function generateQuotePdf(d: QuoteData): Promise<Uint8Array> {
   }
 
   // Términos del pie: plantilla editable (o semilla), con {{moneda}} resuelto.
-  const terminos = aplicarMerge(d.terminos || COTIZACION_TERMINOS_SEED, { moneda });
+  // Los términos llegan ya elegidos por tipo (`getCotizacionTerminos(tipo)`):
+  // diseño promete 1 ronda de cambios, no 2. La semilla es sólo el respaldo.
+  const base = d.terminos || (d.tipo === "diseno" ? COTIZACION_TERMINOS_DISENO : COTIZACION_TERMINOS_SEED);
+  const terminos = aplicarMerge(base, { moneda });
   for (const parrafo of terminos.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)) {
     blocks.push({ text: parrafo.replace(/\n/g, " "), muted: true, size: 9, spaceBefore: 18 });
   }

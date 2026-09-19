@@ -63,7 +63,9 @@ export function creditoDeAhorro(ahorro: number): number {
  * grande, no un 8% extra sobre un beat de $834.
  */
 export function aplicaDescuentoFidelidad(tipo: string | null | undefined): boolean {
-  return tipo === "beat_personalizado" || tipo === "servicio" || tipo === "produccion" || tipo === "ep_album";
+  // `diseno` también (decisión 18-sep): el descuento sale de la parte de ARIDO,
+  // al diseñador se le paga completo, y aun con el 15% el margen es positivo.
+  return tipo === "beat_personalizado" || tipo === "servicio" || tipo === "produccion" || tipo === "ep_album" || tipo === "diseno";
 }
 
 /** ¿Esta venta cuenta como "pagada de una sola vez"? Mismo criterio que erp-data.ts. */

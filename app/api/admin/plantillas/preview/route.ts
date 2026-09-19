@@ -27,20 +27,27 @@ export async function POST(req: NextRequest) {
 
   let bytes: Uint8Array;
 
-  if (tipo === "cotizacion") {
+  if (tipo === "cotizacion" || tipo === "cotizacion_diseno") {
     const terminos = String(b.terminos || b.cuerpo || "").trim();
+    const diseno = tipo === "cotizacion_diseno";
     bytes = await generateQuotePdf({
       folio: "COT-EJEMPLO",
       fecha: new Date(),
       vigenciaDias: 15,
       moneda: "MXN",
       cliente: CLIENTE_DEMO,
-      items: [
-        { label: "Beat exclusivo (corridos)", qty: 1, unitPrice: 3500 },
-        { label: "Producción a la medida", qty: 1, unitPrice: 8600 },
-      ],
+      items: diseno
+        ? [
+            { label: "Paquete Lanzamiento Básico", qty: 1, unitPrice: 1050 },
+            { label: "Entrega urgente en 48 h", qty: 1, unitPrice: 150 },
+          ]
+        : [
+            { label: "Beat exclusivo (corridos)", qty: 1, unitPrice: 3500 },
+            { label: "Producción a la medida", qty: 1, unitPrice: 8600 },
+          ],
       notas: "Ejemplo de cotización para previsualizar los términos.",
       terminos,
+      tipo: diseno ? "diseno" : null,
     });
   } else if (CONTRATO_TIPOS.has(tipo)) {
     const titulo = String(b.titulo || SEEDS[tipo as ContractTipo].titulo).trim();

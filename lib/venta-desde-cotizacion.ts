@@ -9,6 +9,8 @@ import { seguimientoDeCobranza } from "@/lib/seguimiento-auto";
 import { inferirInstrumentos } from "@/lib/servicios";
 import { nextFolio } from "@/lib/folio";
 import { sincronizarFidelidadVenta } from "@/lib/fidelidad-server";
+import { disenoDeCotizacion, registrarPagoDiseno, temaDeOrigen } from "@/lib/diseno-sync";
+import { tituloConTema } from "@/lib/diseno";
 
 /**
  * Cuando llega CUALQUIER pago de Stripe contra una cotización (aunque sea
@@ -41,6 +43,7 @@ const MAPA_TIPO: Record<string, MapaTipo> = {
   exclusiva: { ventaTipo: "Exclusividad", tproy: "exclusividad" },
   servicio: { ventaTipo: "Grabación", tproy: "grabacion" },
   produccion: { ventaTipo: "Grabación", tproy: "grabacion" },
+  diseno: { ventaTipo: "Diseño visual", tproy: "diseno" },
 };
 
 export interface ResultadoVentaAutomatica {
@@ -189,6 +192,12 @@ export async function crearVentaDesdeCotizacionPagada(
 
   if (extrasStr) await crearPagosMusicoPendientes(sb, ventaId, extrasStr, elegidos);
 
+  // Diseño visual: lo que se le debe al diseñador queda pendiente en "Pagos a
+  // músicos" y entra al costo de la venta. Sin supabase-diseno.sql, no hace nada.
+  const diseno = await disenoDeCotizacion(sb, cotizacionId);
+  await registrarPagoDiseno(sb, ventaId, diseno);
+  const tema = await temaDeOrigen(sb, diseno?.origenId);
+
   try {
     await registrarActividad(sb, {
       tipo: "venta_creada",
@@ -226,15 +235,19 @@ export async function crearVentaDesdeCotizacionPagada(
   if (tproy) {
     try {
       const proyectoFolioGen = await nextFolio(sb, "proyectos", "P");
-      const { data: proy } = await sb
-        .from("proyectos")
-        .insert({
-          folio: proyectoFolioGen, clase: "produccion",
-          titulo: items[0]?.label ?? cot.folio, tipo: tproy, estado: "cola", prioridad: "media",
-          contacto_id: cot.contacto_id, venta_id: ventaId, cotizacion_id: cotizacionId, creado_por: "stripe",
-        })
-        .select("id")
-        .single();
+      const filaProy = {
+        folio: proyectoFolioGen, clase: "produccion",
+        titulo: tituloConTema(items[0]?.label ?? cot.folio, tema?.titulo), tipo: tproy, estado: "cola", prioridad: "media",
+        contacto_id: cot.contacto_id, venta_id: ventaId, cotizacion_id: cotizacionId, creado_por: "stripe",
+      };
+      // El tema sólo si lo hay. Y si `proyectos.proyecto_origen_id` todavía no
+      // existe (SQL a medias), el proyecto nace igual, sin la liga.
+      let { data: proy, error: eProy } = await sb
+        .from("proyectos").insert(tema ? { ...filaProy, proyecto_origen_id: tema.id } : filaProy).select("id").single();
+      if (eProy && tema && /proyecto_origen_id/i.test(eProy.message)) {
+        ({ data: proy, error: eProy } = await sb.from("proyectos").insert(filaProy).select("id").single());
+      }
+      if (eProy) console.error("Proyecto automático desde cotización pagada:", eProy.message);
 
       if (proy?.id) {
         if (tproy === "ep" || tproy === "album") {

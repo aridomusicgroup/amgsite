@@ -47,7 +47,7 @@ export function edadDe(p: { fechaVenta: string | null; creado: string }): number
 }
 const COLS_BASE = ["cola", "produccion", "revision", "entregado"];
 const COLS_FIN = ["cerrado", "pausado", "cancelado"];
-export const TIPOS_PROD = ["beat_personalizado", "bp_letra", "grabacion", "mezcla_master", "ep", "album", "beat", "creacion_contenido"];
+export const TIPOS_PROD = ["beat_personalizado", "bp_letra", "grabacion", "mezcla_master", "ep", "album", "diseno", "beat", "creacion_contenido"];
 export const TIPOS_INT = ["contenido", "creacion_contenido", "distribucion", "admin"];
 const TIPOS_CONTENIDO = ["creacion_contenido", "contenido", "beat"];
 export const esContenido = (tipo: string | null) => !!tipo && TIPOS_CONTENIDO.includes(tipo);
@@ -61,7 +61,7 @@ export const esContenidoPub = (tipo: string | null) => tipo === "creacion_conten
  * pasan por REAPER. Sí un beat de catálogo: ese sí es un proyecto de verdad.
  */
 export const llevaFicha = (clase: string | null, tipo: string | null) =>
-  clase === "produccion" && !["ep", "album", "creacion_contenido", "contenido"].includes(String(tipo ?? ""));
+  clase === "produccion" && !["ep", "album", "creacion_contenido", "contenido", "diseno"].includes(String(tipo ?? ""));
 export const PLATAFORMAS = ["Instagram", "TikTok", "YouTube", "Facebook", "Spotify", "Otro"];
 
 // Se mudaron a ./tareas/estilos; se re-exportan para no tocar a quien ya los importaba de aquí.

@@ -17,6 +17,8 @@ import { limpiarCompas } from "@/lib/compas";
 import { papeleraCarpeta } from "@/lib/drive-oauth";
 import { normalizarOrigen } from "@/lib/origenes";
 import { fijarOrigenContacto } from "@/lib/origen-contacto";
+import { disenoDeCotizacion, registrarPagoDiseno, temaDeOrigen } from "@/lib/diseno-sync";
+import { tituloConTema } from "@/lib/diseno";
 
 const peso = (n: unknown) => `$${(Number(n) || 0).toLocaleString("es-MX")}`;
 
@@ -139,6 +141,11 @@ export async function POST(req: NextRequest) {
   // Pagos a músicos EN PENDIENTE según los instrumentos de la venta + el catálogo.
   if (ventaRow?.id) await crearPagosMusicoPendientes(sb, ventaRow.id as string, b.extras, elegidos);
 
+  // Diseño visual: el pago al diseñador sale de la COTIZACIÓN (nunca del
+  // navegador) y queda pendiente, sumado al costo de la venta.
+  const diseno = await disenoDeCotizacion(sb, b.cotizacion_id);
+  if (ventaRow?.id) await registrarPagoDiseno(sb, ventaRow.id as string, diseno);
+
   // Bitácora: venta registrada
   try {
     const actor = await getFullAdminEmail();
@@ -240,10 +247,13 @@ export async function POST(req: NextRequest) {
       const tproy = /álbum|album/i.test(tv) ? "album" : /\bep\b/i.test(tv) ? "ep"
         : /personaliz/i.test(tv) ? "beat_personalizado" : /letra/i.test(tv) ? "bp_letra"
         : /mezcla|master/i.test(tv) ? "mezcla_master" : /grabaci/i.test(tv) ? "grabacion"
-        : /exclusiv/i.test(tv) ? "exclusividad" : "beat_personalizado";
+        : /exclusiv/i.test(tv) ? "exclusividad" : /diseñ|disen/i.test(tv) ? "diseno" : "beat_personalizado";
+      // Diseño de un tema que produjimos: el proyecto recuerda de cuál.
+      const tema = await temaDeOrigen(sb, diseno?.origenId);
       const filaProy = {
         folio: proyectoFolio, clase: "produccion",
-        titulo: b.beat_nombre || tv || "Producción", tipo: tproy, estado: "cola", prioridad: "media",
+        titulo: tituloConTema(b.beat_nombre || tv || "Producción", tema?.titulo), tipo: tproy, estado: "cola", prioridad: "media",
+        ...(tema ? { proyecto_origen_id: tema.id } : {}),
         contacto_id: contactoId, venta_id: ventaRow.id, cotizacion_id: b.cotizacion_id || null,
         responsable_id: responsableId, responsables: responsables.length ? responsables : null,
         // Los toma el previo para músico, y el script los pone en el .rpp
@@ -253,12 +263,16 @@ export async function POST(req: NextRequest) {
         compas: limpiarCompas(b.compas),
         creado_por: "ventas",
       };
-      let { data: proy, error: eProy } = await sb.from("proyectos").insert(filaProy).select("id").single();
-      // Sin supabase-compas.sql todavía, el proyecto nace igual (sin compás).
-      if (eProy && /compas/i.test(eProy.message)) {
-        const { compas: _c, ...sinCompas } = filaProy;
-        void _c;
-        ({ data: proy, error: eProy } = await sb.from("proyectos").insert(sinCompas).select("id").single());
+      let fila: Record<string, unknown> = filaProy;
+      let { data: proy, error: eProy } = await sb.from("proyectos").insert(fila).select("id").single();
+      // Sin supabase-diseno.sql (liga al tema) o supabase-compas.sql, el proyecto
+      // nace igual: se suelta SÓLO la columna que falta (Supabase la nombra).
+      for (const col of ["proyecto_origen_id", "compas"]) {
+        if (!eProy || !new RegExp(col, "i").test(eProy.message)) continue;
+        const { [col]: _fuera, ...resto } = fila;
+        void _fuera;
+        fila = resto;
+        ({ data: proy, error: eProy } = await sb.from("proyectos").insert(fila).select("id").single());
       }
       // Tareas del proyecto, en orden de prioridad:
       //  1. EP/Álbum → una tarea por tema, con lo que lleva ESE tema.

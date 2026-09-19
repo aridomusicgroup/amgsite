@@ -54,6 +54,10 @@ export interface Cotizacion {
   musicos: { instrumento: string; musico_id: string }[];
   /** EP/Álbum: cada tema con lo cotizado para él. null = cotización vieja (se reparte por cantidad). */
   temas: Tema[] | null;
+  /** Diseño visual: el proyecto de la canción que produjimos. null = no lo produjimos / no es diseño. */
+  proyecto_origen_id: string | null;
+  /** Diseño visual: lo que se le paga al diseñador, en MXN. null = no lleva diseño. */
+  costo_proveedor: number | null;
   /** Comisión de PayPal que se le cobra al cliente. 0 = no paga por PayPal. */
   comision_pct: number;
   /** En la moneda del documento, con comisión ya incluida. */
@@ -138,6 +142,8 @@ export async function getCotizaciones(): Promise<Cotizacion[]> {
       .map((e: { instrumento?: unknown; musico_id?: unknown }) => ({ instrumento: String(e?.instrumento ?? ""), musico_id: String(e?.musico_id ?? "") }))
       .filter((e: { instrumento: string; musico_id: string }) => e.instrumento && e.musico_id),
     temas: limpiarTemas(c.temas),
+    proyecto_origen_id: (c.proyecto_origen_id as string | null) ?? null,
+    costo_proveedor: c.costo_proveedor != null ? Number(c.costo_proveedor) : null,
     comision_pct: Number(c.comision_pct) || 0,
     total: Number(c.total) || 0,
     total_mxn: Number(c.total_mxn) > 0 ? Number(c.total_mxn) : null,
@@ -146,6 +152,40 @@ export async function getCotizaciones(): Promise<Cotizacion[]> {
     estado: (c.estado as string) || "borrador",
     creado_por: (c.creado_por as string | null) ?? null,
     created_at: c.created_at as string,
+  }));
+}
+
+/** Un proyecto de canción al que se le puede ligar un diseño. */
+export interface ProyectoTema {
+  id: string;
+  folio: string | null;
+  titulo: string;
+  contacto_id: string | null;
+  cliente: string | null;
+  estado: string | null;
+}
+
+/**
+ * Las producciones de cliente a las que se les puede ligar un diseño (portada,
+ * canvas…): todo lo que es canción de un cliente, terminado o no. Fuera los
+ * beats de catálogo, el contenido propio y los propios diseños.
+ */
+export async function getProyectosParaDiseno(): Promise<ProyectoTema[]> {
+  const sb = supabaseAdmin();
+  const { data } = await sb
+    .from("proyectos")
+    .select("id, folio, titulo, contacto_id, estado, contactos(nombre)")
+    .eq("clase", "produccion")
+    .not("tipo", "in", "(diseno,beat,creacion_contenido,contenido)")
+    .order("folio", { ascending: false })
+    .limit(400);
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map((p) => ({
+    id: p.id as string,
+    folio: (p.folio as string | null) ?? null,
+    titulo: String(p.titulo || p.folio || "Sin título"),
+    contacto_id: (p.contacto_id as string | null) ?? null,
+    cliente: ((p.contactos as { nombre?: string | null } | null)?.nombre as string | null) ?? null,
+    estado: (p.estado as string | null) ?? null,
   }));
 }
 

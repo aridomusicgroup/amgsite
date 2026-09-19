@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { SEEDS, COTIZACION_TERMINOS_SEED } from "@/lib/pdf/plantilla-seeds";
+import { SEEDS, COTIZACION_TERMINOS_SEED, COTIZACION_TERMINOS_DISENO } from "@/lib/pdf/plantilla-seeds";
 import type { ContractTipo } from "@/lib/pdf/contracts/types";
 import { SEEDS as ACUERDO_SEEDS, type AcuerdoSeed } from "@/lib/acuerdos/seeds";
 import { FAMILIA_LABEL, FAMILIAS, type Familia } from "@/lib/acuerdos/familias";
@@ -22,14 +22,20 @@ export async function getPlantillaContrato(tipo: ContractTipo): Promise<{ titulo
   return SEEDS[tipo];
 }
 
-/** Términos del pie de la cotización, editados o semilla. */
-export async function getCotizacionTerminos(): Promise<string> {
+/**
+ * Términos del pie de la cotización, editados o semilla.
+ *
+ * Diseño visual tiene los suyos (`cotizacion_diseno`): los generales prometen
+ * 2 rondas de revisiones y el diseño incluye 1. Los dos se editan en Plantillas.
+ */
+export async function getCotizacionTerminos(tipoCotizacion?: string | null): Promise<string> {
+  const esDiseno = tipoCotizacion === "diseno";
   try {
     const sb = supabaseAdmin();
-    const { data } = await sb.from("plantillas").select("terminos").eq("tipo", "cotizacion").single();
+    const { data } = await sb.from("plantillas").select("terminos").eq("tipo", esDiseno ? "cotizacion_diseno" : "cotizacion").single();
     if (data && data.terminos) return data.terminos as string;
   } catch { /* respaldo */ }
-  return COTIZACION_TERMINOS_SEED;
+  return esDiseno ? COTIZACION_TERMINOS_DISENO : COTIZACION_TERMINOS_SEED;
 }
 
 export interface PlantillaEditor {
@@ -51,6 +57,7 @@ const LABELS: Record<ContractTipo, string> = {
   produccion: "Contrato · Producción a la medida",
   servicio: "Contrato · Servicio suelto",
   ep_album: "Contrato · EP / Álbum",
+  diseno: "Contrato · Diseño visual",
   generico: "Contrato · Genérico",
 };
 
@@ -93,6 +100,20 @@ export async function getPlantillasEditor(): Promise<PlantillaEditor[]> {
     esCotizacion: true,
   };
 
+  const cd = rows["cotizacion_diseno"];
+  const cotizacionDiseno: PlantillaEditor = {
+    tipo: "cotizacion_diseno",
+    label: "Cotización de diseño visual · términos del pie",
+    titulo: "",
+    cuerpo: (cd?.terminos as string) || COTIZACION_TERMINOS_DISENO,
+    seedTitulo: "",
+    seedCuerpo: COTIZACION_TERMINOS_DISENO,
+    editada: !!cd?.terminos,
+    updated_at: (cd?.updated_at as string) ?? null,
+    updated_por: (cd?.updated_por as string) ?? null,
+    esCotizacion: true,
+  };
+
   // Acuerdos del panel del cliente, uno por FAMILIA de servicio (licencia,
   // exclusiva, beat personalizado, grabación/mezcla, EP/álbum) — no un solo
   // texto para todo. No son contratos en PDF, por eso no salen de SEEDS ni
@@ -115,5 +136,5 @@ export async function getPlantillasEditor(): Promise<PlantillaEditor[]> {
     };
   });
 
-  return [...contratos, cotizacion, ...acuerdos];
+  return [...contratos, cotizacion, cotizacionDiseno, ...acuerdos];
 }

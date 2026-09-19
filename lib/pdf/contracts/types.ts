@@ -15,4 +15,4 @@ export interface ContractData {
   clausulasExtra?: string | null;
 }
 
-export type ContractTipo = "beat_personalizado" | "exclusiva" | "produccion" | "servicio" | "ep_album" | "generico";
+export type ContractTipo = "beat_personalizado" | "exclusiva" | "produccion" | "servicio" | "ep_album" | "diseno" | "generico";

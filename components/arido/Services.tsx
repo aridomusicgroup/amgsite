@@ -167,6 +167,13 @@ export function AridoServices() {
               {lang === "es" ? "O cotiza por DM 📩" : "Or quote via DM 📩"}
             </a>
           </div>
+          {/* Diseño visual: línea secundaria, por eso va como enlace y no como tarjeta. */}
+          <p className="text-center mt-8 text-sm text-[var(--fg-2)]">
+            {lang === "es" ? "¿Ya tienes tu canción? " : "Song ready? "}
+            <a href="/diseno" className="text-[var(--fg)] font-medium underline underline-offset-4 decoration-arido-red/60 hover:text-arido-red transition-colors">
+              {lang === "es" ? "También hacemos portada, canvas y video →" : "We also make the cover, canvas and video →"}
+            </a>
+          </p>
         </Reveal>
       </div>
     </section>

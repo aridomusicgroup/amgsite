@@ -85,6 +85,16 @@ function plantillaTareas(tipo: string | undefined, instrumentos: string[]): TplT
         APROBADA,
         SUBIR("luis"),
       ];
+    // Portada, canvas o video: lo hace el diseñador externo, Tozi lleva el
+    // hilo con el cliente. Sin "Aprobada"/"Subir a Drive": no es audio y no
+    // pasa por la entrega automática (ver SIN_ENTREGA).
+    case "diseno":
+      return [
+        { titulo: "Brief y referencias del cliente", resp: "tozi" },
+        { titulo: "Diseño (Julio)" },
+        { titulo: "Revisión con el cliente (1 ronda de cambios)", resp: "tozi" },
+        { titulo: "Entregar archivos al cliente", resp: "tozi" },
+      ];
     default:
       return [];
   }

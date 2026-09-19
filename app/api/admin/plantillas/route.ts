@@ -12,7 +12,9 @@ export const dynamic = "force-dynamic";
 // poder editarlos sin desplegar, pero NO entran en ContractTipo para no
 // aparecer como tipo de contrato en cotizaciones.
 const ACUERDO_TIPOS = FAMILIAS.map((f) => `acuerdo_${f}`);
-const TIPOS = new Set([...Object.keys(SEEDS), "cotizacion", ...ACUERDO_TIPOS]);
+// Términos del pie: los generales y los de diseño visual (1 ronda de cambios, no 2).
+const TERMINOS_TIPOS = ["cotizacion", "cotizacion_diseno"];
+const TIPOS = new Set([...Object.keys(SEEDS), ...TERMINOS_TIPOS, ...ACUERDO_TIPOS]);
 
 /** `acuerdo_personalizado` → `personalizado`, o `null` si no es un acuerdo. */
 const familiaDelTipo = (tipo: string): Familia | null => {
@@ -31,7 +33,7 @@ export async function PUT(req: NextRequest) {
   if (!TIPOS.has(tipo)) return NextResponse.json({ error: "Tipo de plantilla inválido." }, { status: 400 });
 
   const row: Record<string, unknown> = { tipo, updated_at: new Date().toISOString(), updated_por: email };
-  if (tipo === "cotizacion") {
+  if (TERMINOS_TIPOS.includes(tipo)) {
     const terminos = String(b.terminos || b.cuerpo || "").trim();
     if (!terminos) return NextResponse.json({ error: "Los términos no pueden quedar vacíos." }, { status: 400 });
     row.terminos = terminos;

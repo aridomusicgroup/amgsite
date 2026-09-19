@@ -830,7 +830,7 @@ export const TIPO_PROY_LABEL: Record<string, string> = {
   beat_personalizado: "Beat personalizado", bp_letra: "BP + Letra", grabacion: "Grabación",
   mezcla_master: "Mezcla / Master", exclusividad: "Exclusividad",
   beat: "Beat", creacion_contenido: "Creación de contenido",
-  ep: "EP", album: "Álbum",
+  ep: "EP", album: "Álbum", diseno: "Diseño visual",
   contenido: "Contenido", distribucion: "Distribución", admin: "Administrativo",
 };
 export const PRIORIDAD_LABEL: Record<string, string> = { baja: "Baja", media: "Media", alta: "Alta" };
@@ -1107,6 +1107,35 @@ export interface ProyectoDetalle extends Proyecto {
   diasDeAtraso: number | null;
   saludEntrega: SaludEntrega;
   entregasReferencia: EntregasResumen | null;
+  /** Diseño visual: la canción de la que sale este proyecto (portada, canvas…). */
+  temaOrigen: ProyectoLigado | null;
+  /** Canción: los diseños que se le hicieron. */
+  disenos: ProyectoLigado[];
+}
+
+export interface ProyectoLigado { id: string; folio: string | null; titulo: string }
+
+/**
+ * El tema de origen de un diseño y los diseños de un tema. Consultas APARTE a
+ * propósito: si `supabase-diseno.sql` no se ha corrido, la columna no existe y
+ * aquí sólo sale vacío — metida en el select principal vaciaría la pantalla.
+ */
+async function ligasDeDiseno(
+  sb: ReturnType<typeof supabaseAdmin>,
+  id: string,
+  origenId: string | null,
+): Promise<{ temaOrigen: ProyectoLigado | null; disenos: ProyectoLigado[] }> {
+  const aLigado = (r: Record<string, unknown>): ProyectoLigado => ({
+    id: r.id as string, folio: (r.folio as string | null) ?? null, titulo: String(r.titulo || r.folio || ""),
+  });
+  const [origen, hijos] = await Promise.all([
+    origenId ? sb.from("proyectos").select("id, folio, titulo").eq("id", origenId).maybeSingle() : Promise.resolve({ data: null }),
+    sb.from("proyectos").select("id, folio, titulo").eq("proyecto_origen_id", id).order("folio", { ascending: true }),
+  ]);
+  return {
+    temaOrigen: origen.data ? aLigado(origen.data as Record<string, unknown>) : null,
+    disenos: ((hijos.data ?? []) as Record<string, unknown>[]).map(aLigado),
+  };
 }
 
 /** Cohorte de referencia (mismo tipo) para juzgar si ESTE proyecto va a tiempo — calcEntregas es agregado, aquí se compara 1 contra el resto. */
@@ -1300,8 +1329,10 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
   }
 
   const contactoRaw = p.contactos as { nombre: string | null; email: string | null; telefono: string | null } | null;
+  const { temaOrigen, disenos } = await ligasDeDiseno(sb, id, (p.proyecto_origen_id as string | null) ?? null);
 
   return {
+    temaOrigen, disenos,
     id: p.id as string, folio: p.folio as string | null, clase: (p.clase as "produccion" | "interna") ?? "produccion",
     titulo: p.titulo as string, tipo: p.tipo as string | null, estado: p.estado as string, prioridad: (p.prioridad as string) || "media",
     contacto: contactoRaw?.nombre ?? null, contacto_id: (p.contacto_id as string | null) ?? null,

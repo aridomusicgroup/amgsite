@@ -1,0 +1,166 @@
+{
+  "_nota": "Diseño visual para artistas. `costo` = lo que cobra el diseñador (lista de Julio, 18-sep-2026); `precio` = lo que paga el cliente (~+50%). El costo NUNCA sale al navegador: este archivo sólo lo importa lib/diseno-catalogo.ts (server-only).",
+  "servicios": [
+    {
+      "id": "lanzamiento-basico",
+      "grupo": "paquete",
+      "nombre": { "es": "Paquete Lanzamiento Básico", "en": "Basic Release Package" },
+      "incluye": {
+        "es": ["Portada (Cover Art)", "Canvas de Spotify", "Visualizer para YouTube"],
+        "en": ["Cover Art", "Spotify Canvas", "YouTube Visualizer"]
+      },
+      "precio": 1050,
+      "costo": 700,
+      "componentes": [{ "id": "cover-art" }, { "id": "canvas" }, { "id": "visualizer" }]
+    },
+    {
+      "id": "lanzamiento-premium",
+      "grupo": "paquete",
+      "nombre": { "es": "Paquete Lanzamiento Premium", "en": "Premium Release Package" },
+      "incluye": {
+        "es": ["Portada (Cover Art)", "Lyric video", "Canvas de Spotify", "Kit de contenido para redes (5 piezas)"],
+        "en": ["Cover Art", "Lyric video", "Spotify Canvas", "Social media kit (5 pieces)"]
+      },
+      "precio": 2250,
+      "costo": 1500,
+      "destacado": true,
+      "componentes": [{ "id": "cover-art" }, { "id": "lyric-video" }, { "id": "canvas" }, { "id": "redes", "cantidad": 5 }]
+    },
+    {
+      "id": "identidad-completa",
+      "grupo": "paquete",
+      "nombre": { "es": "Paquete Identidad Completa", "en": "Full Identity Package" },
+      "incluye": {
+        "es": ["Branding de artista", "Logo en vectores", "Portada (Cover Art)", "Visualizer para YouTube", "Kit de redes sociales"],
+        "en": ["Artist branding", "Vector logo", "Cover Art", "YouTube Visualizer", "Social media kit"]
+      },
+      "precio": 2250,
+      "costo": 1500,
+      "componentes": [{ "id": "branding" }, { "id": "cover-art" }, { "id": "visualizer" }]
+    },
+    {
+      "id": "cover-art",
+      "grupo": "servicio",
+      "nombre": { "es": "Portada (Cover Art)", "en": "Cover Art" },
+      "incluye": {
+        "es": ["Concepto creativo", "Diseño en alta resolución", "Formatos para plataformas digitales", "1 ronda de cambios"],
+        "en": ["Creative concept", "High-resolution design", "Formats for digital platforms", "1 round of changes"]
+      },
+      "precio": 450,
+      "costo": 300
+    },
+    {
+      "id": "cover-canvas",
+      "grupo": "servicio",
+      "nombre": { "es": "Portada + Canvas de Spotify", "en": "Cover Art + Spotify Canvas" },
+      "incluye": {
+        "es": ["Portada completa en alta resolución", "Canvas vertical de 8 s para Spotify", "1 ronda de cambios en cada uno"],
+        "en": ["Full high-resolution cover", "8-second vertical Spotify Canvas", "1 round of changes on each"]
+      },
+      "precio": 700,
+      "costo": 500,
+      "componentes": [{ "id": "cover-art" }, { "id": "canvas" }]
+    },
+    {
+      "id": "canvas",
+      "grupo": "servicio",
+      "nombre": { "es": "Canvas de Spotify", "en": "Spotify Canvas" },
+      "incluye": {
+        "es": ["Video vertical de 8 segundos", "Con las especificaciones de Spotify", "Alta calidad", "1 ronda de cambios"],
+        "en": ["8-second vertical video", "Built to Spotify's specs", "High quality", "1 round of changes"]
+      },
+      "precio": 350,
+      "costo": 250
+    },
+    {
+      "id": "visualizer",
+      "grupo": "servicio",
+      "nombre": { "es": "Visualizer para YouTube", "en": "YouTube Visualizer" },
+      "incluye": {
+        "es": ["Tu portada animada con efectos visuales", "Sincronizado con tu audio", "Exportación en Full HD"],
+        "en": ["Your cover animated with visual effects", "Synced to your audio", "Full HD export"]
+      },
+      "precio": 750,
+      "costo": 500
+    },
+    {
+      "id": "lyric-video",
+      "grupo": "servicio",
+      "nombre": { "es": "Lyric video", "en": "Lyric video" },
+      "incluye": {
+        "es": ["Letra animada y sincronizada", "Efectos visuales", "Full HD"],
+        "en": ["Animated, synced lyrics", "Visual effects", "Full HD"]
+      },
+      "precio": 1500,
+      "costo": 1000
+    },
+    {
+      "id": "logo",
+      "grupo": "servicio",
+      "nombre": { "es": "Logo de artista", "en": "Artist logo" },
+      "incluye": {
+        "es": ["Propuesta de identidad visual", "Vectores AI, SVG y PDF", "PNG con fondo transparente", "Versiones para redes sociales"],
+        "en": ["Visual identity proposal", "AI, SVG and PDF vectors", "Transparent PNG", "Social media versions"]
+      },
+      "precio": 750,
+      "costo": 500
+    },
+    {
+      "id": "branding",
+      "grupo": "servicio",
+      "nombre": { "es": "Branding de artista", "en": "Artist branding" },
+      "incluye": {
+        "es": ["Logo", "Paleta de colores", "Tipografía", "Lineamientos visuales", "Kit básico de identidad"],
+        "en": ["Logo", "Color palette", "Typography", "Visual guidelines", "Basic identity kit"]
+      },
+      "precio": 1500,
+      "costo": 1000
+    },
+    {
+      "id": "redes",
+      "grupo": "servicio",
+      "nombre": { "es": "Contenido para redes (por pieza)", "en": "Social media content (per piece)" },
+      "incluye": {
+        "es": ["Publicaciones, historias, banners o reels gráficos", "Adaptado a Instagram, Facebook y TikTok"],
+        "en": ["Posts, stories, banners or graphic reels", "Adapted to Instagram, Facebook and TikTok"]
+      },
+      "precio": 150,
+      "costo": 100,
+      "unidad": { "es": "pieza", "en": "piece" },
+      "desde": true
+    },
+    {
+      "id": "urgente-24",
+      "grupo": "adicional",
+      "nombre": { "es": "Entrega urgente en 24 h", "en": "Rush delivery in 24 h" },
+      "incluye": { "es": [], "en": [] },
+      "precio": 250,
+      "costo": 150
+    },
+    {
+      "id": "urgente-48",
+      "grupo": "adicional",
+      "nombre": { "es": "Entrega urgente en 48 h", "en": "Rush delivery in 48 h" },
+      "incluye": { "es": [], "en": [] },
+      "precio": 150,
+      "costo": 100
+    },
+    {
+      "id": "formato-extra",
+      "grupo": "adicional",
+      "nombre": { "es": "Adaptación a formato adicional", "en": "Extra format adaptation" },
+      "incluye": { "es": [], "en": [] },
+      "precio": 80,
+      "costo": 50
+    },
+    {
+      "id": "editables",
+      "grupo": "adicional",
+      "nombre": { "es": "Archivos editables", "en": "Editable source files" },
+      "incluye": { "es": [], "en": [] },
+      "precio": 300,
+      "costo": 200
+    }
+  ],
+  "ejemplos": []
+}

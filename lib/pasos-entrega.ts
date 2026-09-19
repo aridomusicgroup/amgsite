@@ -57,7 +57,8 @@ export function pasoDe(x: { paso?: unknown; titulo?: string | null }): PasoEntre
  * exclusividad (la entrega la hace la tienda al comprar). EP y álbum sí se
  * entregan, pero tema por tema: sus pasos viven en `_cancion`.
  */
-const SIN_ENTREGA = ["beat", "contenido", "creacion_contenido", "distribucion", "admin", "exclusividad", "ep", "album"];
+// `diseno`: portadas y videos no pasan por REAPER ni por el render de stems.
+const SIN_ENTREGA = ["beat", "contenido", "creacion_contenido", "distribucion", "admin", "exclusividad", "ep", "album", "diseno"];
 
 export function tipoLlevaPasos(tipo: string | null | undefined): boolean {
   const t = String(tipo ?? "");
