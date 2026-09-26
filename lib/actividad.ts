@@ -35,7 +35,9 @@ export type ActividadTipo =
   // Cursos
   | "curso_acceso_dado" | "curso_acceso_renovado" | "curso_acceso_quitado"
   | "curso_entrega_recibida" | "curso_retro_enviada" | "curso_vendido"
-  | "curso_estado_cambiado" | "curso_estreno_avisado";
+  | "curso_estado_cambiado" | "curso_estreno_avisado"
+  // Beats (ficha del catálogo)
+  | "beat_editado" | "beat_precio" | "beat_portada" | "beat_visibilidad" | "beat_publicacion";
 
 // Se mudaron al módulo puro (lo importa el navegador); se re-exportan de aquí.
 export { ENTIDADES_SENSIBLES };

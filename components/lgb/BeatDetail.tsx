@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Play, Pause, ShoppingCart, ExternalLink, ArrowLeft } from "lucide-react";
 import { WhatsappIcon } from "@/components/shared/BrandIcons";
-import { Beat, License } from "@/lib/store";
+import { Beat, License, useCartStore } from "@/lib/store";
 import { usePlayerStore } from "@/lib/player";
 import { useLang } from "@/lib/i18n";
 import { SOCIALS } from "@/lib/site";
@@ -17,6 +17,11 @@ export function BeatDetail({ beat }: { beat: Beat }) {
   const [showLicenses, setShowLicenses] = useState(false);
   const { current, isPlaying, play } = usePlayerStore();
   const { lang } = useLang();
+
+  // El carrito guarda el precio de cuando se agregó; si cambió, se pone al día.
+  useEffect(() => {
+    useCartStore.getState().sincronizarPrecios([beat]);
+  }, [beat]);
 
   useEffect(() => {
     fetch("/api/licenses")
@@ -128,6 +133,10 @@ export function BeatDetail({ beat }: { beat: Beat }) {
             </div>
           </div>
 
+          {beat.descripcion && (
+            <p className="text-white/60 text-sm leading-relaxed mb-6 whitespace-pre-line">{beat.descripcion}</p>
+          )}
+
           {/* Tags */}
           {beat.tags?.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-6">
@@ -195,6 +204,22 @@ export function BeatDetail({ beat }: { beat: Beat }) {
           </div>
         </div>
       </div>
+
+      {/* Video de YouTube elegido en el panel (Promoción → "Mostrar en tienda") */}
+      {beat.video && /^[A-Za-z0-9_-]{11}$/.test(beat.video) && (
+        <div className="mt-10 sm:mt-14">
+          <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/10 bg-black">
+            <iframe
+              src={`https://www.youtube-nocookie.com/embed/${beat.video}`}
+              title={`${beat.title} — video`}
+              loading="lazy"
+              allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="absolute inset-0 w-full h-full"
+            />
+          </div>
+        </div>
+      )}
 
       {showLicenses && licenses.length > 0 && (
         <LicenseModal beat={beat} licenses={licenses} onClose={() => setShowLicenses(false)} />

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { getAdminEmail } from "@/lib/supabase/auth-server";
+import { moduloPermitido } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { fetchBeatFromBeatStars } from "@/lib/beats-fetch";
 import { findSubfolders, findBeatFolderByName } from "@/lib/drive-api";
@@ -19,7 +19,7 @@ function driveFolderId(input?: string): string | null {
 
 // ── GET: lista de beats agregados desde el admin ──────────────────────────────
 export async function GET() {
-  if (!(await getAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!(await moduloPermitido("/admin/beats"))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   const sb = supabaseAdmin();
   const { data, error } = await sb
     .from("beats")
@@ -31,7 +31,7 @@ export async function GET() {
 
 // ── POST: agregar un beat por su link de BeatStars ────────────────────────────
 export async function POST(req: NextRequest) {
-  if (!(await getAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!(await moduloPermitido("/admin/beats"))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
   const { link, bpm, key, genre, driveLink } = body || {};
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
 // Útil cuando el beat se subió antes de tener la carpeta lista: re-resuelve la
 // carpeta (por link pegado o por nombre) sin borrar y volver a crear el beat.
 export async function PATCH(req: NextRequest) {
-  if (!(await getAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!(await moduloPermitido("/admin/beats"))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
   const { id, driveLink } = body || {};
@@ -177,6 +177,7 @@ export async function PATCH(req: NextRequest) {
   if (Object.keys(ficha).length > 0) {
     const { error } = await sb.from("beats").update(ficha).eq("id", String(id));
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    revalidateTag("catalog", { expire: 0 }); // antes la tienda tardaba hasta 60s en verlo
     // Si solo venía la ficha, se termina aquí: no hay por qué ir a Drive.
     if (!("driveLink" in body)) return NextResponse.json({ ok: true, actualizado: Object.keys(ficha) });
   }
@@ -215,7 +216,7 @@ export async function PATCH(req: NextRequest) {
 
 // ── DELETE: quitar un beat agregado ───────────────────────────────────────────
 export async function DELETE(req: NextRequest) {
-  if (!(await getAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!(await moduloPermitido("/admin/beats"))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Falta id" }, { status: 400 });
   const sb = supabaseAdmin();

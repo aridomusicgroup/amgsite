@@ -22,6 +22,12 @@ export interface Beat {
   hlsUrl?: string | null;
   waveformUrl?: string;
   beatstarsUrl?: string;
+  /** Precio de cada licencia de ESTE beat (lo calcula el servidor); null = se negocia. */
+  precios?: Record<string, number | null>;
+  descripcion?: string | null;
+  destacado?: boolean;
+  /** Id del video de YouTube para su página. */
+  video?: string | null;
 }
 
 export interface License {
@@ -53,6 +59,12 @@ interface CartStore {
   clearCart: () => void;
   toggleCart: () => void;
   total: () => number;
+  /**
+   * Pone al día los precios del carrito con lo que acaba de llegar del
+   * catálogo. El carrito vive en localStorage: si el precio de un beat cambió
+   * desde que se agregó, se vería un total y Stripe cobraría otro.
+   */
+  sincronizarPrecios: (beats: Beat[]) => void;
 }
 
 export const useCartStore = create<CartStore>()(
@@ -77,6 +89,22 @@ export const useCartStore = create<CartStore>()(
       clearCart: () => set({ items: [] }),
       toggleCart: () => set((s) => ({ isOpen: !s.isOpen })),
       total: () => get().items.reduce((acc, i) => acc + i.price, 0),
+      sincronizarPrecios: (beats) => {
+        const porId = new Map(beats.map((b) => [b.id, b]));
+        const actual = get().items;
+        let cambio = false;
+        const items = actual.flatMap((i) => {
+          const b = porId.get(i.beat.id);
+          if (!b?.precios || !(i.licenseId in b.precios)) return [i];
+          const precio = b.precios[i.licenseId];
+          // La licencia dejó de venderse aquí (p. ej. la exclusiva pasó a negociarse).
+          if (precio == null) { cambio = true; return []; }
+          if (precio === i.price) return [i];
+          cambio = true;
+          return [{ ...i, beat: b, price: precio }];
+        });
+        if (cambio) set({ items });
+      },
     }),
     { name: "lgb-cart" }
   )

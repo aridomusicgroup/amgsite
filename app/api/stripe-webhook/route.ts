@@ -9,7 +9,6 @@ import {
   internalContractEmail,
 } from "@/lib/emails";
 import { SOCIALS, DOMAINS } from "@/lib/site";
-import rawBeats from "@/data/beats-beatstars.json";
 import rawLicenses from "@/data/licenses.json";
 import { cleanTitle } from "@/lib/beatstars";
 import { generateExclusiveContract } from "@/lib/contract";
@@ -35,8 +34,6 @@ import { handleCursoPago } from "@/lib/curso-venta";
  * Env vars necesarias (cada pieza se activa al existir su llave):
  *  STRIPE_WEBHOOK_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY
  */
-
-const beats = rawBeats as Array<{ id: string; title: string }>;
 
 export async function POST(req: NextRequest) {
   const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -85,13 +82,24 @@ export async function POST(req: NextRequest) {
     return handleCursoPago(stripe, session);
   }
 
-  // Conceptos del pedido
-  const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 30 });
-  const items = lineItems.data.map((li) => ({
-    description: li.description ?? "Concepto",
-    amount: (li.amount_total ?? 0) / 100,
-    quantity: li.quantity ?? 1,
-  }));
+  // Conceptos del pedido. El producto viene expandido para leer QUÉ beat y QUÉ
+  // licencia es cada renglón (lo pone /api/checkout en su metadata): con precios
+  // por beat, la licencia ya no se puede deducir del monto.
+  const lineItems = await stripe.checkout.sessions.listLineItems(session.id, {
+    limit: 30,
+    expand: ["data.price.product"],
+  });
+  const items = lineItems.data.map((li) => {
+    const prod = li.price?.product;
+    const md = prod && typeof prod === "object" && !("deleted" in prod && prod.deleted) ? (prod as Stripe.Product).metadata : {};
+    return {
+      description: li.description ?? "Concepto",
+      amount: (li.amount_total ?? 0) / 100,
+      quantity: li.quantity ?? 1,
+      beat_id: md?.beat_id || null,
+      license_id: md?.license_id || null,
+    };
+  });
 
   const meta = session.metadata ?? {};
   const lang: "es" | "en" = meta.lang === "en" ? "en" : "es";
@@ -161,14 +169,24 @@ export async function POST(req: NextRequest) {
       orderId = order?.id ?? null;
       if (order?.id) {
         await sb.from("order_items").delete().eq("order_id", order.id);
-        await sb.from("order_items").insert(
-          items.map((i) => ({
-            order_id: order.id,
-            description: i.description,
-            amount: i.amount,
-            quantity: i.quantity,
-          }))
-        );
+        const renglones = items.map((i) => ({
+          order_id: order.id,
+          description: i.description,
+          amount: i.amount,
+          quantity: i.quantity,
+          beat_id: i.beat_id,
+          license_id: i.license_id,
+        }));
+        const { error: errItems } = await sb.from("order_items").insert(renglones);
+        if (errItems) {
+          // Lo normal es que aún no corra supabase-beat-ficha.sql (sin beat_id /
+          // license_id): se guarda como antes y la licencia se lee por monto.
+          // Cualquier OTRO error se deja en el log para que no pase escondido.
+          if (!/(beat_id|license_id)/i.test(errItems.message)) console.error("order_items insert failed:", errItems.message);
+          await sb.from("order_items").insert(
+            renglones.map((r) => ({ order_id: r.order_id, description: r.description, amount: r.amount, quantity: r.quantity })),
+          );
+        }
       }
 
       // ── ERP: contacto + venta (CRM / Dashboard / reparto) ───────
@@ -402,15 +420,16 @@ export async function POST(req: NextRequest) {
           : [];
         const ex = order.find((o) => o.licenseId === "exclusive");
         if (ex) {
-          const beat = beats.find((b) => b.id === ex.beatId);
-          const beatTitle = beat ? cleanTitle(beat.title) : summary ?? "Instrumental";
-          const exLine = items.find(
-            (i) => beat && cleanTitle(beat.title) === i.description
-          );
-          const exclusiveLicense = (
-            rawLicenses as Array<{ id: string; price: number | null }>
-          ).find((l) => l.id === "exclusive");
-          const price = exLine?.amount ?? exclusiveLicense?.price ?? total;
+          // getBeatMeta también encuentra los beats agregados desde el panel —
+          // que son justo los de exclusiva directa. Antes se buscaba sólo en el
+          // JSON y el contrato salía con el resumen del pedido como título y el
+          // total del pedido (con comisión y otros beats) como precio.
+          const beatMeta = await getBeatMeta(ex.beatId);
+          const beatTitle = beatMeta?.title ? cleanTitle(beatMeta.title) : summary ?? "Instrumental";
+          const exLine =
+            items.find((i) => i.beat_id === ex.beatId && i.license_id === "exclusive") ??
+            items.find((i) => i.description === beatTitle);
+          const price = exLine?.amount ?? total;
           const a = session.customer_details?.address;
           const buyerAddress = a
             ? [a.line1, a.line2, a.city, a.state, a.postal_code, a.country]

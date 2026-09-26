@@ -4,7 +4,6 @@ import rawLicenses from "@/data/licenses.json";
 import { getCatalog } from "@/lib/catalog";
 import { attribMetadata, type Attrib } from "@/lib/attribution-server";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
-import { isDirectExclusive, EXCLUSIVE_DIRECT_PRICE } from "@/lib/exclusive";
 import { DOMAINS } from "@/lib/site";
 import { esPaisInternacional, montoComisionIntl, LABEL_COMISION_INTL } from "@/lib/comision-internacional";
 
@@ -72,13 +71,10 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    // Precio efectivo: la exclusiva solo es compra directa ($600) en beats nuevos.
-    // En beats legacy la exclusiva se negocia en BeatStars → no se permite por aquí.
-    const price = license.exclusive
-      ? isDirectExclusive(beat.id)
-        ? EXCLUSIVE_DIRECT_PRICE
-        : null
-      : license.price;
+    // Precio efectivo de ESTA licencia de ESTE beat (global + ajuste de su
+    // ficha en el panel), el mismo que ve el cliente. null = no se vende aquí
+    // (p. ej. la exclusiva de un beat que se negocia).
+    const price = beat.precios[license.id as keyof typeof beat.precios] ?? null;
     if (price === null) {
       return NextResponse.json(
         { error: `License not purchasable here: ${item.beatId}/${item.licenseId}` },
@@ -94,6 +90,9 @@ export async function POST(req: NextRequest) {
           name: beat.title, // CatalogBeat.title ya viene limpio
           description: license.name[lang],
           ...(beat.artworkUrl ? { images: [beat.artworkUrl] } : {}),
+          // Qué beat y qué licencia es este renglón: el webhook lo guarda en
+          // order_items para entregar lo correcto aunque el precio sea propio.
+          metadata: { beat_id: beat.id, license_id: license.id },
         },
       },
     });

@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Search, SlidersHorizontal, X } from "lucide-react";
-import { Beat, License } from "@/lib/store";
+import { Beat, License, useCartStore } from "@/lib/store";
 import { BeatCard } from "./BeatCard";
 import { LicenseModal } from "./LicenseModal";
 import { PlayerBar } from "./PlayerBar";
@@ -32,6 +32,7 @@ export function BeatGrid() {
       .then((r) => r.json())
       .then((d) => {
         setBeats(d.beats);
+        useCartStore.getState().sincronizarPrecios(d.beats ?? []);
         if (d.artists?.length) setArtists(["all", ...d.artists]);
         setLoading(false);
       });

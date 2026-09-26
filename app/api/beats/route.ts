@@ -22,9 +22,11 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // getCatalog ya devuelve "más nuevos primero"; reordenamos solo si piden otro criterio
+  // getCatalog ya devuelve "más nuevos primero"; reordenamos solo si piden otro criterio.
+  // Los destacados desde el panel van arriba en el orden por defecto (no en
+  // getCatalog: el chatbot toma el primero de ahí como "el último beat").
   if (sort === "popular") filtered.sort((a, b) => b.plays - a.plays);
-  else if (sort === "newest") filtered.sort((a, b) => b.addedAt - a.addedAt);
+  else if (sort === "newest") filtered.sort((a, b) => Number(b.destacado) - Number(a.destacado) || b.addedAt - a.addedAt);
   else if (sort === "price-low") filtered.sort((a, b) => a.price - b.price);
   else if (sort === "price-high") filtered.sort((a, b) => b.price - a.price);
 

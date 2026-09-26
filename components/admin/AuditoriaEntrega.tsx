@@ -164,7 +164,11 @@ export function AuditoriaEntrega() {
                     No puede entregar: {b.noPuedeEntregar.join(" · ")}
                   </p>
                 )}
-                <EditorCarpeta beat={b} onGuardado={actualizarBeat} />
+                <EditorCarpeta
+                  beatId={b.id}
+                  tieneCarpeta={Boolean(b.carpetaId)}
+                  onGuardado={(folderId, archivos, sueltos) => actualizarBeat(b.id, folderId, archivos, sueltos)}
+                />
               </li>
             ))}
           </ul>
@@ -185,15 +189,17 @@ export function AuditoriaEntrega() {
 /**
  * Asignar a mano la carpeta de Drive de un beat.
  *
- * Va en su propio componente por la misma razón que `FichaEditor`: con el texto
- * viviendo en la lista, cada tecla repinta los 55 renglones.
+ * Va en su propio componente: con el texto viviendo en la lista, cada tecla
+ * repinta los 55 renglones. Lo usan la auditoría y la ficha del beat.
  */
-function EditorCarpeta({
-  beat,
+export function EditorCarpeta({
+  beatId,
+  tieneCarpeta,
   onGuardado,
 }: {
-  beat: BeatAuditado;
-  onGuardado: (id: string, folderId: string, archivos: Partial<Record<Formato, number>>, sueltos: number) => void;
+  beatId: string;
+  tieneCarpeta: boolean;
+  onGuardado: (folderId: string, archivos: Partial<Record<Formato, number>>, sueltos: number) => void;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [link, setLink] = useState("");
@@ -210,11 +216,11 @@ function EditorCarpeta({
       const r = await fetch("/api/admin/beats/carpeta", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: beat.id, link }),
+        body: JSON.stringify({ id: beatId, link }),
       });
       const d = await r.json();
       if (!r.ok) { setError(d.error || "No se pudo guardar."); return; }
-      onGuardado(beat.id, d.folderId, d.archivos ?? {}, d.sueltos ?? 0);
+      onGuardado(d.folderId, d.archivos ?? {}, d.sueltos ?? 0);
       setLink("");
       // Si quedó bien se cierra solo; si algo sigue faltando el aviso se queda
       // a la vista para que no se dé por resuelto sin serlo.
@@ -232,7 +238,7 @@ function EditorCarpeta({
       <button onClick={() => setAbierto(true)}
         className="flex items-center gap-1 text-white/40 hover:text-white text-[11px] mt-1.5 cursor-pointer">
         <Link2 size={11} />
-        {beat.carpetaId ? "Corregir el link de la carpeta" : "Asignar la carpeta de Drive"}
+        {tieneCarpeta ? "Corregir el link de la carpeta" : "Asignar la carpeta de Drive"}
       </button>
     );
   }

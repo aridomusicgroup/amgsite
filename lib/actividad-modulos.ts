@@ -13,7 +13,7 @@
 export type ActividadEntidad =
   | "proyecto" | "tarea" | "venta" | "pago" | "cotizacion"
   | "contrato" | "contacto" | "egreso" | "ingreso" | "gasto_recurrente" | "usuario" | "musico"
-  | "almacenamiento" | "reparto";
+  | "almacenamiento" | "reparto" | "beat";
 
 /**
  * Entidades de dinero/comercial: solo las ven los admins.
@@ -85,6 +85,8 @@ export function destinoDe(it: ItemActividad): string {
       return "/admin/finanzas?seccion=pagos";
     case "reparto":
       return "/admin/finanzas";
+    case "beat":
+      return it.entidad_id ? `/admin/beats/${encodeURIComponent(it.entidad_id)}` : "/admin/beats";
     default:
       return "/admin/actividad";
   }
@@ -132,4 +134,9 @@ export const DOT_ACTIVIDAD: Record<string, string> = {
   contrato_enviado: "bg-amber-400",
   pago_recurrente_pendiente: "bg-red-400",
   pago_musico_pendiente: "bg-red-400",
+  beat_editado: "bg-blue-400",
+  beat_precio: "bg-amber-400",
+  beat_portada: "bg-blue-400",
+  beat_visibilidad: "bg-white/50",
+  beat_publicacion: "bg-green-400",
 };

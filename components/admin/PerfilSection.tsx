@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Camera, Loader2, Check, Lock, Trash2 } from "lucide-react";
 import { createAuthClient } from "@/lib/supabase/auth-client";
 import { toast } from "@/lib/toast";
+import { cuadradoWebp } from "@/lib/imagen-cliente";
 
 /**
  * "Tu perfil": nombre, foto y contraseña de quien está usando el panel.
@@ -21,30 +22,8 @@ function iniciales(nombre: string | null, email: string): string {
   return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase() || base[0].toUpperCase();
 }
 
-/**
- * Recorta al cuadrado y encoge a 256px ANTES de subir.
- *
- * Sin esto, una foto de celular de 4 MB viajaría entera para terminar
- * mostrándose a 40px. Así son ~30 KB y la subida es instantánea aunque sea con
- * datos móviles. WebP si el navegador puede; JPEG de respaldo (Safari viejo).
- */
-async function prepararFoto(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
-  const lado = Math.min(bitmap.width, bitmap.height);
-  const lienzo = document.createElement("canvas");
-  lienzo.width = 256;
-  lienzo.height = 256;
-  const ctx = lienzo.getContext("2d");
-  if (!ctx) throw new Error("No se pudo procesar la imagen.");
-  ctx.drawImage(bitmap, (bitmap.width - lado) / 2, (bitmap.height - lado) / 2, lado, lado, 0, 0, 256, 256);
-  bitmap.close();
-
-  const blob = await new Promise<Blob | null>((res) => lienzo.toBlob(res, "image/webp", 0.85));
-  if (blob && blob.type === "image/webp") return blob;
-  return new Promise<Blob>((res, rej) =>
-    lienzo.toBlob((b) => (b ? res(b) : rej(new Error("No se pudo procesar la imagen."))), "image/jpeg", 0.85),
-  );
-}
+/** La foto sale cuadrada a 256px (~30 KB): se muestra a 40px en el menú. */
+const prepararFoto = (file: File): Promise<Blob> => cuadradoWebp(file, 256);
 
 export function PerfilSection({ email, nombre: nombreInicial, fotoUrl }: {
   email: string;

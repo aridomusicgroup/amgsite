@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminEmail } from "@/lib/supabase/auth-server";
+import { moduloPermitido } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { driveConfigured, cuentaServicioEmail, carpetaVisible } from "@/lib/drive-api";
 import { idDeLink, revisarCarpeta, urlCarpeta } from "@/lib/beat-carpetas";
@@ -16,7 +16,7 @@ export const runtime = "nodejs";
  * comprobarlo sería repetir el problema que esto viene a arreglar.
  */
 export async function POST(req: NextRequest) {
-  const email = await getAdminEmail();
+  const email = await moduloPermitido("/admin/beats");
   if (!email) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!driveConfigured()) {
     return NextResponse.json({ error: "Falta configurar la cuenta de servicio de Google." }, { status: 503 });
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
 
 /** Quitar la asignación manual y volver a lo automático. */
 export async function DELETE(req: NextRequest) {
-  if (!(await getAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!(await moduloPermitido("/admin/beats"))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Falta id" }, { status: 400 });
   const { error } = await supabaseAdmin().from("beat_carpetas").delete().eq("beat_id", id);

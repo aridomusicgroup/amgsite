@@ -7,6 +7,7 @@ import licensesRaw from "@/data/licenses.json";
 import { cleanTitle } from "@/lib/beatstars";
 import { EXCLUSIVE_DIRECT_PRICE } from "@/lib/exclusive";
 import { overridesCarpetas } from "@/lib/beat-carpetas";
+import { licenciaDeRenglonPuro, licenciaPorMontoPuro } from "@/lib/licencia-renglon";
 
 /**
  * Descarga DIRECTA de un beat comprado en el sitio.
@@ -81,11 +82,19 @@ export async function mapaDeCarpetas(sb: SupabaseClient): Promise<Map<string, Ca
 export const carpetaDe = (mapa: Map<string, CarpetaBeat>, descripcion: string) =>
   mapa.get(String(descripcion).toLowerCase()) ?? mapa.get(clave(descripcion));
 
-/** Según el monto pagado se deduce la licencia y qué formatos incluye. */
+/** Pedidos viejos: según el monto pagado se deduce la licencia y qué formatos incluye. */
 export function licenciaPorMonto(monto: number): { files: Formato[] | null; exclusive: boolean } {
-  if (monto >= EXCLUSIVE_DIRECT_PRICE) return { files: null, exclusive: true };
-  const lic = licencias.find((l) => !l.exclusive && l.price !== null && Math.abs(l.price - monto) < 0.5);
-  return { files: (lic?.files as Formato[] | undefined) ?? null, exclusive: false };
+  const r = licenciaPorMontoPuro(monto, licencias, EXCLUSIVE_DIRECT_PRICE);
+  return { files: r.files as Formato[] | null, exclusive: r.exclusive };
+}
+
+/**
+ * La licencia de un renglón: la que guardó el webhook (`license_id`) o, en
+ * pedidos de antes de los precios por beat, la que se deduce del monto.
+ */
+export function licenciaDeRenglon(it: { amount: number; license_id?: string | null }): { files: Formato[] | null; exclusive: boolean } {
+  const r = licenciaDeRenglonPuro(it, licencias, EXCLUSIVE_DIRECT_PRICE);
+  return { files: r.files as Formato[] | null, exclusive: r.exclusive };
 }
 
 /**

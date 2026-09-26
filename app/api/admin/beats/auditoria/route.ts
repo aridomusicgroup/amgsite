@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAdminEmail } from "@/lib/supabase/auth-server";
+import { moduloPermitido } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { hijosDeCarpetas, driveConfigured, cuentaServicioEmail } from "@/lib/drive-api";
 import { overridesCarpetas } from "@/lib/beat-carpetas";
@@ -25,7 +25,7 @@ const catalogo = rawBeats as Array<{ id: string; title: string }>;
  * Solo LEE: no crea, mueve ni borra nada en Drive.
  */
 export async function GET() {
-  if (!(await getAdminEmail())) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!(await moduloPermitido("/admin/beats"))) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!driveConfigured()) {
     return NextResponse.json({ error: "Falta configurar la cuenta de servicio de Google (GOOGLE_SERVICE_ACCOUNT)." }, { status: 503 });
   }

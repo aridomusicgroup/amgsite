@@ -18,10 +18,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const artistPart = beat.artists?.[0] ? `${beat.artists[0]} Type Beat` : "Type Beat";
   const title = `${beat.title} — ${artistPart} | Latino Gang Beats`;
-  const description = `Compra "${beat.title}", ${artistPart.toLowerCase()} de regional mexicano${
-    beat.bpm > 0 ? ` · ${beat.bpm} BPM` : ""
-  }${beat.key !== "—" ? ` · ${beat.key}` : ""}. Licencias desde $${beat.price} USD con entrega instantánea. By Árido Music Group 🌵`;
+  const description = beat.descripcion
+    ? `${beat.descripcion.slice(0, 160)} Licencias desde $${beat.price} USD.`
+    : `Compra "${beat.title}", ${artistPart.toLowerCase()} de regional mexicano${
+      beat.bpm > 0 ? ` · ${beat.bpm} BPM` : ""
+    }${beat.key !== "—" ? ` · ${beat.key}` : ""}. Licencias desde $${beat.price} USD con entrega instantánea. By Árido Music Group 🌵`;
   const img = beat.artworkLarge || beat.artworkUrl;
+  // La portada propia (panel) se sube a 1200px; la de BeatStars viene a 800.
+  const lado = img?.includes("/portadas-beats/") ? 1200 : 800;
 
   return {
     title,
@@ -32,7 +36,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description,
       url: `${DOMAINS.beats}/beat/${beat.slug}`,
       siteName: "Latino Gang Beats",
-      images: img ? [{ url: img, width: 1200, height: 1200 }] : undefined,
+      images: img ? [{ url: img, width: lado, height: lado }] : undefined,
       locale: "es_MX",
       type: "music.song",
     },

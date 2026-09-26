@@ -3,10 +3,8 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Stripe from "stripe";
 import { CheckCircle2, FolderDown, Clock, Mail } from "lucide-react";
-import rawBeats from "@/data/beats-beatstars.json";
 import rawLicenses from "@/data/licenses.json";
-import driveLinks from "@/data/drive-links.json";
-import { overridesCarpetas } from "@/lib/beat-carpetas";
+import { getBeatMeta } from "@/lib/beat-drive";
 import { cleanTitle } from "@/lib/beatstars";
 import { SOCIALS } from "@/lib/site";
 import { PurchaseTracker } from "@/components/lgb/PurchaseTracker";
@@ -32,13 +30,11 @@ interface Delivery {
   driveUrl: string | null;
 }
 
-const beats = rawBeats as Array<{ id: string; title: string }>;
 const licenses = rawLicenses as Array<{
   id: string;
   files: string[];
   name: { es: string; en: string };
 }>;
-const links = driveLinks as Record<string, { driveFolderId: string }>;
 
 interface Resumen {
   items: Delivery[];
@@ -54,22 +50,21 @@ async function getDeliveries(sessionId: string): Promise<Resumen | null> {
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     if (session.payment_status !== "paid") return null;
     const order: OrderItem[] = JSON.parse(session.metadata?.order ?? "[]");
-    // La carpeta corregida a mano gana: si el link automático estaba mal, el
-    // cliente que acaba de pagar es justo el que no puede recibir la equivocada.
-    const manual = await overridesCarpetas();
-    const items = order.map((item) => {
-      const beat = beats.find((b) => b.id === item.beatId);
+    // getBeatMeta resuelve originales Y agregados desde el panel, con la
+    // carpeta corregida a mano por encima (antes sólo miraba el JSON: un beat
+    // agregado salía con su id como título y sin link de descarga).
+    const items = await Promise.all(order.map(async (item) => {
+      const beat = await getBeatMeta(item.beatId);
       const license = licenses.find((l) => l.id === item.licenseId);
-      const link = manual.get(item.beatId) ?? links[item.beatId];
       return {
-        title: beat ? cleanTitle(beat.title) : item.beatId,
+        title: beat?.title ? cleanTitle(beat.title) : item.beatId,
         licenseName: license?.name.es ?? item.licenseId,
         files: license?.files.join(" + ") ?? "",
-        driveUrl: link
-          ? `https://drive.google.com/drive/folders/${link.driveFolderId}`
+        driveUrl: beat?.driveFolderId
+          ? `https://drive.google.com/drive/folders/${beat.driveFolderId}`
           : null,
       };
-    });
+    }));
     return { items, total: (session.amount_total ?? 0) / 100, order };
   } catch {
     return null;

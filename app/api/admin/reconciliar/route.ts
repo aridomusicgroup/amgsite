@@ -3,19 +3,10 @@ import { getAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getCatalog } from "@/lib/catalog";
 import rawBeats from "@/data/beats-beatstars.json";
+import { norm, nombreBeat } from "@/lib/beat-nombre";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-const norm = (s: string | null | undefined) => (s || "").replace(/\s+/g, " ").trim().toLowerCase();
-
-// El título de BeatStars trae el nombre del beat entre comillas:
-//   «"Champagne" Oscar Maydon x Junior H | corrido tumbado» → "champagne"
-const nombreBeat = (titulo: string): string => {
-  const m = (titulo || "").match(/["“”']([^"“”']+)["“”']/);
-  if (m) return norm(m[1]);
-  return norm((titulo || "").split(/\b(type|prod)\b/i)[0]);
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Reconcilia/matchea los datos de beats que ya existen:

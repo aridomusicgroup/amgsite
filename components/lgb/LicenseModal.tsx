@@ -38,11 +38,17 @@ export function LicenseModal({ beat, licenses, onClose }: Props) {
 
   const selectedLicense = licenses.find((l) => l.id === selected);
   const isExclusive = selectedLicense?.exclusive;
-  // Beats nuevos: la exclusiva es compra directa $600. Beats legacy: se negocia en BeatStars.
-  const directExclusive = isDirectExclusive(beat.id);
-  // Precio efectivo de una licencia (la exclusiva depende de si el beat es nuevo o legacy)
-  const licPrice = (lic: License) =>
-    lic.exclusive ? (directExclusive ? EXCLUSIVE_DIRECT_PRICE : null) : lic.price;
+  // Precio de cada licencia de ESTE beat: lo calcula el servidor (lib/catalog.ts)
+  // con el ajuste de su ficha, y es el mismo que cobra el checkout. Sin `precios`
+  // (un beat viejo guardado en el carrito) se usa la regla global de siempre.
+  const precios = beat.precios;
+  const directExclusive = precios && "exclusive" in precios
+    ? precios.exclusive != null
+    : isDirectExclusive(beat.id);
+  const licPrice = (lic: License): number | null => {
+    if (precios && lic.id in precios) return precios[lic.id] ?? null;
+    return lic.exclusive ? (directExclusive ? EXCLUSIVE_DIRECT_PRICE : null) : lic.price;
+  };
   const selectedPrice = selectedLicense ? licPrice(selectedLicense) : null;
   // Exclusiva que se negocia (beat legacy) → flujo a BeatStars, sin checkout directo
   const exclusiveNegotiate = !!isExclusive && !directExclusive;

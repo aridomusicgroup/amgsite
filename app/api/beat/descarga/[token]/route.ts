@@ -6,7 +6,7 @@ import {
   carpetaUrl,
   itemsOrdenados,
   leerTokenDescarga,
-  licenciaPorMonto,
+  licenciaDeRenglon,
   mapaDeCarpetas,
 } from "@/lib/beat-descarga";
 
@@ -37,25 +37,27 @@ export async function GET(_req: NextRequest, { params }: Props) {
   if (!t) return noDisponible();
 
   const sb = supabaseAdmin();
-  const { data: order } = await sb
-    .from("orders")
-    .select("type, status, order_items(description, amount)")
-    .eq("id", t.orderId)
-    .maybeSingle();
+  // `license_id` es columna nueva: si aún no existe, se lee como antes.
+  const consulta = (select: string) => sb.from("orders").select(select).eq("id", t.orderId).maybeSingle();
+  const conLicencia = await consulta("type, status, order_items(description, amount, license_id)");
+  const data = conLicencia.error ? (await consulta("type, status, order_items(description, amount)")).data : conLicencia.data;
+  const order = data as { type: string; status: string; order_items: unknown } | null;
   if (!order || order.type !== "beat" || order.status === "cancelado") return noDisponible();
 
   const items = itemsOrdenados(
-    ((order.order_items as { description: string; amount: number }[] | null) ?? []).map((i) => ({
+    ((order.order_items as { description: string; amount: number; license_id?: string | null }[] | null) ?? []).map((i) => ({
       description: String(i.description),
       amount: Number(i.amount),
+      license_id: i.license_id ?? null,
     })),
   );
   const item = items[t.idx];
   if (!item) return noDisponible();
 
   // El token sólo se emite para los formatos de la licencia comprada. Aun así,
-  // si por el monto se reconoce una licencia que NO lo incluye, no se entrega.
-  const { files, exclusive } = licenciaPorMonto(item.amount);
+  // si la licencia del renglón (guardada, o por monto en pedidos viejos) NO lo
+  // incluye, no se entrega.
+  const { files, exclusive } = licenciaDeRenglon(item);
   if (!exclusive && files && !files.includes(t.formato)) return noDisponible();
 
   const carpeta = carpetaDe(await mapaDeCarpetas(sb), item.description);
