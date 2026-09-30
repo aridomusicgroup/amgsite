@@ -50,7 +50,7 @@ export default async function CotizacionesAdminPage() {
         plantillas={plantillas}
         tcSugerido={tcSugerido}
         // Con costos: esta página sólo la ve el staff con sesión.
-        catalogoDiseno={catalogoDiseno()}
+        catalogoDiseno={await catalogoDiseno()}
         proveedorDiseno={PROVEEDOR_DISENO}
         proyectosTema={proyectosTema}
       />

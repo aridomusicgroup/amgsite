@@ -643,7 +643,7 @@ function ItemsEditor({ items, onChange, moneda, diseno = [] }: {
   const opciones = [
     // El selector sólo ofrece lo que hoy se vende.
     ...catalogoLista(catalogo),
-    ...diseno.map((s) => ({ group: "Diseño", label: s.nombre.es, price: s.precio })),
+    ...diseno.filter((s) => s.activo !== false).map((s) => ({ group: "Diseño", label: s.nombre.es, price: s.precio })),
   ];
   const update = (i: number, patch: Partial<QuoteItem>) => onChange(items.map((it, j) => (j === i ? { ...it, ...patch } : it)));
   const remove = (i: number) => onChange(items.filter((_, j) => j !== i));

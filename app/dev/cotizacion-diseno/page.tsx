@@ -43,7 +43,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ c
           plantillas={[]}
           tcSugerido={16.8}
           equipo={[{ id: "e1", nombre: "Eliud", rol: "socio" }, { id: "e2", nombre: "Luis", rol: "socio" }]}
-          catalogoDiseno={catalogoDiseno()}
+          catalogoDiseno={await catalogoDiseno()}
           proveedorDiseno={PROVEEDOR_DISENO}
           proyectosTema={[
             { id: TEMA, folio: "P0062", titulo: "Alto Nivel", contacto_id: CLIENTE, cliente: "Alto Nivel", estado: "entregado" },

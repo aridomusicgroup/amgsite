@@ -6,6 +6,8 @@ import { toast } from "@/lib/toast";
 import type { Catalogo } from "@/lib/servicios";
 import type { TipoServicio } from "@/lib/servicios-validar";
 import { ServicioForm, type ItemServicio } from "@/components/admin/ServicioForm";
+import { DisenoAdmin } from "@/components/admin/DisenoAdmin";
+import type { ServicioDiseno } from "@/lib/diseno";
 
 const pesos = (n: number) => `$${n.toLocaleString("es-MX")}`;
 
@@ -23,14 +25,19 @@ function detalleDe(it: ItemServicio): string {
   return "";
 }
 
-export function ServiciosPanel({ catalogo, enBase, sinMusico }: { catalogo: Catalogo; enBase: boolean; sinMusico: string[] }) {
+export function ServiciosPanel({ catalogo, enBase, sinMusico, diseno }: {
+  catalogo: Catalogo; enBase: boolean; sinMusico: string[];
+  /** Sólo para admin (trae el costo del diseñador); null = sin pestaña. */
+  diseno: { catalogo: ServicioDiseno[]; enBase: boolean } | null;
+}) {
   const router = useRouter();
-  const [tab, setTab] = useState<TipoServicio>("base");
+  const [tab, setTab] = useState<TipoServicio | "diseno">("base");
   const [editando, setEditando] = useState<{ item: ItemServicio | null } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const lista: ItemServicio[] = tab === "base" ? catalogo.bases : tab === "extra" ? catalogo.extras : catalogo.studio;
-  const meta = TABS.find((t) => t.id === tab)!;
+  const tipo: TipoServicio = tab === "diseno" ? "base" : tab;
+  const lista: ItemServicio[] = tipo === "base" ? catalogo.bases : tipo === "extra" ? catalogo.extras : catalogo.studio;
+  const meta = TABS.find((t) => t.id === tipo)!;
 
   const llamar = async (method: string, body: unknown, ok?: string) => {
     setBusy(true);
@@ -48,19 +55,19 @@ export function ServiciosPanel({ catalogo, enBase, sinMusico }: { catalogo: Cata
   };
 
   const alternarVisible = (it: ItemServicio) =>
-    llamar("PUT", { tipo: tab, ...it, activo: !it.activo }, it.activo ? "✓ Oculto del cotizador" : "✓ Visible otra vez");
+    llamar("PUT", { tipo, ...it, activo: !it.activo }, it.activo ? "✓ Oculto del cotizador" : "✓ Visible otra vez");
 
   const mover = (i: number, d: -1 | 1) => {
     const ids = lista.map((x) => x.id);
     const j = i + d;
     if (j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]];
-    void llamar("PATCH", { tipo: tab, ids });
+    void llamar("PATCH", { tipo, ids });
   };
 
   return (
     <div>
-      {!enBase && (
+      {tab !== "diseno" && !enBase && (
         <div className="mb-5 rounded-2xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm">
           <p className="flex items-center gap-2 text-amber-300 font-medium">
             <TriangleAlert size={16} /> El catálogo todavía se lee del archivo
@@ -89,6 +96,15 @@ export function ServiciosPanel({ catalogo, enBase, sinMusico }: { catalogo: Cata
             {t.label}
           </button>
         ))}
+        {diseno && (
+          <button
+            onClick={() => setTab("diseno")}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer ${tab === "diseno" ? "bg-lgb-red text-white" : "bg-white/5 text-white/60 hover:text-white"}`}
+          >
+            Diseño
+          </button>
+        )}
+        {tab !== "diseno" && (
         <button
           disabled={!enBase}
           onClick={() => setEditando({ item: null })}
@@ -96,7 +112,13 @@ export function ServiciosPanel({ catalogo, enBase, sinMusico }: { catalogo: Cata
         >
           <Plus size={15} /> {meta.nuevo}
         </button>
+        )}
       </div>
+
+      {tab === "diseno" && diseno && <DisenoAdmin catalogo={diseno.catalogo} enBase={diseno.enBase} />}
+
+      {tab !== "diseno" && (
+      <>
       <p className="text-white/40 text-xs mb-4">{meta.ayuda}</p>
 
       <div className="flex flex-col gap-2">
@@ -138,10 +160,12 @@ export function ServiciosPanel({ catalogo, enBase, sinMusico }: { catalogo: Cata
         })}
         {lista.length === 0 && <p className="text-center text-white/40 text-sm py-12 border border-dashed border-white/10 rounded-2xl">Todavía no hay nada aquí.</p>}
       </div>
+      </>
+      )}
 
-      {editando && (
+      {editando && tab !== "diseno" && (
         <ServicioForm
-          tipo={tab}
+          tipo={tipo}
           inicial={editando.item}
           catalogo={catalogo}
           onClose={() => setEditando(null)}

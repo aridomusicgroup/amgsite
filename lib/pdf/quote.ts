@@ -7,7 +7,8 @@ import { nombreTema } from "@/lib/temas";
 import { aplicarMerge } from "./plantilla-parse";
 import { COTIZACION_TERMINOS_SEED, COTIZACION_TERMINOS_DISENO } from "./plantilla-seeds";
 import { incluyeDeDiseno } from "@/lib/diseno";
-import { catalogoDisenoPublico } from "@/lib/diseno-catalogo";
+import { catalogoDiseno } from "@/lib/diseno-catalogo";
+import { sinCosto } from "@/lib/diseno";
 import { subtotalDe, comisionValida } from "@/lib/comision";
 import { tramosDe, ESQUEMA_LABEL, esEsquemaValido, type EsquemaPago } from "@/lib/esquema-pago";
 
@@ -81,7 +82,8 @@ export async function generateQuotePdf(d: QuoteData): Promise<Uint8Array> {
   const trasDescuentos = Math.max(0, subtotal - descuento - descuentoFidelidad);
   const comision = round2(trasDescuentos * (comisionPct / 100));
   const total = round2(trasDescuentos + comision - creditoAplicado);
-  const disenos = catalogoDisenoPublico();
+  // Con lo oculto: una cotización vieja sigue diciendo qué incluía su diseño.
+  const disenos = sinCosto(await catalogoDiseno());
 
   const blocks: Block[] = [
     // Meta en 3 columnas

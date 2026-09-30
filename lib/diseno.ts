@@ -38,6 +38,8 @@ export interface ServicioDisenoPublico {
   /** De qué se compone un paquete — sirve para decir cuánto se ahorra. */
   componentes?: ComponenteDiseno[];
   destacado?: boolean;
+  /** false = oculto (no se ofrece), pero se sigue reconociendo en cotizaciones viejas. */
+  activo?: boolean;
 }
 
 /** Con el costo del diseñador. Sólo servidor y panel con sesión. */

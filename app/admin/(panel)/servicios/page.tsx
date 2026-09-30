@@ -1,6 +1,7 @@
 import { requireModule } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getCatalogoFresco } from "@/lib/servicios-catalogo";
+import { catalogoDisenoFresco } from "@/lib/diseno-catalogo";
 import { ServiciosPanel } from "@/components/admin/ServiciosPanel";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +31,9 @@ async function extrasSinMusico(extras: { id: string; label: { es: string } }[]):
 }
 
 export default async function ServiciosAdminPage() {
-  await requireModule("/admin/servicios");
+  const session = await requireModule("/admin/servicios");
+  // Diseño trae el costo del diseñador (margen): sólo se le carga a un admin.
+  const diseno = session.role === "admin" ? await catalogoDisenoFresco() : null;
   const { catalogo, enBase } = await getCatalogoFresco();
   const sinMusico = await extrasSinMusico(catalogo.extras);
 
@@ -43,7 +46,7 @@ export default async function ServiciosAdminPage() {
           Los cambios se ven en el sitio al guardar.
         </p>
       </div>
-      <ServiciosPanel catalogo={catalogo} enBase={enBase} sinMusico={sinMusico} />
+      <ServiciosPanel catalogo={catalogo} enBase={enBase} sinMusico={sinMusico} diseno={diseno} />
     </div>
   );
 }

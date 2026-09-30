@@ -59,12 +59,12 @@ async function origenValido(sb: any, v: unknown): Promise<string | null> {
  * si no, lo que sale del catálogo por los conceptos de diseño; null si la
  * cotización no lleva diseño. Se valida contra el total en pesos.
  */
-function costoProveedorDe(
+async function costoProveedorDe(
   pedido: unknown,
   items: { label: string; qty: number }[],
   totalMxn: number,
-): { costo: number | null; error: string | null } {
-  const catalogo = catalogoDiseno();
+): Promise<{ costo: number | null; error: string | null }> {
+  const catalogo = await catalogoDiseno();
   const vacio = pedido === undefined || pedido === null || pedido === "";
   if (vacio && !llevaDiseno(items, catalogo)) return { costo: null, error: null };
   const costo = vacio ? costoSugerido(items, catalogo) : Number(pedido);
@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
 
   // ── Diseño visual: el tema que produjimos y lo que se le paga al diseñador.
   const totalMxn = aMxn(total, moneda, tipoCambio ?? 0);
-  const proveedor = costoProveedorDe(b.costo_proveedor, items, totalMxn);
+  const proveedor = await costoProveedorDe(b.costo_proveedor, items, totalMxn);
   if (proveedor.error) return NextResponse.json({ error: proveedor.error }, { status: 400 });
   const origenId = await origenValido(sb, b.proyecto_origen_id);
 
@@ -322,7 +322,7 @@ export async function PATCH(req: NextRequest) {
       items ??= parseItems(cur?.items);
       totalMxn ??= Number(cur?.total_mxn) || 0;
     }
-    const proveedor = costoProveedorDe(b.costo_proveedor, items, totalMxn);
+    const proveedor = await costoProveedorDe(b.costo_proveedor, items, totalMxn);
     if (proveedor.error) return NextResponse.json({ error: proveedor.error }, { status: 400 });
     patch.costo_proveedor = proveedor.costo;
   }

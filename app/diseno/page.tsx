@@ -21,9 +21,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function DisenoPage() {
+// La caché del catálogo dura 60 s; sin esto la página quedaría congelada desde el build.
+export const revalidate = 60;
+
+export default async function DisenoPage() {
   // Sin el costo del diseñador: esto viaja al navegador.
-  const servicios = catalogoDisenoPublico();
+  const servicios = await catalogoDisenoPublico();
   const catalogoJsonLd = {
     "@context": "https://schema.org",
     "@type": "OfferCatalog",
