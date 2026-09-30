@@ -328,13 +328,20 @@ body {
    `transform` se vuelve el marco de referencia de sus descendientes con
    `position: fixed`, y el panel tiene cinco modales fixed SIN portal
    (CotizacionesPanel, ProduccionBoard, CursosPanel, RenderOpciones, CrmList)
-   que dejarían de cubrir la pantalla. Aquí el transform termina en `none`, que
-   no crea marco de referencia, así que los modales quedan intactos. */
+   que dejarían de cubrir la pantalla.
+
+   OJO (medido 2026-09-29): terminar el keyframe en `transform: none` NO basta.
+   Con `fill-mode: both` la animación sigue aplicada al acabar y el navegador
+   deja `matrix(1, 0, 0, 1, 0, 0)` — identidad, pero transform al fin — y eso SÍ
+   crea marco de referencia: la ventana de la tarea se centraba en el área de
+   contenido y se salía por arriba. Con `backwards` la animación se suelta al
+   terminar y el elemento vuelve a no tener transform. El marco sólo existe los
+   200 ms de la entrada, cuando ningún modal puede estar abierto todavía. */
 @keyframes panel-entra {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: none; }
 }
-.panel-entra { animation: panel-entra 200ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.panel-entra { animation: panel-entra 200ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
 
 @media (prefers-reduced-motion: reduce) {
   .panel-entra { animation: none; }
