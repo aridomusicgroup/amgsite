@@ -1,13 +1,11 @@
 "use client";
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import Link from "next/link";
-import { Music4, Package, Layers, Loader2, Cloud, Music2, ArrowUpRight } from "lucide-react";
+import { Cloud, ChevronRight } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
-import { toast } from "@/lib/toast";
-import { RenderOpciones } from "./RenderOpciones";
+import { BotonesRender, EnCurso, EN_VUELO, TIPO_TXT, useEncolarRender } from "./RenderControles";
 import { ESTADO_PROY_LABEL, ESTADO_PROY_COLOR, ESTADO_PROY_BORDE } from "@/lib/erp-data";
-import type { Renderizable, TipoRender, RenderJob, OpcionesRender, MusicoLite } from "@/lib/render-jobs";
+import type { Renderizable, TipoRender, MusicoLite } from "@/lib/render-jobs";
 
 interface LogRow {
   id: string;
@@ -23,18 +21,6 @@ const NIVEL_CLS: Record<string, string> = {
   error: "text-red-300",
 };
 const NIVEL_PREFIX: Record<string, string> = { info: "✓", warn: "⚠", error: "✗" };
-
-/** Estados que significan "hay algo corriendo, no pidas otro". */
-const EN_VUELO = ["pendiente", "renderizando", "subiendo"];
-
-/**
- * Cuánto tarda cada render, medido sobre canciones reales de ~3 min con la
- * cadena de plugins completa. Se muestra en pantalla porque sin esto un
- * "en cola" de 12 minutos se ve idéntico a que algo se trabó.
- */
-const MINUTOS: Record<TipoRender, number> = { previo: 4, entregables: 10, stems: 6, musico: 4, cuantizar: 2 };
-
-const TIPO_TXT: Record<string, string> = { previo: "Previo", entregables: "Entregables", stems: "Stems", musico: "Previo músico", cuantizar: "Cuadrar a la rejilla" };
 
 const hora = (iso: string) =>
   new Date(iso).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -63,45 +49,10 @@ function latido(proyectos: Renderizable[]): number | null {
 const LATIDO_MAX_MIN = 8;
 
 export function DevLogsPanel({ logs, proyectos, musicos }: { logs: LogRow[]; proyectos: Renderizable[]; musicos: MusicoLite[] }) {
-  const router = useRouter();
   const [tab, setTab] = useState<"renders" | "logs">("renders");
-  const [enviando, setEnviando] = useState(false);
-  // Qué cuadro de opciones está abierto. Se abre al picarle a un botón y ahí se
-  // elige el .rpp base, el rango y (en stems) las pistas.
-  const [abierto, setAbierto] = useState<{ p: Renderizable; tipo: TipoRender } | null>(null);
+  const { abrir, cuadro } = useEncolarRender();
 
   useRealtimeRefresh("rt-dev-logs", ["reaper_sync_logs", "render_jobs", "render_inventario"]);
-
-  const enviar = async (p: Renderizable, tipo: TipoRender, opciones: OpcionesRender) => {
-    setEnviando(true);
-    try {
-      const res = await fetch("/api/admin/render", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ proyectoId: p.proyectoId, tareaId: p.tareaId, tipo, opciones }),
-      });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || "Error");
-      // Se dice si quedó o no en su portal. Que esto pase callado fue lo que
-      // dejó a Martín con el correo del previo y el portal vacío durante días.
-      const cuantos = (opciones.musicosExtra?.length ?? 0) + 1;
-      if (cuantos > 1) {
-        toast(`✓ En cola — al terminar le llega a los ${cuantos} músicos`);
-      } else if (opciones.asignar && !d.asignado) {
-        toast("⚠️ El render quedó en cola, pero NO se le pudo dejar en su portal. Asígnaselo desde la tarea.");
-      } else if (d.asignado) {
-        toast("✓ En cola, y ya lo tiene en su portal");
-      } else {
-        toast("✓ En cola — REAPER lo toma en menos de 2 min");
-      }
-      setAbierto(null);
-      router.refresh();
-    } catch (e) {
-      toast(`⚠️ ${e instanceof Error ? e.message : "No se pudo encolar"}`);
-    } finally {
-      setEnviando(false);
-    }
-  };
 
   const chip = (activo: boolean) =>
     `px-4 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer ${activo ? "bg-lgb-red text-white" : "bg-white/5 text-white/60 hover:text-white"}`;
@@ -134,21 +85,12 @@ export function DevLogsPanel({ logs, proyectos, musicos }: { logs: LogRow[]; pro
       </div>
 
       {tab === "renders" ? (
-        <RenderList proyectos={proyectos} onAbrir={(p, tipo) => setAbierto({ p, tipo })} />
+        <RenderList proyectos={proyectos} onAbrir={abrir} />
       ) : (
         <Consola logs={logs} />
       )}
 
-      {abierto && (
-        <RenderOpciones
-          p={abierto.p}
-          tipo={abierto.tipo}
-          musicos={musicos}
-          enviando={enviando}
-          onCerrar={() => !enviando && setAbierto(null)}
-          onConfirmar={(op) => enviar(abierto.p, abierto.tipo, op)}
-        />
-      )}
+      {cuadro(musicos)}
     </div>
   );
 }
@@ -184,18 +126,19 @@ function RenderList({ proyectos, onAbrir }: {
                 se partía letra por letra. */}
             <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
               <div className="min-w-0 sm:flex-1">
-                {/* Lleva al tablero de Producción con la tarjeta abierta y
-                    resaltada; si es un tema de EP, abre la tarea de ese tema. */}
+                {/* Abre la ficha de REAPER de ese proyecto (o de ese tema, en
+                    un EP): músicos, previos al cliente, stems y edición en una
+                    sola vista, sin tener que irse a Producción. */}
                 <Link
-                  href={`/admin/produccion?destacar=${p.tareaId ?? p.proyectoId}`}
-                  title="Abrir en Producción"
+                  href={`/admin/dev-logs/${p.key}`}
+                  title="Ver todo lo de este proyecto"
                   className="group inline-flex items-start gap-1 text-sm font-medium break-words hover:text-lgb-red transition-colors"
                 >
                   <span>
                     {p.album && <span className="text-white/40 group-hover:text-lgb-red/60">{p.album} · </span>}
                     {p.titulo}
                   </span>
-                  <ArrowUpRight size={14} className="mt-0.5 shrink-0 opacity-30 group-hover:opacity-100 transition-opacity" />
+                  <ChevronRight size={14} className="mt-0.5 shrink-0 opacity-30 group-hover:opacity-100 transition-opacity" />
                 </Link>
                 <p className="text-white/40 text-xs mt-1 flex items-center gap-1.5 flex-wrap">
                   <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${ESTADO_PROY_COLOR[p.estado] ?? "bg-white/10 text-white/50"}`}>
@@ -210,34 +153,7 @@ function RenderList({ proyectos, onAbrir }: {
               </div>
 
               <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
-                <BotonRender
-                  icono={<Music2 size={14} />}
-                  texto="Músico"
-                  titulo={`Previo para quien graba: MP3 con BPM y tonalidad en el nombre · tarda ~${MINUTOS.musico} min`}
-                  deshabilitado={!!enVuelo}
-                  onClick={() => onAbrir(p, "musico")}
-                />
-                <BotonRender
-                  icono={<Music4 size={14} />}
-                  texto={p.ultimoPrevio > 0 ? `Previo ${p.ultimoPrevio + 1}` : "Previo"}
-                  titulo={`MP3 128 kbps / 44.1 kHz · tarda ~${MINUTOS.previo} min`}
-                  deshabilitado={!!enVuelo}
-                  onClick={() => onAbrir(p, "previo")}
-                />
-                <BotonRender
-                  icono={<Package size={14} />}
-                  texto="Entregables"
-                  titulo={`MP3 320 kbps / 48 kHz + WAV 32-bit · tarda ~${MINUTOS.entregables} min`}
-                  deshabilitado={!!enVuelo}
-                  onClick={() => onAbrir(p, "entregables")}
-                />
-                <BotonRender
-                  icono={<Layers size={14} />}
-                  texto="Stems"
-                  titulo={`WAV 24-bit por grupo, con mezcla y máster · tarda ~${MINUTOS.stems} min`}
-                  deshabilitado={!!enVuelo}
-                  onClick={() => onAbrir(p, "stems")}
-                />
+                <BotonesRender p={p} onAbrir={onAbrir} />
               </div>
             </div>
 
@@ -269,55 +185,6 @@ function RenderList({ proyectos, onAbrir }: {
         );
       })}
     </div>
-  );
-}
-
-/**
- * Estado de un render en curso, con el tiempo que lleva y el que se espera.
- *
- * El reloj corre en el cliente: sin él, un trabajo largo se ve congelado y la
- * reacción natural es volver a picarle o pensar que se rompió (ya pasó).
- */
-function EnCurso({ job }: { job: RenderJob }) {
-  const [ahora, setAhora] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setAhora(Date.now()), 10000);
-    return () => clearInterval(t);
-  }, []);
-
-  const min = Math.max(0, Math.floor((ahora - new Date(job.createdAt).getTime()) / 60000));
-  const esperado = MINUTOS[job.tipo] ?? 8;
-  const tarde = min > esperado + 5;
-
-  const detalle =
-    job.estado === "pendiente"
-      ? "en cola — REAPER lo toma en menos de 2 min"
-      : job.estado === "subiendo"
-        ? "subiendo a Drive…"
-        : `renderizando… (suele tardar ~${esperado} min)`;
-
-  return (
-    <p className={`text-[11px] mt-2 flex items-center gap-1.5 ${tarde ? "text-red-300" : "text-amber-300"}`}>
-      <Loader2 size={12} className="animate-spin" />
-      {TIPO_TXT[job.tipo] ?? job.tipo} · {detalle} · lleva {min} min
-      {tarde && " · más de lo normal, revisa la Consola"}
-    </p>
-  );
-}
-
-function BotonRender({ icono, texto, titulo, deshabilitado, onClick }: {
-  icono: React.ReactNode; texto: string; titulo?: string; deshabilitado: boolean; onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={deshabilitado ? "Espera a que termine el render en curso" : titulo}
-      disabled={deshabilitado}
-      className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 text-white/80 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-    >
-      {icono}
-      {texto}
-    </button>
   );
 }
 

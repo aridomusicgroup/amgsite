@@ -160,6 +160,16 @@ export interface RenderJob {
   driveUrls: ArchivoDrive[] | null;
   /** Sólo en 'musico': el enlace público que se le mandó. */
   enlacePublico: string | null;
+  /** Si el cliente lo ve en su cuenta. Es la única puerta hacia él. */
+  compartir: boolean;
+  /** Cuándo se le mandó el correo al cliente (o al músico), o null si nunca. */
+  avisadoEn: string | null;
+  /** Puesto = el render fue PARA un músico (o lo subió él, si `origen` = 'musico'). */
+  musicoId: string | null;
+  /** 'reaper' si salió de la PC del estudio; otro valor si lo subió alguien. */
+  origen: string;
+  /** Lo que se eligió al renderizar (instrumento, nota, reenvioDe, entrega…). */
+  opciones: OpcionesRender | null;
 }
 
 /** Una cosa renderizable: una producción normal, o una canción de un EP/Álbum. */
@@ -198,6 +208,11 @@ function mapJob(r: Record<string, unknown>): RenderJob {
     createdAt: r.created_at as string,
     driveUrls: (r.drive_urls as ArchivoDrive[] | null) ?? null,
     enlacePublico: (r.enlace_publico as string | null) ?? null,
+    compartir: r.compartir === true,
+    avisadoEn: (r.avisado_en as string | null) ?? null,
+    musicoId: (r.musico_id as string | null) ?? null,
+    origen: (r.origen as string | null) ?? "reaper",
+    opciones: (r.opciones as OpcionesRender | null) ?? null,
   };
 }
 
@@ -208,21 +223,23 @@ function mapJob(r: Record<string, unknown>): RenderJob {
  */
 type Fila = Record<string, unknown>;
 
-export async function renderizables(): Promise<Renderizable[]> {
+export async function renderizables(filtro: { proyectoId?: string } = {}): Promise<Renderizable[]> {
   const sb = supabaseAdmin();
 
   // `tonalidad` y `bpm` son columnas nuevas: si la migración todavía no se
   // corrió, pedirlas hace fallar la consulta ENTERA y el panel se queda sin un
   // solo proyecto. Ya pasó. Por eso se reintenta sin ellas: mejor la lista
   // completa sin dos datos que una pantalla vacía.
-  const consultaProyectos = (cols: string) =>
-    sb
-      .from("proyectos")
-      .select(cols)
-      .eq("clase", "produccion")
-      .in("estado", ESTADOS_ACTIVOS)
-      .not("venta_id", "is", null)
-      .order("created_at", { ascending: false });
+  //
+  // Con `proyectoId` (la ficha de un proyecto) se trae ése aunque ya esté
+  // entregado: la ficha también sirve para ver qué se mandó cuando ya cerró.
+  const consultaProyectos = (cols: string) => {
+    const q = sb.from("proyectos").select(cols);
+    return (filtro.proyectoId
+      ? q.eq("id", filtro.proyectoId)
+      : q.eq("clase", "produccion").in("estado", ESTADOS_ACTIVOS).not("venta_id", "is", null)
+    ).order("created_at", { ascending: false });
+  };
 
   // El `select` dinámico apaga la inferencia de tipos de supabase-js, así que
   // las filas se manejan como registros sueltos (igual que ya se hacía abajo).
