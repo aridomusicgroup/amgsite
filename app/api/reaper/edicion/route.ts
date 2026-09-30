@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { carpetaDelProyecto } from "@/lib/proyecto-carpeta";
 import { buscarOCrearCarpeta, tokenParaNavegador, diagnosticoDrive, compartirConCorreo } from "@/lib/drive-oauth";
+import { carpetaEdicionDe, carpetaEdicionProyecto, guardarCarpeta } from "@/lib/edicion-carpetas";
 import { pushAEmails, destinoProyectoTab, conProyecto } from "@/lib/push";
 import { registrarActividad } from "@/lib/actividad";
 import { Resend } from "resend";
@@ -19,9 +19,10 @@ export const runtime = "nodejs";
  * Vercel no es una opción.
  *
  * La estructura en Drive es espejo del árbol del disco:
- *   Clientes ARIDO / {cliente} / {folio} — {título} / [canción] / EDICION
- *                                                               / EDICION/Media
- *                                                               / EDICION/MUSICOS
+ *   Clientes ARIDO / {cliente} / {folio} — {título} / EDICION / [canción] / Media
+ *                                                                        / MUSICOS
+ * En un EP/álbum EDICION va ARRIBA de las canciones, para compartir una sola
+ * carpeta por disco — ver `lib/edicion-carpetas.ts`.
  *
  * Los ids se cachean en `edicion_carpetas` porque si no serían ~880 llamadas de
  * "buscar o crear carpeta" por envío, una por archivo.
@@ -53,9 +54,10 @@ export async function POST(req: NextRequest) {
 /**
  * Le da acceso a la carpeta a quien va a editar, por su cuenta de Google.
  *
- * Se comparte SÓLO la raíz EDICION: Drive hereda el permiso a todo lo que
- * cuelgue después, así que los archivos que se suban más tarde ya nacen
- * accesibles y no hay que compartir 300 veces.
+ * Se comparte SÓLO `{proyecto}/EDICION`, también en un álbum: Drive hereda el
+ * permiso a todo lo que cuelgue después, así que los archivos que se suban más
+ * tarde —y los temas que se manden la semana que entra— ya nacen accesibles.
+ * Un álbum se comparte UNA vez, no una por tema.
  *
  * Con `reader`, no `writer`: la revisión vuelve por el panel, no por Drive. Con
  * permiso de escritura podría borrar la sesión completa sin querer y no habría
@@ -69,7 +71,7 @@ async function compartir(b: any) {
   const sb = supabaseAdmin();
   const { data: env } = await sb
     .from("edicion_envios")
-    .select("id, clave, notificar_email, compartido_con")
+    .select("id, proyecto_id, notificar_email, compartido_con")
     .eq("id", envioId)
     .maybeSingle();
   if (!env) return NextResponse.json({ error: "Ese envío ya no existe." }, { status: 404 });
@@ -78,19 +80,23 @@ async function compartir(b: any) {
   if (!correo) return NextResponse.json({ ok: true, omitido: "el envío no tiene correo a quien avisar" });
   if (env.compartido_con === correo) return NextResponse.json({ ok: true, yaEstaba: true });
 
-  const { data: raiz } = await sb
-    .from("edicion_carpetas")
-    .select("drive_id")
-    .eq("clave", env.clave)
-    .eq("subruta", "")
-    .maybeSingle();
-  if (!raiz?.drive_id) return NextResponse.json({ ok: true, omitido: "la carpeta todavía no existe" });
+  // ¿Ya se le compartió en otro envío del mismo proyecto (otro tema del disco,
+  // o un envío anterior)? Es la misma carpeta: se anota y ya.
+  const { data: previo } = await sb.from("edicion_envios")
+    .select("id").eq("proyecto_id", env.proyecto_id).eq("compartido_con", correo).limit(1);
+  if (previo?.length) {
+    await sb.from("edicion_envios").update({ compartido_con: correo }).eq("id", envioId);
+    return NextResponse.json({ ok: true, yaEstaba: true });
+  }
 
-  const ok = await compartirConCorreo(raiz.drive_id, correo, "reader");
+  const raiz = await carpetaEdicionProyecto(sb, env.proyecto_id as string);
+  if (!raiz) return NextResponse.json({ ok: true, omitido: "la carpeta todavía no existe" });
+
+  const ok = await compartirConCorreo(raiz, correo, "reader");
   if (!ok) return NextResponse.json({ error: "Drive no aceptó compartir la carpeta." }, { status: 502 });
 
   await sb.from("edicion_envios").update({ compartido_con: correo }).eq("id", envioId);
-  return NextResponse.json({ ok: true, compartido: correo, carpeta: `https://drive.google.com/drive/folders/${raiz.drive_id}` });
+  return NextResponse.json({ ok: true, compartido: correo, carpeta: `https://drive.google.com/drive/folders/${raiz}` });
 }
 
 /**
@@ -126,8 +132,11 @@ async function avisar(b: any) {
   // aviso a que lleguen tres iguales.
   await sb.from("edicion_envios").update({ avisado_en: new Date().toISOString() }).eq("id", envioId);
 
-  const [{ data: proy }, { count: n }, { data: pesos }] = await Promise.all([
+  const [{ data: proy }, { data: tema }, { count: n }, { data: pesos }] = await Promise.all([
     sb.from("proyectos").select("titulo").eq("id", env.proyecto_id).maybeSingle(),
+    env.tarea_id
+      ? sb.from("proyecto_tareas").select("titulo").eq("id", env.tarea_id).maybeSingle()
+      : Promise.resolve({ data: null as { titulo: string } | null }),
     sb.from("edicion_archivos").select("id", { count: "exact", head: true }).eq("clave", env.clave).not("subido_at", "is", null),
     sb.from("edicion_archivos").select("bytes").eq("clave", env.clave).not("subido_at", "is", null).limit(1000),
   ]);
@@ -137,15 +146,21 @@ async function avisar(b: any) {
   const mb = (pesos ?? []).reduce((a, r) => a + Number(r.bytes), 0) / 1e6;
   const cuanto = mb > 900 ? `${(mb / 1000).toFixed(1)} GB` : `${Math.round(mb)} MB`;
 
-  const cuerpo = env.num === 1
+  // En un álbum cada tema avisa por su cuenta en cuanto termina de subir, así
+  // quien edita empieza por el primero sin esperar al disco entero. Por eso el
+  // tema va AL PRINCIPIO: es lo que distingue un aviso del siguiente.
+  const nombreTema = (tema?.titulo as string | null | undefined) ?? null;
+  const nombreProyecto = (proy?.titulo as string | null) ?? null;
+  const cuerpoBase = env.num === 1
     ? `Ya está en Drive lo que tienes que editar — ${n} archivos, ${cuanto}`
     : `Se subieron los archivos que faltaban — envío ${env.num}`;
+  const cuerpo = nombreTema ? `${nombreTema}: ${cuerpoBase}` : cuerpoBase;
 
   const urlPanel = destinoProyectoTab(env.proyecto_id as string, "produccion");
 
   await pushAEmails(sb, [correo], {
     titulo: "ARIDO · Edición",
-    cuerpo: conProyecto((proy?.titulo as string | null) ?? null, env.nota ? `${cuerpo}. ${env.nota}` : cuerpo),
+    cuerpo: conProyecto(nombreProyecto, env.nota ? `${cuerpo}. ${env.nota}` : cuerpo),
     // A la pestaña, no al tablero: este aviso pide una acción que vive ahí.
     url: urlPanel,
   });
@@ -160,7 +175,9 @@ async function avisar(b: any) {
   const correoEnviado = await mandarCorreo(sb, {
     correo,
     clave: env.clave as string,
-    proyecto: (proy?.titulo as string | null) ?? "la producción",
+    proyecto: nombreTema
+      ? `${nombreTema} (${nombreProyecto ?? "el disco"})`
+      : (nombreProyecto ?? "la producción"),
     envio: env.num as number,
     archivos: n ?? 0,
     peso: cuanto,
@@ -171,7 +188,7 @@ async function avisar(b: any) {
 
   await registrarActividad(sb, {
     tipo: "edicion_enviada",
-    titulo: `Se le mandó a editar el envío ${env.num} (${n} archivos)`,
+    titulo: `Se le mandó a editar ${nombreTema ? `${nombreTema}, ` : "el "}envío ${env.num} (${n} archivos)`,
     actor: null,
     proyecto_id: env.proyecto_id as string,
     tarea_id: (env.tarea_id as string | null) ?? null,
@@ -247,6 +264,11 @@ async function resolverCarpeta(b: any) {
   const subruta = String(b.subruta ?? "").trim();
 
   if (!clave || !proyectoId) return NextResponse.json({ error: "Falta la clave o el proyecto." }, { status: 400 });
+  // La clave se DERIVA de los otros dos; si no cuadran, lo que se cachee bajo
+  // esa clave apuntaría a la carpeta de otra canción.
+  if (clave !== (tareaId || proyectoId)) {
+    return NextResponse.json({ error: "La clave no corresponde al proyecto." }, { status: 400 });
+  }
 
   // Los tramos vienen de `path.relative` del lado del script, pero esto es una
   // ruta de red: un ".." aquí se traduciría en trepar el árbol de Drive.
@@ -274,22 +296,12 @@ async function resolverCarpeta(b: any) {
     return NextResponse.json({ folderId: cache.drive_id, accessToken: cred.accessToken, expiresAt: cred.expiresAt });
   }
 
-  // La raíz EDICION se resuelve siempre: es el padre de todo lo demás, y así
-  // queda cacheada la primera vez que se pide cualquier subcarpeta.
-  let base = await carpetaDelProyecto(sb, proyectoId);
-  if (!base) return NextResponse.json({ error: "No se pudo resolver la carpeta del proyecto." }, { status: 409 });
-
-  // Canción de EP/Álbum: cuelga de la del álbum, igual que en el disco.
-  if (tareaId) {
-    const { data: t } = await sb.from("proyecto_tareas").select("titulo").eq("id", tareaId).maybeSingle();
-    if (!t) return NextResponse.json({ error: "La canción ya no existe." }, { status: 409 });
-    base = await buscarOCrearCarpeta(String(t.titulo), base);
-    if (!base) return NextResponse.json({ error: "No se pudo crear la carpeta de la canción." }, { status: 502 });
-  }
-
-  let actual = await buscarOCrearCarpeta("EDICION", base);
-  if (!actual) return NextResponse.json({ error: "No se pudo crear la carpeta EDICION." }, { status: 502 });
-  await guardar(sb, clave, "", actual);
+  // La raíz se resuelve siempre: es el padre de todo lo demás, y así queda
+  // cacheada la primera vez que se pide cualquier subcarpeta. En un álbum es
+  // EDICION/{canción}; si no, EDICION a secas.
+  const raiz = await carpetaEdicionDe(sb, { proyectoId, tareaId });
+  if ("error" in raiz) return NextResponse.json({ error: raiz.error }, { status: raiz.status });
+  let actual = raiz.id;
 
   // Y luego cada tramo, guardando el camino: pedir "Media/X/Y" deja cacheadas
   // también "Media" y "Media/X", que es lo que van a pedir los demás archivos.
@@ -299,22 +311,8 @@ async function resolverCarpeta(b: any) {
     const hija = await buscarOCrearCarpeta(t, actual);
     if (!hija) return NextResponse.json({ error: `No se pudo crear la carpeta ${t}.` }, { status: 502 });
     actual = hija;
-    await guardar(sb, clave, recorridas.join("/"), hija);
+    await guardarCarpeta(sb, clave, recorridas.join("/"), hija);
   }
 
   return NextResponse.json({ folderId: actual, accessToken: cred.accessToken, expiresAt: cred.expiresAt });
-}
-
-/** Cachea el id. `ignoreDuplicates` porque dos corridas solapadas pueden
- *  resolver la misma carpeta a la vez, y eso no es un error. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function guardar(sb: any, clave: string, subruta: string, driveId: string) {
-  try {
-    await sb.from("edicion_carpetas").upsert(
-      { clave, subruta, drive_id: driveId },
-      { onConflict: "clave,subruta", ignoreDuplicates: true },
-    );
-  } catch {
-    /* el id ya lo tenemos en memoria; cachearlo es una optimización */
-  }
 }
