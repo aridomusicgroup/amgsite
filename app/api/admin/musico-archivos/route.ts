@@ -84,6 +84,31 @@ export async function DELETE(req: NextRequest) {
 }
 
 /**
+ * POST: reintentar un archivo que falló. reaper-sync sólo procesa filas sin
+ * `error`, así que limpiarlo es lo único que hace falta: en la próxima corrida
+ * vuelve a intentar el paso donde se quedó (bajar, importar o retirar).
+ */
+export async function POST(req: NextRequest) {
+  const actor = await getProduccionEmail();
+  if (!actor) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
+  const b = await req.json().catch(() => ({}));
+  const id = String(b.id || "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ error: "Falta el id." }, { status: 400 });
+
+  const sb = supabaseAdmin();
+  const { data, error } = await sb.from("musico_archivos")
+    .update({ error: null })
+    .eq("id", id)
+    .not("error", "is", null)
+    .select("id");
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data?.length) return NextResponse.json({ error: "Ese archivo no tiene ningún error que reintentar." }, { status: 409 });
+
+  return NextResponse.json({ ok: true });
+}
+
+/**
  * PATCH: aprobar un previo — el único camino hacia el cliente.
  *
  * No copia ni re-sube nada: crea una fila de `render_jobs` apuntando al MISMO

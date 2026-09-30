@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Headphones, FileMusic, Loader2, Check, Send, HardDriveDownload, AlertCircle, Trash2 } from "lucide-react";
+import { Headphones, FileMusic, Loader2, Check, Send, HardDriveDownload, AlertCircle, Trash2, RotateCw } from "lucide-react";
 import { toast } from "@/lib/toast";
 
 interface ArchivoMusico {
@@ -89,6 +89,20 @@ export function MusicosProyecto({ proyectoId }: { proyectoId: string }) {
     } finally { setBusy(null); }
   };
 
+  const reintentar = async (a: ArchivoMusico) => {
+    setBusy(a.id);
+    try {
+      const r = await fetch("/api/admin/musico-archivos", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: a.id }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { toast(`⚠️ ${d.error || "No se pudo reintentar"}`); return; }
+      toast("✓ Se reintenta en la próxima sincronización de la PC");
+      await cargar();
+    } finally { setBusy(null); }
+  };
+
   if (archivos === null) {
     return <p className="text-xs text-white/30 flex items-center gap-1.5"><Loader2 size={11} className="animate-spin" /> Cargando…</p>;
   }
@@ -117,7 +131,7 @@ export function MusicosProyecto({ proyectoId }: { proyectoId: string }) {
                 </p>
               </div>
 
-              {retirandose ? (
+              {retirandose && !a.error ? (
                 <span className="text-[11px] text-white/45 shrink-0">quitándose en la PC…</span>
               ) : a.clase === "previo" ? (
                 a.aprobado_at ? (
@@ -131,6 +145,14 @@ export function MusicosProyecto({ proyectoId }: { proyectoId: string }) {
                 )
               ) : (
                 <EstadoStem a={a} />
+              )}
+
+              {a.error && a.clase === "stem" && (
+                <button onClick={() => reintentar(a)} disabled={busy === a.id}
+                  title="Volver a intentarlo en la próxima sincronización de la PC (cierra el proyecto en REAPER antes)"
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-white/60 hover:text-white hover:bg-white/5 disabled:opacity-40 shrink-0 cursor-pointer">
+                  {busy === a.id ? <Loader2 size={11} className="animate-spin" /> : <RotateCw size={11} />} Reintentar
+                </button>
               )}
 
               {quitable && (
