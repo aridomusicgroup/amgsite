@@ -22,8 +22,10 @@ const fecha = (s: string) =>
  * primera y segunda charcheta— una sola pista todavía no es "entregado".
  */
 const piden = (a: AsignacionMusico) => Math.max(1, a.canales.length);
+// Sólo los huecos que se le PIDEN: las pistas extra del trombón (2, 3, 4) son
+// un bono, no deben dar "3 de 1".
 const subidas = (a: AsignacionMusico) =>
-  new Set(a.archivos.filter((x) => x.clase === "stem").map((x) => x.slot)).size;
+  new Set(a.archivos.filter((x) => x.clase === "stem" && x.slot < piden(a)).map((x) => x.slot)).size;
 const entregada = (a: AsignacionMusico) => subidas(a) >= piden(a);
 
 export default async function MusicoPage() {
@@ -147,6 +149,18 @@ function Tarjeta({ a }: { a: AsignacionMusico }) {
           <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Indicaciones</p>
           <p className="text-sm text-white/70 whitespace-pre-wrap break-words">{a.nota}</p>
         </div>
+      )}
+
+      {(a.bpm || a.tonalidad || a.compas) && (
+        // Lo mismo que trae el correo del previo, para no tener que buscarlo.
+        <dl className="grid grid-cols-3 rounded-xl border border-white/8 bg-white/[0.02] mb-3 divide-x divide-white/8 text-center">
+          {[["Tempo", a.bpm ? `${a.bpm} bpm` : null], ["Tonalidad", a.tonalidad], ["Compás", a.compas]].map(([k, v]) => (
+            <div key={k} className="px-2 py-2.5 min-w-0">
+              <dt className="text-[11px] uppercase tracking-wider text-white/35">{k}</dt>
+              <dd className={`text-sm mt-0.5 truncate ${v ? "text-white" : "text-white/25"}`}>{v ?? "—"}</dd>
+            </div>
+          ))}
+        </dl>
       )}
 
       {a.referencia && (

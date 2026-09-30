@@ -1,4 +1,5 @@
 import { SOCIALS, DOMAINS } from "./site";
+import { FORMATO_PISTA, FORMATO_PREVIO } from "./formato-musico";
 
 /**
  * Logo de la marca en los correos. Debe ser URL absoluta y pública: el cliente
@@ -536,11 +537,21 @@ export function previoMusicoEmail(d: {
   proyecto: string;
   bpm: number;
   tonalidad: string;
+  /** "6/8". El 80% del acervo no es 4/4: sin esto el músico lo adivinaba de oído. */
+  compas?: string | null;
   instrumentos: string[];
   /** Lo que hoy se dice por WhatsApp y se pierde: "entras en el segundo coro". */
   nota?: string | null;
   url: string;
 }): { subject: string; html: string } {
+  const compas = d.compas?.trim() || null;
+  // Con tres datos en un celular "123 bpm" no cabe a 26px y el "bpm" se baja de
+  // renglón: letra un poco menor y sin partir.
+  const celda = (titulo: string, valor: string, ultima = false) => `
+          <td align="center" valign="top" style="padding:16px 8px;${ultima ? "" : "border-right:1px solid #222;"}">
+            <p style="color:#c42f42;font-size:11px;font-weight:bold;letter-spacing:2px;margin:0 0 4px;">${titulo}</p>
+            <p style="color:#fff;font-size:${compas ? 22 : 26}px;font-weight:bold;margin:0;white-space:nowrap;">${valor}</p>
+          </td>`;
   const parte = d.instrumentos.length ? ` de <b style="color:#fff;">${escHtml(d.instrumentos.join(", "))}</b>` : "";
   // Va ARRIBA del tempo y la tonalidad a propósito: esos dos los puede volver a
   // mirar cuando quiera, la indicación es lo que se lee una vez y decide cómo
@@ -559,21 +570,21 @@ export function previoMusicoEmail(d: {
       <p style="color:#999;font-size:14px;margin:0 0 16px;">${d.musico ? `${escHtml(d.musico)}, aquí` : "Aquí"} está el previo de <b style="color:#fff;">${escHtml(d.proyecto)}</b> para que prepares tu parte${parte}.</p>
       ${indicaciones}
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#141414;border:1px solid #222;border-radius:14px;margin-bottom:16px;">
-        <tr>
-          <td align="center" style="padding:16px;border-right:1px solid #222;">
-            <p style="color:#c42f42;font-size:11px;font-weight:bold;letter-spacing:2px;margin:0 0 4px;">TEMPO</p>
-            <p style="color:#fff;font-size:26px;font-weight:bold;margin:0;">${d.bpm}<span style="font-size:13px;color:#888;"> bpm</span></p>
-          </td>
-          <td align="center" style="padding:16px;">
-            <p style="color:#c42f42;font-size:11px;font-weight:bold;letter-spacing:2px;margin:0 0 4px;">TONALIDAD</p>
-            <p style="color:#fff;font-size:26px;font-weight:bold;margin:0;">${escHtml(d.tonalidad)}</p>
-          </td>
+        <tr>${celda("TEMPO", `${d.bpm}<span style="font-size:13px;color:#888;"> bpm</span>`)}${celda("TONALIDAD", escHtml(d.tonalidad), !compas)}${compas ? celda("COMPÁS", escHtml(compas), true) : ""}
         </tr>
       </table>
       <a href="${d.url}" style="display:block;background:#c42f42;color:#fff;text-decoration:none;text-align:center;padding:14px;border-radius:30px;font-size:15px;font-weight:bold;">Escuchar y descargar la pista</a>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#141414;border:1px solid #222;border-radius:10px;margin-top:16px;">
+        <tr><td style="padding:12px 14px;">
+          <p style="color:#c42f42;font-size:11px;font-weight:bold;letter-spacing:2px;margin:0 0 6px;">CÓMO MANDAR TU PISTA</p>
+          <p style="color:#fff;font-size:14px;font-weight:bold;margin:0 0 6px;">${escHtml(FORMATO_PISTA.corto)}</p>
+          ${FORMATO_PISTA.pasos.map((p) => `<p style="color:#aaa;font-size:13px;line-height:1.45;margin:0 0 3px;">• ${escHtml(p)}</p>`).join("")}
+          <p style="color:#777;font-size:12px;line-height:1.45;margin:8px 0 0;">Previo para escuchar (opcional): ${escHtml(FORMATO_PREVIO.corto)}.</p>
+        </td></tr>
+      </table>
       <p style="color:#666;font-size:12px;margin:14px 0 0;">Se abre en Google Drive. Cualquier duda contéstanos este correo o mándanos WhatsApp.</p>
     </td></tr>`;
-  return { subject: `🎷 ${d.proyecto} — ${d.bpm}bpm en ${d.tonalidad}`, html: wrap(content) };
+  return { subject: `🎷 ${d.proyecto} — ${d.bpm}bpm en ${d.tonalidad}${compas ? ` · ${compas}` : ""}`, html: wrap(content) };
 }
 
 /**

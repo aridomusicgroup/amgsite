@@ -70,6 +70,7 @@ export async function avisarMusicoDeRender(sb: SB, jobId: string): Promise<Resul
     proyecto: await tituloDelPrevio(sb, job.proyecto_id as string, job.tarea_id as string | null),
     bpm: Number(op.bpm) || 0,
     tonalidad: String(op.tonalidad || "—"),
+    compas: await compasDelPrevio(sb, job.proyecto_id as string, job.tarea_id as string | null),
     instrumentos: (m?.instrumentos as string[] | null) ?? [],
     nota: String(op.nota ?? "").trim() || null,
     url: enlace,
@@ -185,4 +186,20 @@ async function tituloDelPrevio(sb: SB, proyectoId: string, tareaId: string | nul
   }
   const { data: p } = await sb.from("proyectos").select("titulo").eq("id", proyectoId).maybeSingle();
   return String(p?.titulo || "").trim() || "la producción";
+}
+
+/**
+ * El compás de lo que se graba: el del tema en un EP y, si el tema no lo
+ * tiene, el del proyecto. Se lee de la base al mandar y no de las opciones del
+ * render, porque el render nunca lo pidió — y así los previos ya hechos que se
+ * reenvían también lo llevan. null si nadie lo ha capturado (o la columna no existe).
+ */
+async function compasDelPrevio(sb: SB, proyectoId: string, tareaId: string | null): Promise<string | null> {
+  const limpio = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  if (tareaId) {
+    const { data: t, error } = await sb.from("proyecto_tareas").select("compas").eq("id", tareaId).maybeSingle();
+    if (!error && limpio(t?.compas)) return limpio(t?.compas);
+  }
+  const { data: p, error } = await sb.from("proyectos").select("compas").eq("id", proyectoId).maybeSingle();
+  return error ? null : limpio(p?.compas);
 }

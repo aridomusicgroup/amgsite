@@ -1,8 +1,12 @@
 "use client";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, Loader2, AlertCircle, Headphones, FileMusic, Check, Clock, X, Trash2, MapPin } from "lucide-react";
+import { Upload, Loader2, AlertCircle, Headphones, FileMusic, Check, Clock, X, Trash2, MapPin, Plus } from "lucide-react";
 import type { ArchivoMusico } from "@/lib/musico-data";
+import { FORMATO_PISTA, FORMATO_PREVIO } from "@/lib/formato-musico";
+
+/** Pistas por instrumento, contando la principal. Mismo tope que el servidor. */
+const MAX_PISTAS = 4;
 
 /**
  * Lo que el músico sube, directo del navegador a Google Drive.
@@ -26,14 +30,14 @@ import type { ArchivoMusico } from "@/lib/musico-data";
 const CLASES = {
   previo: {
     label: "Mandar un previo",
-    ayuda: "Un MP3 para que lo escuchen. Se comparte con el cliente solo si el estudio lo aprueba.",
+    ayuda: "Para escucharlo. Se comparte con el cliente solo si el estudio lo aprueba.",
     accept: "audio/mpeg,.mp3",
     valido: (n: string) => /\.mp3$/i.test(n),
     error: "El previo tiene que ser un MP3 — es el único formato que se puede escuchar desde el panel.",
   },
   stem: {
     label: "Mandar mi pista",
-    ayuda: "El WAV de tu grabación. Entra directo al proyecto del estudio.",
+    ayuda: "Tu grabación. Entra directo al proyecto del estudio.",
     accept: "audio/wav,audio/x-wav,.wav",
     valido: (n: string) => /\.wav$/i.test(n),
     error: "La pista tiene que ser un WAV — un MP3 pierde calidad y ya no sirve para mezclar.",
@@ -91,7 +95,17 @@ export function SubirParte({ asignacionId, archivos, canales, destino, duracionR
   const canceladaRef = useRef(false);
   // Cuántas pistas se le piden. Con dos o más, sale un botón por cada una: así
   // el músico dice cuál es cuál en vez de que lo adivinemos por el orden.
-  const huecos = canales.length > 1 ? canales : [null];
+  //
+  // Sin canales fijos (el trombón) puede AGREGAR hasta 4: a veces graba primera,
+  // segunda y adornos, y con un solo botón la segunda reemplazaba a la primera.
+  // Se muestran las que ya mandó más las que abrió con "Agregar otra pista".
+  const fijos = canales.length > 1;
+  const [extra, setExtra] = useState(0);
+  const usadas = archivos.filter((a) => a.clase === "stem").reduce((m, a) => Math.max(m, a.slot + 1), 0);
+  const huecos: (string | null)[] = fijos
+    ? canales
+    : Array.from({ length: Math.min(MAX_PISTAS, Math.max(1, usadas) + extra) }, () => null);
+  const variasLibres = !fijos && huecos.length > 1;
   const [hueco, setHueco] = useState(0);
   const [subiendo, setSubiendo] = useState<Clase | null>(null);
   const [progreso, setProgreso] = useState(0);
@@ -144,7 +158,7 @@ export function SubirParte({ asignacionId, archivos, canales, destino, duracionR
         body: JSON.stringify({
           // El canal entra en el nombre para que en Drive se distingan las dos
           // charchetas sin abrirlas — y para que la segunda no pise a la primera.
-          name: `${t.prefijo}${canales[slot] ? canales[slot] + " - " : ""}${file.name.replace(/^.*[\\/]/, "")}`,
+          name: `${t.prefijo}${clase === "stem" && canales[slot] ? canales[slot] + " - " : clase === "stem" && variasLibres ? `Pista ${slot + 1} - ` : ""}${file.name.replace(/^.*[\\/]/, "")}`,
           parents: [t.folderId],
         }),
       });
@@ -256,7 +270,7 @@ export function SubirParte({ asignacionId, archivos, canales, destino, duracionR
           {subiendo === "previo" ? <Loader2 size={15} className="animate-spin" /> : <Headphones size={15} />}
           {subiendo === "previo" ? `Subiendo… ${progreso}%` : CLASES.previo.label}
         </button>
-        <p className="text-white/25 text-[11px] mt-1.5 leading-snug">{CLASES.previo.ayuda}</p>
+        <Formato formato={FORMATO_PREVIO} ayuda={CLASES.previo.ayuda} />
         <input ref={previoRef} type="file" accept={CLASES.previo.accept} className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) elegir("previo", f, 0); }} />
       </div>
@@ -281,8 +295,8 @@ export function SubirParte({ asignacionId, archivos, canales, destino, duracionR
                 : yaEsta ? <Check size={15} />
                 : <FileMusic size={15} />}
               {activo ? `Subiendo… ${progreso}%`
-                : enProyecto ? (canal ? `Pista ${i + 1} en el proyecto` : "Tu pista ya está en el proyecto")
-                : canal ? `${yaEsta ? "Cambiar" : "Mandar"} pista ${i + 1}`
+                : enProyecto ? (huecos.length > 1 ? `Pista ${i + 1} en el proyecto` : "Tu pista ya está en el proyecto")
+                : huecos.length > 1 ? `${yaEsta ? "Cambiar" : "Mandar"} pista ${i + 1}`
                 : yaEsta ? "Cambiar mi pista"
                 : CLASES.stem.label}
               {canal && <span className="opacity-60 text-xs">· {canal}</span>}
@@ -290,10 +304,22 @@ export function SubirParte({ asignacionId, archivos, canales, destino, duracionR
           );
         })}
       </div>
-      <p className="text-white/25 text-[11px] -mt-1 leading-snug">
-        {CLASES.stem.ayuda}
-        {huecos.length > 1 && " Son dos: manda cada una en su botón para que no se crucen."}
-      </p>
+      {!fijos && huecos.length < MAX_PISTAS && (
+        <button
+          onClick={() => setExtra((n) => n + 1)}
+          disabled={ocupado}
+          className="w-full flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs text-white/60 border border-dashed border-white/15 hover:text-white hover:border-white/30 transition-colors disabled:opacity-50 cursor-pointer"
+        >
+          <Plus size={13} /> Agregar otra pista ({huecos.length + 1} de {MAX_PISTAS})
+        </button>
+      )}
+      <Formato
+        formato={FORMATO_PISTA}
+        ayuda={`${CLASES.stem.ayuda}${
+          fijos ? " Son dos: manda cada una en su botón para que no se crucen."
+          : variasLibres ? " Una pista por botón: en el estudio quedan juntas en tu carpeta."
+          : ""}`}
+      />
       <input ref={stemRef} type="file" accept={CLASES.stem.accept} className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) elegir("stem", f, hueco); }} />
 
@@ -361,6 +387,29 @@ export function SubirParte({ asignacionId, archivos, canales, destino, duracionR
           })}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * Cómo exportar, pegado a su botón: el formato siempre a la vista y los pasos
+ * a un clic. Sale de `lib/formato-musico.ts`, lo mismo que dice el correo.
+ */
+function Formato({ formato, ayuda }: { formato: { corto: string; pasos: readonly string[] }; ayuda: string }) {
+  return (
+    <div className="mt-1.5 text-[11px] leading-snug">
+      <p className="text-white/55">
+        Exporta en: <b className="font-medium text-white/85">{formato.corto}</b>
+      </p>
+      <p className="text-white/30 mt-0.5">{ayuda}</p>
+      <details className="mt-1 group">
+        <summary className="inline-flex text-white/40 hover:text-white/70 cursor-pointer list-none [&::-webkit-details-marker]:hidden underline underline-offset-2">
+          Cómo exportar
+        </summary>
+        <ul className="mt-1 space-y-0.5 text-white/45">
+          {formato.pasos.map((p) => <li key={p} className="pl-3 -indent-3">• {p}</li>)}
+        </ul>
+      </details>
     </div>
   );
 }

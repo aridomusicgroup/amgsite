@@ -16,6 +16,7 @@ export const runtime = "nodejs";
 
 const CLASES = ["previo", "stem"] as const;
 const MAX_NOMBRE = 200;
+const MAX_PISTAS = 4;
 
 /**
  * Registra lo que el músico acaba de subir a Drive y avisa al equipo.
@@ -50,7 +51,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const driveId = String(b.driveId || "").trim();
   const bytes = Number(b.bytes);
   // A qué canal va. Lo elige el músico con el botón, no se deduce del orden.
-  const slot = Math.min(Math.max(0, Math.trunc(Number(b.slot) || 0)), 9);
+  // Hasta 4 pistas por instrumento (decisión del dueño 2026-09-29): el trombón a
+  // veces graba primera, segunda y adornos. En REAPER quedan juntas en su carpeta.
+  const slot = Math.min(Math.max(0, Math.trunc(Number(b.slot) || 0)), MAX_PISTAS - 1);
 
   if (!(CLASES as readonly string[]).includes(clase)) {
     return NextResponse.json({ error: "Tipo de archivo desconocido." }, { status: 400 });

@@ -64,6 +64,11 @@ export interface AsignacionMusico {
    * proyecto una pista que duraba otra cosa y nada se lo dijo.
    */
   duracionRef: number | null;
+  /** Tempo, tonalidad y compás de lo que graba: los del tema en un EP, los del
+   *  proyecto si no. Los mismos que lleva el correo del previo. */
+  bpm: number | null;
+  tonalidad: string | null;
+  compas: string | null;
   archivos: ArchivoMusico[];
 }
 
@@ -115,6 +120,15 @@ async function leerArchivos(sb: ReturnType<typeof supabaseAdmin>, ids: string[])
   return [];
 }
 
+interface Musica { bpm: number | null; tonalidad: string | null; compas: string | null }
+
+/** Tempo, tonalidad y compás de una fila de proyecto o de tema; null lo que no tenga. */
+function musicaDe(f: Fila): Musica {
+  const bpm = Number(f.bpm);
+  const texto = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  return { bpm: bpm > 0 ? bpm : null, tonalidad: texto(f.tonalidad), compas: texto(f.compas) };
+}
+
 /** `id → duracion_seg` de una tabla, o vacío si la columna aún no existe. */
 async function duraciones(sb: ReturnType<typeof supabaseAdmin>, tabla: string, ids: string[]): Promise<Map<string, number>> {
   const m = new Map<string, number>();
@@ -132,11 +146,20 @@ async function duraciones(sb: ReturnType<typeof supabaseAdmin>, tabla: string, i
 export async function asignacionesDeMusico(musicoId: string): Promise<AsignacionMusico[]> {
   const sb = supabaseAdmin();
 
-  const { data: asigs } = await sb
+  // Por escalones: `compas` (y antes `bpm`/`tonalidad`) llegaron con SQL que
+  // se corre a mano. Sin el reintento, una columna ausente vaciaría el portal.
+  const completo = await sb
     .from("musico_asignaciones")
-    .select("id, instrumento, nota, estado, proyecto_id, tarea_id, proyectos(titulo, estado)")
+    .select("id, instrumento, nota, estado, proyecto_id, tarea_id, proyectos(titulo, estado, bpm, tonalidad, compas)")
     .eq("musico_id", musicoId)
     .order("creado_at", { ascending: false });
+  const asigs = (completo.error
+    ? (await sb
+      .from("musico_asignaciones")
+      .select("id, instrumento, nota, estado, proyecto_id, tarea_id, proyectos(titulo, estado)")
+      .eq("musico_id", musicoId)
+      .order("creado_at", { ascending: false })).data
+    : completo.data) as unknown as Fila[] | null;
   if (!asigs?.length) return [];
 
   // Un proyecto cerrado o cancelado ya no es trabajo pendiente de nadie.
@@ -153,7 +176,8 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
   const [archivos, tareasRes, refRes, canalesRes, durTema, durProy] = await Promise.all([
     leerArchivos(sb, ids),
     tareaIds.length
-      ? sb.from("proyecto_tareas").select("id, titulo, fecha, hecho, es_cancion").in("id", tareaIds)
+      ? sb.from("proyecto_tareas").select("id, titulo, fecha, hecho, es_cancion, bpm, tonalidad, compas").in("id", tareaIds)
+        .then((r) => (r.error ? sb.from("proyecto_tareas").select("id, titulo, fecha, hecho, es_cancion").in("id", tareaIds) : r))
       : Promise.resolve({ data: [] as Fila[] }),
     // El previo de referencia que ya se le mandó por correo desde REAPER.
     sb.from("render_jobs")
@@ -193,13 +217,14 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
     porAsig.set(k, arr);
   }
 
-  const tareas = new Map<string, { titulo: string; fecha: string | null; hecho: boolean; esCancion: boolean }>();
+  const tareas = new Map<string, { titulo: string; fecha: string | null; hecho: boolean; esCancion: boolean } & Musica>();
   for (const t of (tareasRes.data ?? []) as Fila[]) {
     tareas.set(t.id as string, {
       titulo: t.titulo as string,
       fecha: (t.fecha as string | null) ?? null,
       hecho: Boolean(t.hecho),
       esCancion: Boolean(t.es_cancion),
+      ...musicaDe(t),
     });
   }
 
@@ -211,10 +236,18 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
   }
 
   return vivas.map((a) => {
-    const p = a.proyectos as unknown as { titulo: string } | null;
+    const p = a.proyectos as unknown as Fila | null;
     const t = a.tarea_id ? tareas.get(a.tarea_id as string) : undefined;
-    const proyecto = p?.titulo ?? "Producción";
+    const proyecto = (p?.titulo as string | undefined) ?? "Producción";
     const tema = t?.esCancion ? t.titulo : null;
+    // Cada dato por separado: un tema con BPM pero sin compás toma el compás
+    // del disco (casi siempre el mismo en todo el EP).
+    const delProy = musicaDe(p ?? {});
+    const musica = {
+      bpm: (tema ? t?.bpm : null) ?? delProy.bpm,
+      tonalidad: (tema ? t?.tonalidad : null) ?? delProy.tonalidad,
+      compas: (tema ? t?.compas : null) ?? delProy.compas,
+    };
     return {
       id: a.id as string,
       instrumento: a.instrumento as string,
@@ -231,6 +264,7 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
       // En un EP la referencia es la del tema; si el tema no tiene, no se
       // compara contra el disco entero (no dice nada del tema).
       duracionRef: tema ? durTema.get(a.tarea_id as string) ?? null : durProy.get(a.proyecto_id as string) ?? null,
+      ...musica,
       archivos: porAsig.get(a.id as string) ?? [],
     };
   });
