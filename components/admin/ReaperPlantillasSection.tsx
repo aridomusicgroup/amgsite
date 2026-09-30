@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import { Loader2, Plus, X, ArrowRight, Clock, FolderOpen } from "lucide-react";
 import { toast } from "@/lib/toast";
-import { PAQUETES } from "@/lib/servicios";
+import { paquetes } from "@/lib/servicios";
+import { useCatalogo } from "@/components/admin/CatalogoContext";
 import { TIPO_PROY_LABEL } from "@/lib/erp-data";
 
 type Fila = {
@@ -26,6 +27,7 @@ type Fila = {
  * el panel vive en Vercel y no puede leer el disco del estudio.
  */
 export function ReaperPlantillasSection() {
+  const PAQUETES = paquetes(useCatalogo());
   const [mapa, setMapa] = useState<Fila[] | null>(null);
   const [archivos, setArchivos] = useState<string[]>([]);
   const [escaneado, setEscaneado] = useState<string | null>(null);

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Plus, X, Loader2 } from "lucide-react";
 import { InstrumentosPicker } from "@/components/admin/InstrumentosPicker";
 import { inferirInstrumentos } from "@/lib/servicios";
+import { useCatalogo } from "@/components/admin/CatalogoContext";
 import { aMxn, esExtranjera, convertir, factorConversion, TIPO_CAMBIO_FALLBACK } from "@/lib/tipo-cambio";
 import { MEDIOS_PAGO } from "@/lib/medios-pago";
 import { OrigenCliente, ORIGEN_VACIO, type OrigenValor } from "@/components/admin/OrigenCliente";
@@ -45,6 +46,7 @@ export function NuevaVentaForm({ beats, clientes = [], tcSugerido = TIPO_CAMBIO_
   /** Promedio de las últimas ventas en dólares (lo calcula el servidor). */
   tcSugerido?: number;
 }) {
+  const catalogo = useCatalogo();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ ...EMPTY });
@@ -130,7 +132,7 @@ export function NuevaVentaForm({ beats, clientes = [], tcSugerido = TIPO_CAMBIO_
   // Precarga los instrumentos del paquete detectado (sin pisar lo que ya eligió).
   const inferir = (tipo: string, beat: string, actual: string) => {
     if (actual.trim()) return actual;
-    const inf = inferirInstrumentos([tipo, beat]);
+    const inf = inferirInstrumentos([tipo, beat], catalogo);
     return inf.length ? inf.join(", ") : actual;
   };
 

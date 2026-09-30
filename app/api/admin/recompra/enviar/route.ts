@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   const key = process.env.RESEND_API_KEY;
   if (!key) return NextResponse.json({ error: "Correo no configurado (RESEND_API_KEY)." }, { status: 500 });
 
-  const mail = correoRecompra(d, mensaje);
+  const mail = await correoRecompra(d, mensaje);
   try {
     const resend = new Resend(key);
     await resend.emails.send({

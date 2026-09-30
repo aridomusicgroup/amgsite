@@ -2,6 +2,7 @@ import { Block, renderDocument, fechaLarga } from "./render";
 import { fmtMoney, SELLER } from "./parts";
 import { LOGO_ARIDO_NEGRO } from "./logo";
 import { incluyeDePaquete } from "@/lib/servicios";
+import { getCatalogo } from "@/lib/servicios-catalogo";
 import { nombreTema } from "@/lib/temas";
 import { aplicarMerge } from "./plantilla-parse";
 import { COTIZACION_TERMINOS_SEED, COTIZACION_TERMINOS_DISENO } from "./plantilla-seeds";
@@ -56,6 +57,7 @@ export interface QuoteData {
 }
 
 export async function generateQuotePdf(d: QuoteData): Promise<Uint8Array> {
+  const catalogo = await getCatalogo();
   const fecha = d.fecha ?? new Date();
   const moneda = (d.moneda || "MXN").toUpperCase();
   const vig = d.vigenciaDias ?? 15;
@@ -121,7 +123,7 @@ export async function generateQuotePdf(d: QuoteData): Promise<Uint8Array> {
       const line = (Number(i.qty) || 0) * (Number(i.unitPrice) || 0);
       const qtyTxt = (Number(i.qty) || 0) > 1 ? ` (x${i.qty})` : "";
       const blocks: Block[] = [{ row: { left: `${i.label}${qtyTxt}`, right: fmtMoney(line, moneda) }, spaceBefore: 5 }];
-      const dePaquete = incluyeDePaquete(i.label);
+      const dePaquete = incluyeDePaquete(i.label, catalogo);
       const inc = dePaquete.length ? dePaquete : incluyeDeDiseno(i.label, disenos);
       if (inc.length) blocks.push({ text: `Incluye: ${inc.join(" · ")}`, muted: true, size: 8.5, indent: 2, spaceBefore: 1 });
       return blocks;

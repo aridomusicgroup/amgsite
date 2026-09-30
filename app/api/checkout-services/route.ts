@@ -1,30 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import rawServices from "@/data/services.json";
+import { getCatalogoEstricto } from "@/lib/servicios-catalogo";
+import { catalogoPublico } from "@/lib/servicios";
 import { attribMetadata, type Attrib } from "@/lib/attribution-server";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { DOMAINS } from "@/lib/site";
 
 /**
  * Stripe Checkout para el cotizador de servicios (MXN).
- * Valida todo contra data/services.json — nunca se confía en precios del cliente.
+ * Valida todo contra el catálogo (tabla servicios_catalogo) — nunca se confía en precios del cliente.
  */
-
-interface L {
-  es: string;
-  en: string;
-}
-const services = rawServices as unknown as {
-  bases: Array<{
-    id: string;
-    name: L;
-    price: number;
-    includedExtras: string[];
-    choices: Array<{ id: string; options: Array<{ id: string; label: L }> }>;
-  }>;
-  extras: Array<{ id: string; label: L; price: number }>;
-  studio: Array<{ id: string; label: L; price: number }>;
-};
 
 export async function POST(req: NextRequest) {
   if (!rateLimit(`checkoutsvc:${clientIp(req)}`, 15, 60_000)) {
@@ -51,6 +36,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid body." }, { status: 400 });
   }
 
+  // Sólo lo que hoy se vende: un paquete oculto no se puede pagar aunque alguien
+  // mande su id a mano. Los precios salen de aquí, nunca del navegador.
+  let services;
+  try {
+    services = catalogoPublico(await getCatalogoEstricto());
+  } catch {
+    // Mejor no cobrar que cobrar con precios que quizá ya cambiaron.
+    return NextResponse.json({ error: "Catálogo no disponible, intenta en un momento." }, { status: 503 });
+  }
   const lang = body.lang === "en" ? "en" : "es";
   const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
   const summary: string[] = [];

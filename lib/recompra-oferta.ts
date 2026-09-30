@@ -5,11 +5,11 @@
 // paquete de $8,600 (se siente fuera de lugar y no abre el correo otra vez);
 // a quien ya soltó $9,000 no se le ofrece "más beats" como primera opción.
 //
-// Los precios salen de `data/services.json` — la misma fuente que la web y el
-// cotizador — para que no se desincronicen cuando cambien los paquetes.
+// Los precios salen del catálogo del cotizador (tabla `servicios_catalogo`) — la
+// misma fuente que la web y el cotizador — para que no se desincronicen cuando cambien los paquetes.
 //
 // Módulo PURO: lo usan el panel (navegador) y la ruta que manda el correo.
-import servicesRaw from "@/data/services.json";
+import { CATALOGO_SEMILLA, type Catalogo } from "./servicios";
 import { DOMAINS, SOCIALS } from "./site";
 
 /**
@@ -23,13 +23,11 @@ export interface PerfilCompra {
   ultimaCompraTipo: string | null;
 }
 
-const services = servicesRaw as unknown as {
-  bases: { id: string; price: number; includes: { es: string[] } }[];
-  studio: { id: string; price: number }[];
+/** Precio de un servicio de estudio que hoy se vende; 0 si está oculto o ya no existe. */
+const precioStudio = (cat: Catalogo, id: string): number => {
+  const s = cat.studio.find((x) => x.id === id);
+  return s?.activo ? s.price : 0;
 };
-
-const precioStudio = (id: string): number =>
-  services.studio.find((s) => s.id === id)?.price ?? 0;
 
 /**
  * El paquete con ensamble más barato: es el ancla honesta para el "desde".
@@ -38,12 +36,12 @@ const precioStudio = (id: string): number =>
  * verdad (Tumbes 4, Alucines 6, Empedes 5) del "Beat Urbano" ($3,000), que solo
  * trae producción + mezcla y no es un ensamble. Sin esto el correo prometía
  * "paquete completo desde $3,000" — un precio real, pero de otro producto.
+ * Sólo cuentan los paquetes que hoy se venden.
  */
-const PAQUETE_DESDE = Math.min(
-  ...services.bases.filter((b) => b.price > 0 && b.includes.es.length >= 3).map((b) => b.price),
-);
-const MEZCLA = precioStudio("mezcla-master");
-const MEZCLA_VOCES = precioStudio("mezcla-voces");
+const paqueteDesde = (cat: Catalogo): number => {
+  const precios = cat.bases.filter((b) => b.activo && b.price > 0 && b.includes.es.length >= 3).map((b) => b.price);
+  return precios.length ? Math.min(...precios) : 0;
+};
 
 export interface Sugerencia {
   titulo: string;
@@ -79,7 +77,10 @@ const loSuyo = (c: PerfilCompra): string =>
 
 type Clave = "mezclaVoces" | "mezcla" | "cotizacion" | "paquete" | "beats" | "exclusiva";
 
-function ofertas(c: PerfilCompra): Record<Clave, Sugerencia> {
+function ofertas(c: PerfilCompra, cat: Catalogo): Record<Clave, Sugerencia> {
+  const MEZCLA = precioStudio(cat, "mezcla-master");
+  const MEZCLA_VOCES = precioStudio(cat, "mezcla-voces");
+  const PAQUETE_DESDE = paqueteDesde(cat);
   const suyo = loSuyo(c);
   const waExclusiva = `${SOCIALS.whatsapp}?text=${encodeURIComponent(
     `Hola, me interesa la exclusiva de ${c.ultimaCompraConcepto ?? "un beat"}`,
@@ -151,7 +152,13 @@ const ORDEN: Record<Escalon, Clave[]> = {
   alto: ["paquete", "cotizacion", "beats"],
 };
 
-export function sugerenciasPara(c: PerfilCompra): Sugerencia[] {
-  const o = ofertas(c);
-  return ORDEN[escalonDe(c)].map((k) => o[k]);
+export function sugerenciasPara(c: PerfilCompra, cat: Catalogo = CATALOGO_SEMILLA): Sugerencia[] {
+  const o = ofertas(c, cat);
+  // Nunca se ofrece lo que hoy no se vende ni se escribe un precio de 0.
+  const vende: Partial<Record<Clave, boolean>> = {
+    mezclaVoces: precioStudio(cat, "mezcla-voces") > 0,
+    mezcla: precioStudio(cat, "mezcla-master") > 0,
+    paquete: paqueteDesde(cat) > 0,
+  };
+  return ORDEN[escalonDe(c)].filter((k) => vende[k] !== false).map((k) => o[k]);
 }

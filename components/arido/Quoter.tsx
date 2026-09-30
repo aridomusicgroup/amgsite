@@ -6,46 +6,13 @@ import { useLang } from "@/lib/i18n";
 import { SOCIALS } from "@/lib/site";
 import { getAttribution } from "@/lib/attribution";
 import { track } from "@/lib/track";
-import rawServices from "@/data/services.json";
-
-type L = { es: string; en: string };
-interface Choice {
-  id: string;
-  label: L;
-  options: { id: string; label: L }[];
-}
-interface Base {
-  id: string;
-  name: L;
-  tagline: L;
-  price: number;
-  includes: { es: string[]; en: string[] };
-  includedExtras: string[];
-  choices: Choice[];
-}
-interface Extra {
-  id: string;
-  label: L;
-  price: number;
-}
-interface Studio {
-  id: string;
-  label: L;
-  description: L;
-  price: number;
-}
-
-const services = rawServices as unknown as {
-  bases: Base[];
-  extras: Extra[];
-  studio: Studio[];
-};
+import type { Catalogo } from "@/lib/servicios";
 
 const fmt = (n: number) => `$${n.toLocaleString("es-MX")}`;
 
-export function Quoter() {
+export function Quoter({ catalogo: services }: { catalogo: Catalogo }) {
   const { lang } = useLang();
-  const [baseId, setBaseId] = useState<string>("tumbes");
+  const [baseId, setBaseId] = useState<string>(services.bases[0]?.id ?? "");
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [extras, setExtras] = useState<Set<string>>(new Set());
   const [studio, setStudio] = useState<Set<string>>(new Set());
@@ -53,7 +20,7 @@ export function Quoter() {
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const base = services.bases.find((b) => b.id === baseId)!;
+  const base = services.bases.find((b) => b.id === baseId) ?? services.bases[0];
   const hasBeat = base.id !== "scratch";
 
   const selectBase = (id: string) => {
@@ -94,7 +61,7 @@ export function Quoter() {
       if (st) items.push({ label: st.label[lang], price: st.price });
     }
     return items;
-  }, [base, baseId, choices, extras, studio, lang, hasBeat]);
+  }, [base, baseId, choices, extras, studio, lang, hasBeat, services]);
 
   const total = lineItems.reduce((acc, i) => acc + i.price, 0);
 

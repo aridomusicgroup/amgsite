@@ -9,10 +9,10 @@ import { MonedaYCambio } from "@/components/admin/MonedaYCambio";
 import { validarTipoCambio, aMxn, esExtranjera, convertir } from "@/lib/tipo-cambio";
 import { COMISION_PAYPAL, desglose } from "@/lib/comision";
 import { esEmail, partirCorreos } from "@/lib/destinatarios";
-import servicesRaw from "@/data/services.json";
 import { InstrumentosPicker } from "@/components/admin/InstrumentosPicker";
 import { PlantillasEditor, type PlantillaItem } from "@/components/admin/PlantillasEditor";
-import { inferirInstrumentos, incluyeDePaquete } from "@/lib/servicios";
+import { inferirInstrumentos, incluyeDePaquete, catalogoLista } from "@/lib/servicios";
+import { useCatalogo } from "@/components/admin/CatalogoContext";
 import type { Cotizacion, Contrato, RastroCot, ProyectoTema } from "@/lib/cotizaciones-data";
 import { costoSugerido, incluyeDeDiseno, llevaDiseno, tituloConTema, validarCosto, type ServicioDiseno } from "@/lib/diseno";
 import { DisenoCotizacion } from "@/components/admin/DisenoCotizacion";
@@ -56,18 +56,6 @@ export interface MiembroEquipo {
   nombre: string;
   rol: string | null;
 }
-
-// ── Catálogo de servicios para el selector rápido (desde services.json) ──
-const services = servicesRaw as unknown as {
-  bases: { name: { es: string }; price: number }[];
-  extras: { label: { es: string }; price: number }[];
-  studio: { label: { es: string }; price: number }[];
-};
-const CATALOGO: { group: string; label: string; price: number }[] = [
-  ...services.bases.filter((b) => b.price > 0).map((b) => ({ group: "Paquetes", label: b.name.es, price: b.price })),
-  ...services.extras.map((e) => ({ group: "Instrumentos", label: e.label.es, price: e.price })),
-  ...services.studio.map((s) => ({ group: "Estudio", label: s.label.es, price: s.price })),
-];
 
 const COT_ESTADO: Record<string, { label: string; cls: string }> = {
   borrador: { label: "Borrador", cls: "bg-white/10 text-white/60" },
@@ -650,9 +638,11 @@ function ItemsEditor({ items, onChange, moneda, diseno = [] }: {
   /** Catálogo de diseño visual: se agrega como un grupo más del selector. */
   diseno?: ServicioDiseno[];
 }) {
+  const catalogo = useCatalogo();
   const add = (label = "", price = 0) => onChange([...items, { label, qty: 1, unitPrice: price }]);
   const opciones = [
-    ...CATALOGO,
+    // El selector sólo ofrece lo que hoy se vende.
+    ...catalogoLista(catalogo),
     ...diseno.map((s) => ({ group: "Diseño", label: s.nombre.es, price: s.precio })),
   ];
   const update = (i: number, patch: Partial<QuoteItem>) => onChange(items.map((it, j) => (j === i ? { ...it, ...patch } : it)));
@@ -687,7 +677,7 @@ function ItemsEditor({ items, onChange, moneda, diseno = [] }: {
       {items.length === 0 && <p className="text-white/30 text-xs py-3 text-center">Agrega conceptos del catálogo o líneas libres.</p>}
       <div className="flex flex-col gap-2">
         {items.map((it, i) => {
-          const dePaquete = incluyeDePaquete(it.label);
+          const dePaquete = incluyeDePaquete(it.label, catalogo);
           const inc = dePaquete.length ? dePaquete : incluyeDeDiseno(it.label, diseno);
           return (
             <div key={i}>
@@ -733,6 +723,7 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalo
   catalogoDiseno: ServicioDiseno[]; proveedorDiseno: string; proyectosTema: ProyectoTema[];
 }) {
   const router = useRouter();
+  const catalogo = useCatalogo();
   const [tipo, setTipo] = useState(initial?.tipo ?? "");
   const [esquemaPago, setEsquemaPago] = useState(initial?.esquema_pago ?? "estandar");
   const [numCanciones, setNumCanciones] = useState(initial?.num_canciones ?? 5);
@@ -763,7 +754,7 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalo
   // Quién toca cada instrumento cotizado. La venta que se crea sola al pagar por
   // Stripe no tiene a quién preguntarle: lo toma de aquí (si no, del titular).
   const [musicos, setMusicos] = useState<{ instrumento: string; musico_id: string }[]>(initial?.musicos ?? []);
-  const instrumentosCot = useMemo(() => inferirInstrumentos(items.map((i) => i.label)).join(", "), [items]);
+  const instrumentosCot = useMemo(() => inferirInstrumentos(items.map((i) => i.label), catalogo).join(", "), [items, catalogo]);
   // Diseño visual: de qué canción nuestra es y cuánto se le paga al diseñador.
   // El pago sigue al catálogo mientras nadie lo escriba a mano.
   const [origenId, setOrigenId] = useState(initial?.proyecto_origen_id ?? "");
@@ -1347,6 +1338,9 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo, temaT
   proveedorDiseno: string;
 }) {
   const router = useRouter();
+  const catalogo = useCatalogo();
+  // Lista COMPLETA (con lo oculto): una cotización vieja pudo salir de algo que ya no se ofrece.
+  const CATALOGO = catalogoLista(catalogo, false);
   const hoy = new Date().toISOString().slice(0, 10);
   const [fecha, setFecha] = useState(hoy);
   const [titulo, setTitulo] = useState(tituloConTema(c.items[0]?.label ?? "Producción", temaTitulo));
@@ -1383,7 +1377,7 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo, temaT
     () => (libres.length ? libres : c.items.map((i) => i.label)).join("\n")
   );
   // Instrumentos inferidos del paquete cotizado (editables antes de crear el proyecto).
-  const [extras, setExtras] = useState(() => inferirInstrumentos(c.items.map((i) => i.label)).join(", "));
+  const [extras, setExtras] = useState(() => inferirInstrumentos(c.items.map((i) => i.label), catalogo).join(", "));
   /** Quién toca cada instrumento. Lo llena el propio picker. */
   const [musicosElegidos, setMusicosElegidos] = useState<{ instrumento: string; musico_id: string }[]>([]);
   // La comisión ya no dice por dónde pagó (puede ser Stripe o PayPal): se captura.

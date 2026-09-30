@@ -13,7 +13,7 @@
 export type ActividadEntidad =
   | "proyecto" | "tarea" | "venta" | "pago" | "cotizacion"
   | "contrato" | "contacto" | "egreso" | "ingreso" | "gasto_recurrente" | "usuario" | "musico"
-  | "almacenamiento" | "reparto" | "beat";
+  | "almacenamiento" | "reparto" | "beat" | "servicio";
 
 /**
  * Entidades de dinero/comercial: solo las ven los admins.
@@ -85,6 +85,8 @@ export function destinoDe(it: ItemActividad): string {
       return "/admin/finanzas?seccion=pagos";
     case "reparto":
       return "/admin/finanzas";
+    case "servicio":
+      return "/admin/servicios";
     case "beat":
       return it.entidad_id ? `/admin/beats/${encodeURIComponent(it.entidad_id)}` : "/admin/beats";
     default:
@@ -139,4 +141,7 @@ export const DOT_ACTIVIDAD: Record<string, string> = {
   beat_portada: "bg-blue-400",
   beat_visibilidad: "bg-white/50",
   beat_publicacion: "bg-green-400",
+  servicio_creado: "bg-green-400",
+  servicio_editado: "bg-amber-400",
+  servicio_visibilidad: "bg-white/50",
 };

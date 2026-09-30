@@ -1,6 +1,7 @@
 import "server-only";
 import { crearTareasDeCanciones, type TemaCreado } from "@/lib/produccion-tareas";
 import { asignarEnPortal } from "@/lib/musico-asignar";
+import { getCatalogo } from "@/lib/servicios-catalogo";
 import { instrumentosDeTema, nombreTema, temasDeCotizacion, type Tema } from "@/lib/temas";
 
 /**
@@ -37,13 +38,14 @@ export async function armarTemas(
     actor: string;
   },
 ): Promise<TemaCreado[]> {
+  const catalogo = await getCatalogo();
   const creados = await crearTareasDeCanciones(
     sb,
     d.proyectoId,
     d.tipo,
     d.temas.map((t, i) => ({
       titulo: nombreTema(t, i),
-      instrumentos: t.instrumentos ?? instrumentosDeTema(t),
+      instrumentos: t.instrumentos ?? instrumentosDeTema(t, catalogo),
       conceptos: t.conceptos,
     })),
     [],

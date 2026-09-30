@@ -6,7 +6,7 @@
 // trombón en dos de los tres temas). De lo que lleve cada tema salen sus
 // subtareas "Grabar X", su músico y la plantilla de REAPER.
 
-import { inferirInstrumentos } from "@/lib/servicios";
+import { inferirInstrumentos, type Catalogo } from "@/lib/servicios";
 
 export interface Tema {
   /** Vacío = "Canción N". */
@@ -98,7 +98,7 @@ export function descuadres(temas: Tema[], items: ItemCotizado[]): Descuadre[] {
 }
 
 /** Los instrumentos de un tema: lo que de sus conceptos se graba ("Trombón", los del paquete…). */
-export const instrumentosDeTema = (t: Tema): string[] => inferirInstrumentos(t.conceptos);
+export const instrumentosDeTema = (t: Tema, cat?: Catalogo): string[] => inferirInstrumentos(t.conceptos, cat);
 
 /** Limpia lo que llega del navegador o de la base. null si no hay temas utilizables. */
 export function limpiarTemas(raw: unknown): Tema[] | null {

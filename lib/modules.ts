@@ -40,6 +40,7 @@ export const MODULES: ModuleDef[] = [
   { href: "/admin/ventas", label: "Ventas", grupo: "dinero", desc: "Ventas, pagos y cobranza." },
   { href: "/admin/beats", label: "Beats", grupo: "contenido", desc: "Catálogo de la tienda." },
   { href: "/admin/cursos", label: "Cursos", grupo: "contenido", desc: "Cursos y sus lecciones." },
+  { href: "/admin/servicios", label: "Servicios", grupo: "contenido", desc: "Precios, paquetes e instrumentos del cotizador." },
   { href: "/admin/finanzas", label: "Finanzas", grupo: "dinero", desc: "Ingresos, egresos y nómina." },
   { href: "/admin/clientes", label: "Clientes", grupo: "operacion", desc: "CRM: contactos y seguimientos." },
   { href: "/admin/importar", label: "Importar", grupo: "herramientas", desc: "Carga masiva desde BeatStars." },
@@ -60,13 +61,16 @@ const ALL = MODULES.map((m) => m.href);
 export const OPCIONALES = [
   "/admin/marketing", "/admin/analitica", "/admin/pedidos", "/admin/cotizaciones",
   "/admin/beats", "/admin/clientes", "/admin/importar", "/admin/actividad",
-  "/admin/cursos", "/admin/dev-logs",
+  "/admin/cursos", "/admin/servicios", "/admin/dev-logs",
 ];
 
 export interface RoleModules { base: string[]; optional: string[]; defaultOn: string[] }
 
-/** Los que vienen prendidos para el rol CRM: todo lo operativo menos REAPER. */
-const CRM_DEFAULT = OPCIONALES.filter((h) => h !== "/admin/dev-logs");
+/**
+ * Los que vienen prendidos para el rol CRM: todo lo operativo menos REAPER y
+ * Servicios (cambia lo que se le cobra al cliente: se da a quien lo va a llevar).
+ */
+const CRM_DEFAULT = OPCIONALES.filter((h) => h !== "/admin/dev-logs" && h !== "/admin/servicios");
 
 export const ROLE_MODULES: Record<string, RoleModules> = {
   // El admin ve todo (base, bloqueado).

@@ -37,7 +37,9 @@ export type ActividadTipo =
   | "curso_entrega_recibida" | "curso_retro_enviada" | "curso_vendido"
   | "curso_estado_cambiado" | "curso_estreno_avisado"
   // Beats (ficha del catálogo)
-  | "beat_editado" | "beat_precio" | "beat_portada" | "beat_visibilidad" | "beat_publicacion";
+  | "beat_editado" | "beat_precio" | "beat_portada" | "beat_visibilidad" | "beat_publicacion"
+  // Catálogo del cotizador (precios, paquetes, instrumentos)
+  | "servicio_creado" | "servicio_editado" | "servicio_visibilidad";
 
 // Se mudaron al módulo puro (lo importa el navegador); se re-exportan de aquí.
 export { ENTIDADES_SENSIBLES };

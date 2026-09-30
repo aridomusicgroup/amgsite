@@ -3,6 +3,8 @@ import { AridoNavbar } from "@/components/arido/Navbar";
 import { AridoFooter } from "@/components/arido/Footer";
 import { Quoter } from "@/components/arido/Quoter";
 import { QuoterHeader } from "@/components/arido/QuoterHeader";
+import { getCatalogo } from "@/lib/servicios-catalogo";
+import { catalogoPublico } from "@/lib/servicios";
 
 export const metadata: Metadata = {
   title: "Cotizador — Arma tu producción",
@@ -20,13 +22,17 @@ export const metadata: Metadata = {
   },
 };
 
-export default function CotizadorPage() {
+// La caché del catálogo dura 60 s; sin esto la página quedaría congelada desde el build.
+export const revalidate = 60;
+
+export default async function CotizadorPage() {
+  const catalogo = catalogoPublico(await getCatalogo());
   return (
     <main className="min-h-screen bg-[var(--bg)]">
       <AridoNavbar />
       <div className="max-w-7xl mx-auto px-4 sm:px-8 pt-28 pb-24">
         <QuoterHeader />
-        <Quoter />
+        <Quoter catalogo={catalogo} />
       </div>
       <AridoFooter />
     </main>

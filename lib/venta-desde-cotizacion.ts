@@ -7,6 +7,7 @@ import { habilitarPortal } from "@/lib/musico-asignar";
 import { registrarActividad } from "@/lib/actividad";
 import { seguimientoDeCobranza } from "@/lib/seguimiento-auto";
 import { inferirInstrumentos } from "@/lib/servicios";
+import { getCatalogo } from "@/lib/servicios-catalogo";
 import { nextFolio } from "@/lib/folio";
 import { sincronizarFidelidadVenta } from "@/lib/fidelidad-server";
 import { disenoDeCotizacion, registrarPagoDiseno, temaDeOrigen } from "@/lib/diseno-sync";
@@ -143,7 +144,7 @@ export async function crearVentaDesdeCotizacionPagada(
   }
 
   const items: { label: string }[] = Array.isArray(cot.items) ? cot.items : [];
-  const instrumentos = inferirInstrumentos(items.map((i) => i.label));
+  const instrumentos = inferirInstrumentos(items.map((i) => i.label), await getCatalogo());
   const extrasStr = instrumentos.length ? instrumentos.join(", ") : null;
   // Quién toca qué: lo elegido en la cotización, o el titular del catálogo.
   const elegidos = await resolverElegidos(sb, instrumentos, cot.musicos);

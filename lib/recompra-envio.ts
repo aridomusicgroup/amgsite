@@ -2,6 +2,7 @@ import "server-only";
 import { claveRecompra, primerNombre, DIAS_REVISION } from "@/lib/recompra";
 import { sugerenciasPara, type PerfilCompra } from "@/lib/recompra-oferta";
 import { recompraEmail } from "@/lib/emails";
+import { getCatalogo } from "@/lib/servicios-catalogo";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SB = any;
@@ -47,12 +48,13 @@ export async function datosRecompra(sb: SB, id: string): Promise<DatosRecompra |
 }
 
 /** Arma el correo tal cual se va a mandar. Lo usan la vista previa y el envío. */
-export function correoRecompra(d: DatosRecompra, mensaje: string) {
+export async function correoRecompra(d: DatosRecompra, mensaje: string) {
+  const catalogo = await getCatalogo();
   return recompraEmail({
     customerName: primerNombre(d.nombre) || null,
     mensaje,
     concepto: d.perfil.ultimaCompraConcepto,
-    sugerencias: sugerenciasPara(d.perfil),
+    sugerencias: sugerenciasPara(d.perfil, catalogo),
   });
 }
 

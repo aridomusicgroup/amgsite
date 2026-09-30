@@ -28,6 +28,6 @@ export async function POST(req: NextRequest) {
   const d = await datosRecompra(supabaseAdmin(), id);
   if (!d) return NextResponse.json({ error: "Ese contacto no tiene compras." }, { status: 400 });
 
-  const mail = correoRecompra(d, mensaje);
+  const mail = await correoRecompra(d, mensaje);
   return NextResponse.json({ ...mail, para: d.email });
 }
