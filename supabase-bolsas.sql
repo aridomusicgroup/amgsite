@@ -45,7 +45,7 @@ end $$;
 
 -- 3. MEDIO DE PAGO CON UN SOLO NOMBRE ----------------------------------------
 create or replace function public.normalizar_medio_pago(t text) returns text
-language sql immutable as $$
+language sql immutable set search_path = public, pg_temp as $$
   select case
     when t is null or btrim(t) = '' then null
     when lower(btrim(t)) = 'zelle' then 'Zelle'

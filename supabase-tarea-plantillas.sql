@@ -61,6 +61,7 @@ create index if not exists idx_tpl_items_tipo on public.tarea_plantilla_items (t
 create or replace function public.guardar_tarea_plantilla(p_tipo text, p_items jsonb)
 returns void
 language plpgsql
+set search_path = public, pg_temp
 as $$
 begin
   insert into public.tarea_plantillas (tipo) values (p_tipo)

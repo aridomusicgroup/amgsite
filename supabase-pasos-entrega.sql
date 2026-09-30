@@ -36,6 +36,7 @@ comment on column public.proyecto_tareas.paso is
 create or replace function public.guardar_tarea_plantilla(p_tipo text, p_items jsonb)
 returns void
 language plpgsql
+set search_path = public, pg_temp
 as $$
 begin
   insert into public.tarea_plantillas (tipo) values (p_tipo)
