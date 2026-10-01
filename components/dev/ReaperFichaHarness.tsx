@@ -24,7 +24,7 @@ const FICHA: FichaReaper = {
       job("j6", "stems", 30, { driveUrls: [{ archivo: "a", id: "1", url: "https://drive.google.com" }, { archivo: "b", id: "2", url: "https://drive.google.com" }] }),
       job("j5", "previo", 1440, { previoNum: 2, compartir: true, avisadoEn: hace(1430) }),
       job("j4", "musico", 2000, { musicoId: "m-martin", avisadoEn: hace(1990), enlacePublico: "https://drive.google.com", opciones: { instrumento: "Charchetas", bpm: 124, tonalidad: "Em" } }),
-      job("j3", "musico", 2100, { musicoId: "m-adal", avisadoEn: hace(2090), origen: "reenvio", opciones: { instrumento: "Tololoche", reenvioDe: "j4" } }),
+      job("j3", "musico", 2100, { musicoId: "m-adal", avisadoEn: hace(2090), origen: "reenvio", opciones: { instrumento: "Tololoche" } }),
       job("j2", "previo", 4000, { previoNum: 1 }),
       job("j1", "cuantizar", 5000, { driveUrls: null }),
       job("j0", "previo", 4200, { musicoId: "m-martin", origen: "musico", compartir: true }),
