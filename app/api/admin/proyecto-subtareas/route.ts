@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProduccionEmail } from "@/lib/supabase/auth-server";
+import { getProduccionEmail, getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad, nombresPorId, nombreDeActor } from "@/lib/actividad";
 import { pushAResponsables, contextoProyecto, conProyecto, destinoTarea } from "@/lib/push";
 import { pasoDeTitulo } from "@/lib/pasos-entrega";
 import { entregaTrasPalomear, entregaParaQuienPalomeo, type EntregaLista } from "@/lib/entrega";
 import { avanzarEstadoPorTareas } from "@/lib/estado-auto";
+import { preguntaTrasPalomear, pagoParaQuienPalomeo } from "@/lib/pago-grabacion";
+import type { PreguntaPago } from "@/lib/pago-grabacion-tipos";
 
 export const dynamic = "force-dynamic";
 
@@ -115,6 +117,23 @@ export async function PATCH(req: NextRequest) {
     entrega = await entregaParaQuienPalomeo(sb, await entregaTrasPalomear(sb, { subtareaId: id }));
   }
 
+  // En un EP "Grabar X" es subtarea de cada tema: ¿ya se le pagó al músico?
+  let pagoMusico: PreguntaPago | null = null;
+  if (patch.hecho === true && !prev?.hecho && prev?.tarea_id) {
+    const { data: tema } = await sb.from("proyecto_tareas")
+      .select("proyecto_id, es_cancion").eq("id", prev.tarea_id).maybeSingle();
+    const titulo = (patch.titulo as string) || (prev?.titulo as string) || null;
+    pagoMusico = await pagoParaQuienPalomeo(
+      sb,
+      await preguntaTrasPalomear(sb, {
+        proyectoId: (tema?.proyecto_id as string | null) ?? null,
+        temaId: tema?.es_cancion ? (prev.tarea_id as string) : null,
+        titulo,
+      }),
+      { esAdmin: Boolean(await getFullAdminEmail()), quien: `${await nombreDeActor(sb, email)} palomeó “${titulo}”` },
+    );
+  }
+
   // Bitácora: solo asignación de subtarea (no el marcar/desmarcar hecho → sería ruido)
   try {
     if ("responsable_id" in patch && (patch.responsable_id ?? null) !== (prev?.responsable_id ?? null) && patch.responsable_id) {
@@ -140,7 +159,7 @@ export async function PATCH(req: NextRequest) {
     }
   } catch { /* bitácora best-effort */ }
 
-  return NextResponse.json({ ok: true, entrega, estado });
+  return NextResponse.json({ ok: true, entrega, estado, pagoMusico });
 }
 
 // ── Borrar subtarea ──

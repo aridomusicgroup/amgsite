@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProduccionEmail } from "@/lib/supabase/auth-server";
+import { getProduccionEmail, getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad, nombresPorId, nombreDeActor } from "@/lib/actividad";
 import { pushAResponsables, contextoProyecto, conProyecto, destinoTarea } from "@/lib/push";
@@ -8,6 +8,8 @@ import type { EntregaLista } from "@/lib/entrega";
 import { efectosDeTareaCompletada } from "@/lib/tarea-completar";
 import { anclarCarpeta } from "@/lib/carpeta-reaper";
 import { limpiarCompas } from "@/lib/compas";
+import { preguntaTrasPalomear, pagoParaQuienPalomeo } from "@/lib/pago-grabacion";
+import type { PreguntaPago } from "@/lib/pago-grabacion-tipos";
 
 export const dynamic = "force-dynamic";
 
@@ -158,6 +160,17 @@ export async function PATCH(req: NextRequest) {
     }));
   }
 
+  // "Grabar Charchetas" palomeada: ¿ya se le pagó al músico? (ver lib/pago-grabacion)
+  let pagoMusico: PreguntaPago | null = null;
+  if (patch.hecho === true && !prev?.hecho && !prev?.es_cancion) {
+    const titulo = (patch.titulo as string) || (prev?.titulo as string) || null;
+    pagoMusico = await pagoParaQuienPalomeo(
+      sb,
+      await preguntaTrasPalomear(sb, { proyectoId: (prev?.proyecto_id as string | null) ?? null, temaId: null, titulo }),
+      { esAdmin: Boolean(await getFullAdminEmail()), quien: `${await nombreDeActor(sb, email)} palomeó “${titulo}”` },
+    );
+  }
+
   // Bitácora: asignación y completado/reapertura (ignora ediciones de notas)
   try {
     const tareaTitulo = (patch.titulo as string) || (prev?.titulo as string) || "tarea";
@@ -194,7 +207,7 @@ export async function PATCH(req: NextRequest) {
     }
   } catch { /* bitácora best-effort */ }
 
-  return NextResponse.json({ ok: true, entrega, estado });
+  return NextResponse.json({ ok: true, entrega, estado, pagoMusico });
 }
 
 // ── Borrar una tarea ──

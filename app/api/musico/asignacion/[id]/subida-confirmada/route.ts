@@ -10,6 +10,7 @@ import { efectosDeTareaCompletada } from "@/lib/tarea-completar";
 import { entregaTrasPalomear, entregaParaQuienPalomeo } from "@/lib/entrega";
 import { avanzarEstadoPorTareas } from "@/lib/estado-auto";
 import { pistasCompletas, retirarArchivo } from "@/lib/musico-pistas";
+import { preguntaDePago, pagoParaQuienPalomeo } from "@/lib/pago-grabacion";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -99,6 +100,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const completada = clase === "stem" && asig.tareaId
     ? await completarTareaDelMusico(sb, { asignacionId: asig.id, tareaId: asig.tareaId, instrumento: asig.instrumento, musico })
     : null;
+
+  // Ya mandó todo: a los admins les llega "¿le pagas?" (el músico no es quien
+  // paga, así que aquí nunca se abre nada; ver lib/pago-grabacion).
+  if (completada && asig.tareaId) {
+    try {
+      const { data: t } = await sb.from("proyecto_tareas").select("es_cancion").eq("id", asig.tareaId).maybeSingle();
+      await pagoParaQuienPalomeo(
+        sb,
+        await preguntaDePago(sb, { proyectoId: asig.proyectoId, temaId: t?.es_cancion ? asig.tareaId : null, instrumento: asig.instrumento }),
+        { esAdmin: false, quien: `${musico.nombre} mandó sus pistas` },
+      );
+    } catch { /* el aviso de pago nunca tumba la subida */ }
+  }
 
   const { data: proy } = await sb.from("proyectos")
     .select("titulo, responsables, responsable_id")
