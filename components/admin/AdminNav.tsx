@@ -66,6 +66,10 @@ export function AdminNav({ email, nombre, foto, modules, order, colapsado }: {
     if (!modules.includes("/admin/produccion")) return;
     let alive = true;
     const check = async () => {
+      // Pestaña oculta = nadie ve el puntito. Sin esto, un panel olvidado abierto
+      // consultaba la bitácora cada minuto toda la noche (egress de Supabase).
+      // Al volver a la pestaña, el `focus` lo pone al día.
+      if (document.visibilityState !== "visible") return;
       try {
         const r = await fetch("/api/admin/actividad?limit=60", { cache: "no-store" });
         const d = await r.json();
