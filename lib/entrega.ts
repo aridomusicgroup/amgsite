@@ -392,6 +392,8 @@ export async function liberarEntregas(sb: SB, ventaId: string): Promise<number> 
   const ids = ((proys ?? []) as Fila[]).map((x) => x.id as string);
   if (!ids.length) return 0;
 
+  const sueltos = await avisosRetenidos(sb, ids);
+
   const { data: jobs } = await sb
     .from("render_jobs")
     .select("id, proyecto_id, tarea_id, tipo, estado, compartir, opciones")
@@ -400,7 +402,7 @@ export async function liberarEntregas(sb: SB, ventaId: string): Promise<number> 
     .eq("estado", "listo")
     .eq("compartir", false);
   const retenidos = ((jobs ?? []) as Fila[]).filter((j) => marcaDe(j)?.cerrado);
-  if (!retenidos.length) return 0;
+  if (!retenidos.length) return sueltos;
 
   const lotes = new Map<string, Fila[]>();
   for (const j of retenidos) {
@@ -429,7 +431,33 @@ export async function liberarEntregas(sb: SB, ventaId: string): Promise<number> 
   }
 
   for (const id of ids) await quizaEntregado(sb, id);
-  return lotes.size;
+  return lotes.size + sueltos;
+}
+
+/** ¿Hay un aviso suelto guardado por saldo, esperando a que liquide? */
+export const avisoRetenido = (j: Fila) =>
+  j.compartir === true && !j.avisado_en && (j.opciones as { aviso_retenido?: unknown } | null)?.aviso_retenido === true;
+
+/**
+ * Los avisos de renders SUELTOS (no de una entrega) que se guardaron porque el
+ * cliente debía: `avisarClienteDeRender` marca `aviso_retenido` en vez de
+ * mandar. Al liquidar, salen. Import dinámico porque render-aviso ya importa
+ * de aquí.
+ */
+async function avisosRetenidos(sb: SB, proyectoIds: string[]): Promise<number> {
+  const { data } = await sb
+    .from("render_jobs")
+    .select("id, compartir, avisado_en, opciones")
+    .in("proyecto_id", proyectoIds)
+    .in("tipo", ["entregables", "stems"])
+    .eq("estado", "listo")
+    .eq("compartir", true)
+    .is("avisado_en", null);
+  const pendientes = ((data ?? []) as Fila[]).filter(avisoRetenido);
+  if (!pendientes.length) return 0;
+  const { avisarClienteDeRender } = await import("@/lib/render-aviso");
+  for (const j of pendientes) await avisarClienteDeRender(sb, j.id as string);
+  return pendientes.length;
 }
 
 // ── 5. ¿Ya se entregó todo? ──────────────────────────────────────────────────

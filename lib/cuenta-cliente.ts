@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { saldoDeVenta } from "@/lib/cobranza";
-import { finiquitadoProyecto, liberarEntregas, marcaDe, urlDePago, ventaLiquidada, cuentaCobro, retenidoHastaLiquidar } from "@/lib/entrega";
+import { finiquitadoProyecto, liberarEntregas, marcaDe, urlDePago, ventaLiquidada, cuentaCobro, retenidoHastaLiquidar, avisoRetenido } from "@/lib/entrega";
 
 /**
  * Capa de datos del panel de CLIENTE (/cuenta): elegibilidad de acceso,
@@ -398,13 +398,14 @@ export async function entregaDelPedido(email: string, orderId: string): Promise<
 
     const { data: js } = await sb
       .from("render_jobs")
-      .select("compartir, opciones")
+      .select("compartir, avisado_en, opciones")
       .eq("proyecto_id", proy.proyectoId)
       .in("tipo", ["entregables", "stems"])
       .eq("estado", "listo");
     const cerradas = (js ?? []).filter((j) => marcaDe(j)?.cerrado);
 
-    if (finiquitado && ventaId && cerradas.some((j) => !j.compartir)) await liberarEntregas(sb, ventaId);
+    const pendiente = cerradas.some((j) => !j.compartir) || (js ?? []).some(avisoRetenido);
+    if (finiquitado && ventaId && pendiente) await liberarEntregas(sb, ventaId);
 
     const conPago = cerradas.some((j) => marcaDe(j)?.conPago);
     return {

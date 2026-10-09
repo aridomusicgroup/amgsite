@@ -6,7 +6,6 @@ import { avisarClienteDeRender } from "@/lib/render-aviso";
 import { registrarActividad } from "@/lib/actividad";
 import { asignarEnPortal } from "@/lib/musico-asignar";
 import { leerOpciones } from "@/lib/render-opciones";
-import { finiquitadoProyecto, retenidoHastaLiquidar } from "@/lib/entrega";
 
 export const dynamic = "force-dynamic";
 
@@ -168,12 +167,12 @@ export async function PATCH(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Los archivos finales sólo los ve el cliente cuando liquida: el panel del
-  // cliente los esconde mientras deba. Compartirlos aquí queda apuntado, pero
-  // mandarle "ya están tus archivos" a alguien que no los puede abrir es peor
-  // que no avisar. El correo sale solo en cuanto pague (`liberarEntregas`).
-  if (retenidoHastaLiquidar({ tipo: job.tipo, opciones }) && !(await finiquitadoProyecto(sb, job.proyecto_id as string))) {
-    return NextResponse.json({ ok: true, retenido: true, omitido: "se le mostrará en cuanto liquide el saldo" });
+  // Los archivos finales sólo los ve el cliente cuando liquida. El aviso lo
+  // decide `avisarClienteDeRender`: con saldo no manda nada y lo deja guardado
+  // para que salga solo en cuanto pague (`liberarEntregas`).
+  const r = await avisarClienteDeRender(sb, id);
+  if (r.retenido) {
+    return NextResponse.json({ ok: true, retenido: true, omitido: "se le mostrará y avisará en cuanto liquide el saldo" });
   }
 
   await registrarActividad(sb, {
@@ -187,6 +186,5 @@ export async function PATCH(req: NextRequest) {
     meta: { render_job_id: id, tipo: job.tipo, trabajo: deTrabajo || undefined },
   });
 
-  const r = await avisarClienteDeRender(sb, id);
   return NextResponse.json({ ok: true, avisado: r.avisado ?? null, omitido: r.omitido ?? null });
 }

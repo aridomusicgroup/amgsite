@@ -1,6 +1,7 @@
 import "server-only";
 import { Resend } from "resend";
 import { renderListoEmail } from "@/lib/emails";
+import { finiquitadoProyecto, retenidoHastaLiquidar } from "@/lib/entrega";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SB = any;
@@ -12,6 +13,8 @@ export interface ResultadoAviso {
   ok: true;
   avisado?: string;
   omitido?: string;
+  /** Archivos finales con saldo: el correo se guardó para cuando liquide. */
+  retenido?: boolean;
 }
 
 /**
@@ -29,7 +32,7 @@ export interface ResultadoAviso {
 export async function avisarClienteDeRender(sb: SB, jobId: string): Promise<ResultadoAviso> {
   const { data: job } = await sb
     .from("render_jobs")
-    .select("id, proyecto_id, tipo, estado, compartir, avisado_en, drive_urls")
+    .select("id, proyecto_id, tipo, estado, compartir, avisado_en, drive_urls, opciones")
     .eq("id", jobId)
     .single();
 
@@ -40,6 +43,18 @@ export async function avisarClienteDeRender(sb: SB, jobId: string): Promise<Resu
 
   const archivos = (job.drive_urls as { archivo: string; id: string }[] | null) ?? [];
   if (!archivos.length) return { ok: true, omitido: "no hay archivos en Drive" };
+
+  // Entregables y stems finales con saldo: su panel los esconde, y "ya están tus
+  // archivos" sobre algo que no puede abrir es peor que no avisar (Sangreloco).
+  // No se marca `avisado_en`: queda `aviso_retenido` y `liberarEntregas` lo
+  // manda en cuanto liquide.
+  if (retenidoHastaLiquidar(job) && !(await finiquitadoProyecto(sb, job.proyecto_id))) {
+    const op = (job.opciones as Record<string, unknown> | null) ?? {};
+    if (op.aviso_retenido !== true) {
+      await sb.from("render_jobs").update({ opciones: { ...op, aviso_retenido: true } }).eq("id", jobId);
+    }
+    return { ok: true, retenido: true, omitido: "se le avisa en cuanto liquide el saldo" };
+  }
 
   const { data: p } = await sb
     .from("proyectos")
