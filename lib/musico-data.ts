@@ -181,7 +181,7 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
       : Promise.resolve({ data: [] as Fila[] }),
     // El previo de referencia que ya se le mandó por correo desde REAPER.
     sb.from("render_jobs")
-      .select("proyecto_id, enlace_publico, created_at")
+      .select("proyecto_id, tarea_id, enlace_publico, created_at")
       .eq("musico_id", musicoId)
       .in("proyecto_id", proyIds)
       .eq("estado", "listo")
@@ -228,11 +228,17 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
     });
   }
 
-  // El más reciente por proyecto (vienen ordenados de nuevo a viejo).
-  const referencias = new Map<string, string>();
+  // El más reciente por tarea y por proyecto (vienen ordenados de nuevo a
+  // viejo). Un tema de EP sólo toma el SUYO, nunca el del disco: TRiP MX
+  // mostraba el previo de EFÍMERO en la tarjeta de PROFECÍA porque los dos
+  // temas compartían la llave del proyecto.
+  const refPorTarea = new Map<string, string>();
+  const refPorProyecto = new Map<string, string>();
   for (const r of refRes.data ?? []) {
-    const k = r.proyecto_id as string;
-    if (!referencias.has(k)) referencias.set(k, r.enlace_publico as string);
+    const enlace = r.enlace_publico as string;
+    const tareaId = r.tarea_id as string | null;
+    if (tareaId && !refPorTarea.has(tareaId)) refPorTarea.set(tareaId, enlace);
+    if (!refPorProyecto.has(r.proyecto_id as string)) refPorProyecto.set(r.proyecto_id as string, enlace);
   }
 
   return vivas.map((a) => {
@@ -259,7 +265,8 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
       tarea: t?.titulo ?? null,
       fechaLimite: t?.fecha ?? null,
       hecha: Boolean(t?.hecho),
-      referencia: referencias.get(a.proyecto_id as string) ?? null,
+      referencia: (a.tarea_id ? refPorTarea.get(a.tarea_id as string) : undefined)
+        ?? (tema ? null : refPorProyecto.get(a.proyecto_id as string) ?? null),
       canales: canalesDe(a.instrumento as string),
       // En un EP la referencia es la del tema; si el tema no tiene, no se
       // compara contra el disco entero (no dice nada del tema).
