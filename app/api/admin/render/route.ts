@@ -6,7 +6,7 @@ import { avisarClienteDeRender } from "@/lib/render-aviso";
 import { registrarActividad } from "@/lib/actividad";
 import { asignarEnPortal } from "@/lib/musico-asignar";
 import { leerOpciones } from "@/lib/render-opciones";
-import { finiquitadoProyecto } from "@/lib/entrega";
+import { finiquitadoProyecto, retenidoHastaLiquidar } from "@/lib/entrega";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +70,9 @@ export async function POST(req: NextRequest) {
   if (tipo !== "stems" && op.op?.pistas) {
     return NextResponse.json({ error: "Sólo los stems permiten elegir pistas." }, { status: 400 });
   }
+  if (tipo !== "stems" && op.op?.trabajo) {
+    return NextResponse.json({ error: "Sólo los stems pueden ser de trabajo." }, { status: 400 });
+  }
 
   const r = await encolarRender(proyectoId, tareaId, tipo, email, op.op);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 409 });
@@ -129,11 +132,14 @@ export async function PATCH(req: NextRequest) {
   const b = await req.json().catch(() => ({}));
   const id = String(b.id || "").trim();
   if (!id) return NextResponse.json({ error: "Falta el render." }, { status: 400 });
+  // Marcar unos stems YA hechos como de trabajo (para que el cliente grabe
+  // encima): mismo sentido único que `compartir`, sólo se enciende.
+  const deTrabajo = b.trabajo === true;
 
   const sb = supabaseAdmin();
   const { data: job } = await sb
     .from("render_jobs")
-    .select("id, proyecto_id, tarea_id, tipo, estado, compartir, avisado_en, drive_urls, musico_id")
+    .select("id, proyecto_id, tarea_id, tipo, estado, compartir, avisado_en, drive_urls, musico_id, opciones")
     .eq("id", id)
     .maybeSingle();
   if (!job) return NextResponse.json({ error: "Ese render ya no existe." }, { status: 404 });
@@ -150,10 +156,15 @@ export async function PATCH(req: NextRequest) {
   if (job.musico_id) {
     return NextResponse.json({ error: "Ese es un previo de músico: compártelo desde la sección Músicos." }, { status: 400 });
   }
-  if (job.compartir && job.avisado_en) return NextResponse.json({ ok: true, yaEstaba: true });
+  if (deTrabajo && job.tipo !== "stems") {
+    return NextResponse.json({ error: "Sólo los stems pueden ser de trabajo." }, { status: 400 });
+  }
+  const opciones = { ...((job.opciones as Record<string, unknown> | null) ?? {}), ...(deTrabajo ? { trabajo: true } : {}) };
+  const yaDeTrabajo = !deTrabajo || (job.opciones as { trabajo?: unknown } | null)?.trabajo === true;
+  if (job.compartir && job.avisado_en && yaDeTrabajo) return NextResponse.json({ ok: true, yaEstaba: true });
 
-  if (!job.compartir) {
-    const { error } = await sb.from("render_jobs").update({ compartir: true }).eq("id", id);
+  if (!job.compartir || !yaDeTrabajo) {
+    const { error } = await sb.from("render_jobs").update({ compartir: true, opciones }).eq("id", id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
@@ -161,17 +172,19 @@ export async function PATCH(req: NextRequest) {
   // cliente los esconde mientras deba. Compartirlos aquí queda apuntado, pero
   // mandarle "ya están tus archivos" a alguien que no los puede abrir es peor
   // que no avisar. El correo sale solo en cuanto pague (`liberarEntregas`).
-  if ((job.tipo === "entregables" || job.tipo === "stems") && !(await finiquitadoProyecto(sb, job.proyecto_id as string))) {
+  if (retenidoHastaLiquidar({ tipo: job.tipo, opciones }) && !(await finiquitadoProyecto(sb, job.proyecto_id as string))) {
     return NextResponse.json({ ok: true, retenido: true, omitido: "se le mostrará en cuanto liquide el saldo" });
   }
 
   await registrarActividad(sb, {
     tipo: "render_compartido",
-    titulo: `Se compartió con el cliente el ${job.tipo} de la producción`,
+    titulo: deTrabajo
+      ? "Se liberaron los stems de trabajo para que el cliente grabe"
+      : `Se compartió con el cliente el ${job.tipo} de la producción`,
     actor,
     proyecto_id: job.proyecto_id as string,
     tarea_id: (job.tarea_id as string | null) ?? null,
-    meta: { render_job_id: id, tipo: job.tipo },
+    meta: { render_job_id: id, tipo: job.tipo, trabajo: deTrabajo || undefined },
   });
 
   const r = await avisarClienteDeRender(sb, id);

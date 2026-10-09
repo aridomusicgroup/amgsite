@@ -93,7 +93,8 @@ export async function POST(req: NextRequest) {
 
   let stemsError: string | null = null;
   if (stems?.ok) {
-    const r2 = await encolarRender(proyectoId, tareaId, "stems", email, { ...(stems.op ?? {}), avisar: false, entrega: marca });
+    // `trabajo: false`: éstos SON la entrega final, esperan al saldo como los entregables.
+    const r2 = await encolarRender(proyectoId, tareaId, "stems", email, { ...(stems.op ?? {}), avisar: false, trabajo: false, entrega: marca });
     // Los entregables ya quedaron en cola; el lote se cierra sólo con ellos.
     if (!r2.ok) stemsError = r2.error;
   }

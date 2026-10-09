@@ -41,6 +41,7 @@ export function leerOpciones(raw: unknown): { ok: true; op: OpcionesRender | nul
   }
 
   if (b.avisar !== undefined) op.avisar = b.avisar === true;
+  if (b.trabajo === true) op.trabajo = true;
 
   if (b.musicoId) op.musicoId = String(b.musicoId).trim();
   if (b.bpm !== undefined && b.bpm !== null && b.bpm !== "") op.bpm = Number(b.bpm);

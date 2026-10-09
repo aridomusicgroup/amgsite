@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { saldoDeVenta } from "@/lib/cobranza";
-import { finiquitadoProyecto, liberarEntregas, marcaDe, urlDePago, ventaLiquidada, cuentaCobro } from "@/lib/entrega";
+import { finiquitadoProyecto, liberarEntregas, marcaDe, urlDePago, ventaLiquidada, cuentaCobro, retenidoHastaLiquidar } from "@/lib/entrega";
 
 /**
  * Capa de datos del panel de CLIENTE (/cuenta): elegibilidad de acceso,
@@ -457,7 +457,7 @@ export interface RenderDelPedido {
  *     existe para el cliente aunque esté subido a Drive.
  *   · el saldo: los archivos FINALES (entregables y stems) sólo aparecen si ya
  *     liquidó. Los previos no se bloquean: son para aprobar, y frenarlos frena
- *     la producción. El proxy de descarga revisa lo mismo, así que esconderlos
+ *     la producción. Tampoco los stems DE TRABAJO, que son para grabar encima. El proxy de descarga revisa lo mismo, así que esconderlos
  *     aquí no es cosmético.
  */
 export async function rendersDelPedido(email: string, orderId: string): Promise<RenderDelPedido[]> {
@@ -469,7 +469,7 @@ export async function rendersDelPedido(email: string, orderId: string): Promise<
     const [{ data }, finiquitado] = await Promise.all([
       sb
         .from("render_jobs")
-        .select("id, tipo, previo_num, drive_urls, updated_at, tarea_id")
+        .select("id, tipo, previo_num, drive_urls, updated_at, tarea_id, opciones")
         .eq("proyecto_id", proy.proyectoId)
         .eq("compartir", true)
         .eq("estado", "listo")
@@ -478,7 +478,7 @@ export async function rendersDelPedido(email: string, orderId: string): Promise<
       finiquitadoProyecto(sb, proy.proyectoId),
     ]);
 
-    const visibles = (data ?? []).filter((j) => finiquitado || j.tipo === "previo");
+    const visibles = (data ?? []).filter((j) => finiquitado || !retenidoHastaLiquidar(j));
     const idsTema = [...new Set(visibles.map((j) => j.tarea_id as string | null).filter(Boolean))] as string[];
     const temas = new Map<string, string>();
     if (idsTema.length) {

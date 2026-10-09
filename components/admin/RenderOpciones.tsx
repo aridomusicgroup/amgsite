@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { X, Loader2, FolderOpen, AlertTriangle, Send } from "lucide-react";
+import { X, Loader2, FolderOpen, AlertTriangle, Send, Mic } from "lucide-react";
 import type {
   ArchivoRpp,
   ProblemaRpp,
@@ -140,6 +140,9 @@ export function RenderOpciones({
   // convencerte se iba solo. Mandarlo tiene que ser un acto, no un descuido;
   // olvidar marcarlo solo deja el archivo listo para compartirlo después.
   const [avisar, setAvisar] = useState(false);
+  // Stems para que el cliente grabe encima (sus voces): los ve aunque deba.
+  // Sin marcar, los stems son la entrega final y esperan a que liquide.
+  const [trabajo, setTrabajo] = useState(false);
   const [modo, setModo] = useState<ModoRango>("todo");
   const [desde, setDesde] = useState(0);
   const [hasta, setHasta] = useState(Math.max(0, marcadores.length - 1));
@@ -212,6 +215,7 @@ export function RenderOpciones({
       }
     } else {
       op.avisar = avisar && p.puedeAvisar;
+      if (tipo === "stems" && op.avisar && trabajo) op.trabajo = true;
     }
     onConfirmar(op);
   };
@@ -521,6 +525,30 @@ export function RenderOpciones({
                     </span>
                   </span>
                 </label>
+                {tipo === "stems" && (
+                  <label
+                    className={`mt-2 flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
+                      trabajo && avisar ? "bg-lgb-red/10 border-lgb-red/40" : "bg-white/5 border-transparent"
+                    } ${avisar ? "cursor-pointer hover:bg-white/10" : "opacity-40 cursor-not-allowed"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={trabajo && avisar}
+                      disabled={!avisar}
+                      onChange={(e) => setTrabajo(e.target.checked)}
+                      className="accent-lgb-red mt-0.5"
+                    />
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-1.5 text-sm">
+                        <Mic size={13} /> Son para que grabe (stems de trabajo)
+                      </span>
+                      <span className="block text-[11px] text-white/40 mt-0.5 leading-relaxed">
+                        Los ve en su cuenta aunque todavía deba saldo. Sin marcar, los stems cuentan
+                        como entrega final y se le muestran hasta que liquide.
+                      </span>
+                    </span>
+                  </label>
+                )}
               </Seccion>
               )}
             </>

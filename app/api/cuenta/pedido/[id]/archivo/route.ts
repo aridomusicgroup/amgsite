@@ -3,7 +3,7 @@ import { getCustomerEmail } from "@/lib/cuenta-auth";
 import { proyectoDelPedido } from "@/lib/cuenta-cliente";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { tokenParaNavegador } from "@/lib/drive-oauth";
-import { finiquitadoProyecto } from "@/lib/entrega";
+import { finiquitadoProyecto, retenidoHastaLiquidar } from "@/lib/entrega";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest, { params }: Props) {
   const sb = supabaseAdmin();
   const { data: job } = await sb
     .from("render_jobs")
-    .select("proyecto_id, tipo, compartir, estado, drive_urls")
+    .select("proyecto_id, tipo, compartir, estado, drive_urls, opciones")
     .eq("id", jobId)
     .single();
 
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest, { params }: Props) {
 
   // Los archivos finales se desbloquean al liquidar. La página ya no los
   // muestra, pero la puerta de verdad es ésta: el enlace se puede adivinar.
-  if ((job.tipo === "entregables" || job.tipo === "stems") && !(await finiquitadoProyecto(sb, proy.proyectoId))) {
+  if (retenidoHastaLiquidar(job) && !(await finiquitadoProyecto(sb, proy.proyectoId))) {
     return NextResponse.json({ error: "Se desbloquea al liquidar el saldo." }, { status: 403 });
   }
 

@@ -139,6 +139,18 @@ export async function saldoDelProyecto(sb: SB, p: { venta_id?: string | null }):
 export const ventaLiquidada = (s: SaldoVenta | null) => !s || (s.tienePagos && s.saldo <= 0.5);
 const liquidado = ventaLiquidada;
 
+/**
+ * Stems DE TRABAJO: se le mandan al cliente para que grabe encima (sus voces),
+ * no son la entrega. Por eso no esperan a que liquide — Sangreloco los recibió
+ * por correo con saldo pendiente y su panel se los escondía.
+ */
+export const esStemsDeTrabajo = (j: { tipo?: unknown; opciones?: unknown }) =>
+  j.tipo === "stems" && (j.opciones as { trabajo?: unknown } | null)?.trabajo === true;
+
+/** ¿Este render espera a que el cliente liquide? Entregables y stems finales, sí. */
+export const retenidoHastaLiquidar = (j: { tipo?: unknown; opciones?: unknown }) =>
+  (j.tipo === "entregables" || j.tipo === "stems") && !esStemsDeTrabajo(j);
+
 /** Lo que se le dice al cliente que falta. Sin pagos registrados, falta todo. */
 export function cuentaCobro(s: SaldoVenta): { total: number; cobrado: number; saldo: number } {
   return s.tienePagos

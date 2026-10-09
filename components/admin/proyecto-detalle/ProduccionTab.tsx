@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, FileAudio, Send, Check, Loader2, UserPlus } from "lucide-react";
+import { ExternalLink, FileAudio, Send, Check, Loader2, UserPlus, Mic } from "lucide-react";
 import type { ProyectoDetalle, RenderJobResumen, RenderInventarioItem } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
 import { MusicosProyecto } from "./MusicosProyecto";
@@ -69,6 +69,27 @@ export function ProduccionTab({ proyecto, miId, musicos }: {
     }
   };
 
+  /** Stems ya hechos → de trabajo: el cliente los ve para grabar aunque deba. */
+  const liberarTrabajo = async (r: RenderJobResumen) => {
+    const aviso = r.avisado_en ? "" : " Le llega un correo.";
+    if (!confirm(`¿Darle estos stems al cliente para que grabe? Los verá en su cuenta aunque deba saldo.${aviso}`)) return;
+    setBusy(r.id);
+    try {
+      const res = await fetch("/api/admin/render", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: r.id, trabajo: true }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(`⚠️ ${d.error || "No se pudieron liberar"}`); return; }
+      toast(d.avisado ? `✓ Ya los ve — se le avisó a ${d.avisado}` : "✓ Ya los ve en su cuenta");
+      router.refresh();
+    } catch {
+      toast("⚠️ No se pudieron liberar");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {sinRenders && (
@@ -95,6 +116,8 @@ export function ProduccionTab({ proyecto, miId, musicos }: {
               // Sólo los previos de músico: son los que llevan bpm y tonalidad en
               // el nombre del archivo, que es lo que necesita quien graba encima.
               const reenviable = r.tipo === "musico" && r.estado === "listo" && Boolean(enDrive);
+              const deTrabajo = r.tipo === "stems" && r.opciones?.trabajo === true;
+              const liberable = r.tipo === "stems" && !deTrabajo && r.estado === "listo" && !paraMusico && Boolean(enDrive);
               return (
                 <div key={r.id} className="flex items-center justify-between gap-2 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2">
                   <div className="flex items-center gap-2 min-w-0">
@@ -124,6 +147,21 @@ export function ProduccionTab({ proyecto, miId, musicos }: {
                     ) : r.estado === "listo" && !paraMusico ? (
                       <span className="text-[11px] text-white/25" title="No llegó a subirse a Drive">Solo interno</span>
                     ) : null}
+                    {deTrabajo && (
+                      <span className="flex items-center gap-1 text-[11px] text-white/45" title="El cliente los ve aunque deba saldo">
+                        <Mic size={11} /> Para grabar
+                      </span>
+                    )}
+                    {liberable && (
+                      <button
+                        onClick={() => liberarTrabajo(r)}
+                        disabled={busy === r.id}
+                        title="Son para que el cliente grabe encima: los verá aunque deba saldo"
+                        className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white/8 text-white/60 hover:bg-lgb-red/20 hover:text-white transition-colors disabled:opacity-50"
+                      >
+                        {busy === r.id ? <Loader2 size={11} className="animate-spin" /> : <Mic size={11} />} Para grabar
+                      </button>
+                    )}
                     {reenviable && (
                       <button
                         onClick={() => setMandando(r)}
