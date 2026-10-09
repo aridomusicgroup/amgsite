@@ -132,7 +132,7 @@ export default async function PedidoPage({ params }: Props) {
           </div>
         )}
 
-        <RendersPedido pedidoId={id} renders={renders} />
+        <RendersPedido pedidoId={id} renders={renders} concepto={d.concepto} />
 
         {d.proyectoEstado !== null && (
           <div className="mt-8">

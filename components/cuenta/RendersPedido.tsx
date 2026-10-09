@@ -1,6 +1,7 @@
 "use client";
 import { Music4, Package, Layers, Download, History } from "lucide-react";
 import type { RenderDelPedido } from "@/lib/cuenta-cliente";
+import { DescargarTodo } from "./DescargarTodo";
 
 /**
  * Lo que el estudio le compartió al cliente: previos para escuchar y archivos
@@ -35,11 +36,14 @@ const TITULO = {
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "long" });
 
-function Tarjeta({ pedidoId, r, tenue }: { pedidoId: string; r: RenderDelPedido; tenue?: boolean }) {
+function Tarjeta({ pedidoId, r, tenue, concepto }: { pedidoId: string; r: RenderDelPedido; tenue?: boolean; concepto?: string }) {
   const Icono = ICONO[r.tipo];
   const titulo = r.tipo === "previo" && r.previoNum && r.previoNum > 1
     ? `Previo ${r.previoNum}`
     : TITULO[r.tipo];
+  const base = (idx: number) => `/api/cuenta/pedido/${pedidoId}/archivo?job=${r.jobId}&i=${idx}`;
+  // Stems son una docena de WAV: bajarlos de uno en uno era el reclamo.
+  const enLote = r.tipo !== "previo" && r.archivos.length > 1;
 
   return (
     <div className={`border rounded-2xl p-4 ${tenue ? "bg-white/[0.02] border-white/5" : "bg-white/5 border-white/10"}`}>
@@ -49,9 +53,16 @@ function Tarjeta({ pedidoId, r, tenue }: { pedidoId: string; r: RenderDelPedido;
         <span className="text-white/30 text-xs ml-auto shrink-0">{fecha(r.fecha)}</span>
       </div>
 
+      {enLote && (
+        <DescargarTodo
+          archivos={r.archivos.map((a) => ({ nombre: a.nombre, url: base(a.idx) }))}
+          nombreZip={[r.tema ?? concepto, TITULO[r.tipo]].filter(Boolean).join(" - ")}
+        />
+      )}
+
       <div className="flex flex-col gap-3">
         {r.archivos.map((a) => {
-          const src = `/api/cuenta/pedido/${pedidoId}/archivo?job=${r.jobId}&i=${a.idx}`;
+          const src = base(a.idx);
           // Sólo el previo se oye aquí; los archivos pesados se bajan.
           return a.audio ? (
             <div key={a.idx}>
@@ -89,7 +100,7 @@ function Tarjeta({ pedidoId, r, tenue }: { pedidoId: string; r: RenderDelPedido;
   );
 }
 
-export function RendersPedido({ pedidoId, renders }: { pedidoId: string; renders: RenderDelPedido[] }) {
+export function RendersPedido({ pedidoId, renders, concepto }: { pedidoId: string; renders: RenderDelPedido[]; concepto?: string }) {
   if (!renders.length) return null;
 
   // Lo final primero: es lo que vino a buscar.
@@ -108,7 +119,7 @@ export function RendersPedido({ pedidoId, renders }: { pedidoId: string; renders
     <section className="mt-8">
       <h3 className="text-white/40 text-xs uppercase tracking-wide mb-3">Tu material</h3>
       <div className="flex flex-col gap-3">
-        {finales.map((r) => <Tarjeta key={r.jobId} pedidoId={pedidoId} r={r} />)}
+        {finales.map((r) => <Tarjeta key={r.jobId} pedidoId={pedidoId} r={r} concepto={concepto} />)}
 
         {[...grupos.entries()].map(([k, lista]) => {
           const [ultimo, ...anteriores] = lista;
