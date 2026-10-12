@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
-import { Loader2, Send, Upload, FolderOpen, Check, AlertTriangle, RotateCcw, FileMusic } from "lucide-react";
+import { Loader2, Send, Upload, FolderOpen, Check, AlertTriangle, RotateCcw, FileMusic, ExternalLink } from "lucide-react";
 import { toast } from "@/lib/toast";
 
 export interface Envio {
@@ -250,16 +250,28 @@ export function EdicionClave({ proyectoId, tareaId, titulo, estado: e, miId, rec
                 </p>
               </div>
               {/* "en la compu", no "aplicado": el .rpp cae en REVISIONES/ y ahí se
-                  queda. Aplicarlo solo significaría escribir el proyecto de
-                  trabajo, que es lo más peligroso de todo el script. */}
+                  queda (con sus rutas apuntando al audio del proyecto). Aplicarlo
+                  solo significaría escribir el proyecto de trabajo, que es lo
+                  más peligroso de todo el script. */}
               {r.ultimo_error ? (
                 <span title={r.ultimo_error} className="flex items-center gap-1 text-[11px] text-red-300 shrink-0">
                   <AlertTriangle size={11} /> falló
                 </span>
               ) : r.bajado_at ? (
-                <span title={r.ruta_local ?? undefined} className="flex items-center gap-1 text-[11px] text-green-300/70 shrink-0">
-                  <Check size={11} /> en la compu
-                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span title={r.ruta_local ?? undefined} className="flex items-center gap-1 text-[11px] text-green-300/70">
+                    <Check size={11} /> en la compu
+                  </span>
+                  {/* Enlace arido-reaper:// que registra reaper-sync/abrir-reaper.js:
+                      sólo responde en la compu del estudio, por eso no sale en el cel. */}
+                  {r.ruta_local && (
+                    <a href={`arido-reaper://abrir?ruta=${encodeURIComponent(r.ruta_local)}`}
+                      title="Abre esta revisión en REAPER (sólo en la compu del estudio)"
+                      className="hidden sm:flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-white/8 text-white/70 hover:bg-white/12 transition-colors">
+                      <ExternalLink size={11} /> Abrir en REAPER
+                    </a>
+                  )}
+                </div>
               ) : (
                 <span className="text-[11px] text-white/25 shrink-0">esperando sincronización</span>
               )}

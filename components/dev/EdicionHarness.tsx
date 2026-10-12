@@ -29,7 +29,8 @@ const TEMAS = [
     tareaId: "t-pr", titulo: "PROFECÍA", falta: [], editado: false,
     envios: [envio(1, "listo", 2880)],
     revisiones: [{ id: "r1", num: 1, nombre: "PROFECÍA rev1.rpp", bytes: 1.2e6, nota: "cuantizadas guitarras",
-      subido_por: "diego@example.com", subido_at: hace(600), bajado_at: hace(590), ruta_local: null, ultimo_error: null }],
+      subido_por: "diego@example.com", subido_at: hace(600), bajado_at: hace(590),
+      ruta_local: "X:\\REAPER Media\\LATINOGANG\\JUANJO PEMBERTHY\\TRIP MX\\PROFECÍA\\REVISIONES\\rev-01\\PROFECÍA rev1.rpp", ultimo_error: null }],
     total: 170, subidos: 162, fallados: 0, pendientes: 8, bytesPendientes: 42e6,
   },
   {
