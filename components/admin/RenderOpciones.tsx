@@ -27,10 +27,10 @@ const TITULO: Record<TipoRender, string> = {
 };
 
 const FORMATO: Record<TipoRender, string> = {
-  previo: "MP3 128 kbps · 44.1 kHz",
+  previo: "WAV 16-bit · 44.1 kHz",
   entregables: "MP3 320 kbps · 48 kHz + WAV 32-bit float",
   stems: "WAV 24-bit por pista, con mezcla y máster",
-  musico: "MP3 128 kbps · 44.1 kHz · con BPM y tonalidad en el nombre",
+  musico: "WAV 16-bit · 44.1 kHz · con BPM y tonalidad en el nombre",
   cuantizar: "Proyecto nuevo “… AUTO.rpp” al lado. El tuyo no se toca.",
 };
 
@@ -491,7 +491,7 @@ export function RenderOpciones({
                       <p className="text-[11px] text-white/30 leading-relaxed">
                         Van en el nombre del archivo:{" "}
                         <span className="text-white/50">
-                          {p.titulo.toUpperCase()} {bpm || "___"}bpm {tonalidad || "__"}.mp3
+                          {p.titulo.toUpperCase()} {bpm || "___"}bpm {tonalidad || "__"}.wav
                         </span>
                         <br />
                         Se le manda por correo un enlace de Drive. Ese enlace lo puede abrir

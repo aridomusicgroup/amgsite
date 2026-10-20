@@ -89,14 +89,14 @@ export function BotonesRender({ p, onAbrir }: { p: Renderizable; onAbrir: (p: Re
       <BotonRender
         icono={<Music2 size={14} />}
         texto="Músico"
-        titulo={`Previo para quien graba: MP3 con BPM y tonalidad en el nombre · tarda ~${MINUTOS.musico} min`}
+        titulo={`Previo para quien graba: WAV con BPM y tonalidad en el nombre · tarda ~${MINUTOS.musico} min`}
         deshabilitado={enVuelo}
         onClick={() => onAbrir(p, "musico")}
       />
       <BotonRender
         icono={<Music4 size={14} />}
         texto={p.ultimoPrevio > 0 ? `Previo ${p.ultimoPrevio + 1}` : "Previo"}
-        titulo={`MP3 128 kbps / 44.1 kHz · tarda ~${MINUTOS.previo} min`}
+        titulo={`WAV 16-bit / 44.1 kHz · tarda ~${MINUTOS.previo} min`}
         deshabilitado={enVuelo}
         onClick={() => onAbrir(p, "previo")}
       />

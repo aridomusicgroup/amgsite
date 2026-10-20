@@ -428,15 +428,18 @@ export interface ArchivoRender {
 }
 
 /**
- * Sólo el PREVIO en MP3 se reproduce dentro del panel.
+ * Sólo el PREVIO (WAV 16-bit/44.1 kHz, o MP3 en los anteriores a oct-2026) se
+ * reproduce dentro del panel.
  *
  * El reproductor va contra un proxy del sitio, así que cada segundo escuchado
- * pasa por Vercel. Un previo son ~3 MB y se aguanta de sobra; un WAV de
- * entregables ronda los 85 MB y los stems son varios de esos — reproducirlos
- * embebidos sería mover cientos de MB por una función serverless cada vez que
- * alguien mueve la barra de progreso. Esos se descargan y ya.
+ * pasa por Vercel. Un previo en WAV son ~35 MB por canción: se aguanta porque el
+ * proxy reenvía `Range` (el navegador baja sólo lo que reproduce, y saltar en la
+ * barra pide un pedazo, no el archivo). Un WAV de entregables ronda los 85 MB y
+ * los stems son varios de esos — reproducirlos embebidos sería mover cientos de
+ * MB por una función serverless cada vez que alguien mueve la barra de
+ * progreso. Esos se descargan y ya.
  */
-const sePuedeOir = (tipo: string, nombre: string) => tipo === "previo" && /\.mp3$/i.test(nombre);
+const sePuedeOir = (tipo: string, nombre: string) => tipo === "previo" && /\.(mp3|wav)$/i.test(nombre);
 
 export interface RenderDelPedido {
   jobId: string;

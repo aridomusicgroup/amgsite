@@ -11,7 +11,8 @@ import { DescargarTodo } from "./DescargarTodo";
  * a Drive: el archivo nunca sale de su sesión y el navegador se encarga solo de
  * la barra de progreso y el volumen.
  *
- * Reproducir embebido es SÓLO para el previo en MP3 (~3 MB). Los entregables en
+ * Reproducir embebido es SÓLO para el previo (WAV 16-bit, ~35 MB, o MP3 los
+ * viejos); el proxy reenvía `Range`, así que no se baja completo. Los entregables en
  * WAV y los stems se descargan: cada reproducción pasa por una función
  * serverless, y mover decenas de MB por ahí cada vez que alguien arrastra la
  * barra no tiene sentido. Quién puede oírse lo decide el servidor, no esto.

@@ -20,10 +20,10 @@ const dia = (iso: string) =>
  * No renderiza nada: reusa el MISMO archivo de Drive. Cuando en una producción
  * tocan varios músicos, el previo que necesitan es el mismo, y hasta ahora la
  * única forma de mandárselo al segundo era volver a renderizar diez minutos
- * para producir un mp3 idéntico.
+ * para producir un archivo idéntico.
  *
  * Tempo y tonalidad se muestran pero NO se editan: el archivo ya existe y se
- * llama `4-6 A 9 124bpm Em.mp3`. Decir otra cosa en el correo sería mentir
+ * llama `4-6 A 9 124bpm Em.wav` (los anteriores a oct-2026 son `.mp3`). Decir otra cosa en el correo sería mentir
  * sobre lo que va a oír.
  */
 export function MandarPrevioMusico({ job, proyectoId, musicos, yaLoTienen, onCerrar }: {

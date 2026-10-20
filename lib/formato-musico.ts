@@ -5,8 +5,8 @@
  * seguiría pidiendo el viejo.
  *
  * Decisión del dueño (2026-09-29): la pista en WAV 32 bits float a 48 kHz, y el
- * previo en MP3 128 kbps a 44.1 kHz — el mismo formato que el previo que el
- * estudio le manda a él (medido en los renders: MP3 128 kbps / 44.1 kHz).
+ * previo en MP3 128 kbps a 44.1 kHz. Ojo: desde oct-2026 el previo que el
+ * estudio le MANDA a él es WAV 16-bit / 44.1 kHz; lo que él SUBE sigue en MP3.
  */
 
 export const FORMATO_PISTA = {
