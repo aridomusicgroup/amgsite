@@ -87,7 +87,8 @@ export async function POST(req: NextRequest) {
   // `avisar: false` a propósito: el correo de la entrega lo manda `cerrarEntrega`
   // UNA vez por lote, y sólo si el cliente ya liquidó. El aviso suelto de cada
   // render le mandaría dos correos y le enseñaría archivos que no puede abrir.
-  const { pistas: _sinPistas, ...opEnt } = ent.op;
+  // Elegir pistas y apagar FX son cosas de los stems; en los entregables se descartan.
+  const { pistas: _sinPistas, sinFx: _sinFx, ...opEnt } = ent.op;
   const r1 = await encolarRender(proyectoId, tareaId, "entregables", email, { ...opEnt, avisar: false, entrega: marca });
   if (!r1.ok) return NextResponse.json({ error: r1.error }, { status: 409 });
 

@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
       ? await buscarOCrearCarpeta("MUSICOS", carpeta)
       : tipo === "previo"
         ? await buscarOCrearCarpeta("PREVIOS", carpeta)
-        : await entregables(carpeta, tipo, nombreBase);
+        : await entregables(carpeta, tipo, nombreBase, b.sinFx === true);
   if (!destino) return NextResponse.json({ error: "No se pudo crear la carpeta de destino." }, { status: 502 });
 
   return NextResponse.json({
@@ -98,9 +98,13 @@ export async function POST(req: NextRequest) {
   });
 }
 
-/** ENTREGABLES, y para stems una subcarpeta propia — igual que en el disco. */
-async function entregables(carpeta: string, tipo: string, nombreBase: string | null): Promise<string | null> {
+/**
+ * ENTREGABLES, y para stems una subcarpeta propia — igual que en el disco.
+ * Los stems sin FX van en otra: tienen los mismos nombres de archivo que los
+ * procesados y Drive reemplaza por nombre dentro de una carpeta.
+ */
+async function entregables(carpeta: string, tipo: string, nombreBase: string | null, sinFx: boolean): Promise<string | null> {
   const ent = await buscarOCrearCarpeta("ENTREGABLES", carpeta);
   if (!ent || tipo !== "stems") return ent;
-  return buscarOCrearCarpeta(`${(nombreBase || "PROYECTO").toUpperCase()} STEMS`, ent);
+  return buscarOCrearCarpeta(`${(nombreBase || "PROYECTO").toUpperCase()} STEMS${sinFx ? " SIN FX" : ""}`, ent);
 }

@@ -146,7 +146,8 @@ export function EntregaModal({ proyectoId, tareaId, onCerrar }: {
     : debe
       ? (conPago ? datos.previews.retenidaConPago : datos.previews.retenidaSinPago)
       : datos.previews.lista;
-  const minutos = opStems ? 16 : 10;
+  // El doble casi duplica lo que tarda esa parte.
+  const minutos = (opEnt?.doble ? 20 : 10) + (opStems ? (opStems.doble ? 14 : 8) : 0);
 
   return (
     <Marco onCerrar={() => !enviando && onCerrar()}>
@@ -155,7 +156,9 @@ export function EntregaModal({ proyectoId, tareaId, onCerrar }: {
           <p className="text-[10px] uppercase tracking-wider text-lgb-red/80 mb-0.5">Entrega · paso 3 de 3</p>
           <p className="font-coolvetica text-lg truncate">Aviso al cliente · {datos.titulo}</p>
           <p className="text-white/40 text-xs mt-0.5">
-            Se encolan: Entregables{opStems ? " + Stems" : ""} · ≈{minutos} min en REAPER, más la subida
+            Se encolan: Entregables{opEnt?.doble ? " (doble)" : ""}
+            {opStems ? ` + Stems${opStems.sinFx ? " sin FX" : ""}${opStems.doble ? " (doble)" : ""}` : ""}
+            {" "}· ≈{minutos} min en REAPER, más la subida
           </p>
         </div>
         <button onClick={onCerrar} disabled={enviando} className="text-white/40 hover:text-white cursor-pointer shrink-0"><X size={18} /></button>

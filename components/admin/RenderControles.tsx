@@ -148,8 +148,14 @@ export function EnCurso({ job }: { job: RenderJob }) {
   }, []);
 
   const min = Math.max(0, Math.floor((ahora - new Date(job.createdAt).getTime()) / 60000));
-  const esperado = MINUTOS[job.tipo] ?? 8;
+  // Los stems cuentan como dobles salvo que se haya apagado (ver RenderOpciones).
+  const doble = job.opciones?.doble ?? job.tipo === "stems";
+  const esperado = Math.round((MINUTOS[job.tipo] ?? 8) * (doble && job.tipo !== "stems" ? 2 : 1));
   const tarde = min > esperado + 5;
+  const etiquetas = [
+    job.opciones?.doble === true && "doble",
+    job.opciones?.sinFx === true && "sin FX",
+  ].filter(Boolean).join(", ");
 
   const detalle =
     job.estado === "pendiente"
@@ -161,7 +167,7 @@ export function EnCurso({ job }: { job: RenderJob }) {
   return (
     <p className={`text-[11px] mt-2 flex items-center gap-1.5 ${tarde ? "text-red-300" : "text-amber-300"}`}>
       <Loader2 size={12} className="animate-spin" />
-      {TIPO_TXT[job.tipo] ?? job.tipo} · {detalle} · lleva {min} min
+      {TIPO_TXT[job.tipo] ?? job.tipo}{etiquetas && ` (${etiquetas})`} · {detalle} · lleva {min} min
       {tarde && " · más de lo normal, revisa la Consola"}
     </p>
   );

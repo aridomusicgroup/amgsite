@@ -104,6 +104,12 @@ export interface OpcionesRender {
   /** Sólo en 'stems': son para que el cliente grabe encima, no la entrega final,
    *  así que los ve aunque deba saldo (ver `esStemsDeTrabajo`). */
   trabajo?: boolean;
+  /** Casilla "Renderizado Doble" de REAPER (dos pasadas). Sin valor = el default
+   *  de siempre: sí en stems, no en lo demás. */
+  doble?: boolean;
+  /** Sólo en 'stems': todos los plugins de efectos apagados (los instrumentos
+   *  virtuales se respetan). Salen en su propia carpeta "… STEMS SIN FX". */
+  sinFx?: boolean;
   /** Sólo en 'musico': a quién se le manda, y los datos que van en el nombre
    *  del archivo. El músico los necesita para ensayar, así que son obligatorios. */
   musicoId?: string;

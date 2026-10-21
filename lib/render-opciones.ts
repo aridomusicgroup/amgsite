@@ -42,6 +42,10 @@ export function leerOpciones(raw: unknown): { ok: true; op: OpcionesRender | nul
 
   if (b.avisar !== undefined) op.avisar = b.avisar === true;
   if (b.trabajo === true) op.trabajo = true;
+  // `doble` se guarda también en false: es la diferencia entre "no lo quiso" y
+  // "no se eligió" (que en stems significa sí, como siempre).
+  if (typeof b.doble === "boolean") op.doble = b.doble;
+  if (b.sinFx === true) op.sinFx = true;
 
   if (b.musicoId) op.musicoId = String(b.musicoId).trim();
   if (b.bpm !== undefined && b.bpm !== null && b.bpm !== "") op.bpm = Number(b.bpm);

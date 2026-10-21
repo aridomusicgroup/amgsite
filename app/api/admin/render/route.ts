@@ -72,6 +72,13 @@ export async function POST(req: NextRequest) {
   if (tipo !== "stems" && op.op?.trabajo) {
     return NextResponse.json({ error: "Sólo los stems pueden ser de trabajo." }, { status: 400 });
   }
+  if (tipo !== "stems" && op.op?.sinFx) {
+    return NextResponse.json({ error: "Sólo los stems pueden salir sin FX." }, { status: 400 });
+  }
+  // Cuadrar a la rejilla no renderiza audio: no hay pasadas que contar.
+  if (tipo === "cuantizar" && op.op?.doble !== undefined) {
+    return NextResponse.json({ error: "Cuadrar a la rejilla no tiene render doble." }, { status: 400 });
+  }
 
   const r = await encolarRender(proyectoId, tareaId, tipo, email, op.op);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 409 });

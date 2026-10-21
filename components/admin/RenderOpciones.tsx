@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { X, Loader2, FolderOpen, AlertTriangle, Send, Mic } from "lucide-react";
+import { X, Loader2, FolderOpen, AlertTriangle, Send, Mic, Layers, VolumeX } from "lucide-react";
 import type {
   ArchivoRpp,
   ProblemaRpp,
@@ -143,6 +143,10 @@ export function RenderOpciones({
   // Stems para que el cliente grabe encima (sus voces): los ve aunque deba.
   // Sin marcar, los stems son la entrega final y esperan a que liquide.
   const [trabajo, setTrabajo] = useState(false);
+  // Renderizado Doble de REAPER. En stems arranca marcado porque así han salido
+  // siempre (el script lo prendía solo); en lo demás, apagado como siempre.
+  const [doble, setDoble] = useState(tipo === "stems");
+  const [sinFx, setSinFx] = useState(false);
   const [modo, setModo] = useState<ModoRango>("todo");
   const [desde, setDesde] = useState(0);
   const [hasta, setHasta] = useState(Math.max(0, marcadores.length - 1));
@@ -200,6 +204,8 @@ export function RenderOpciones({
     const op: OpcionesRender = { rpp: actual.archivo };
     if (rango) op.rango = rango;
     if (tipo === "stems") op.pistas = [...marcadas];
+    if (tipo !== "cuantizar") op.doble = doble;
+    if (tipo === "stems" && sinFx) op.sinFx = true;
     if (esMusico) {
       op.bpm = bpmNum;
       op.tonalidad = tonalidad.trim();
@@ -372,6 +378,29 @@ export function RenderOpciones({
                       </div>
                     </>
                   )}
+                </Seccion>
+              )}
+
+              {tipo !== "cuantizar" && (
+                <Seccion titulo="Opciones de render">
+                  <div className="flex flex-col gap-2">
+                    <Casilla
+                      activo={doble}
+                      onClick={() => setDoble((v) => !v)}
+                      icono={<Layers size={13} />}
+                      titulo="Renderizado doble"
+                      nota="La casilla de REAPER que da dos pasadas al render. Tarda más, pero los plugins que necesitan “calentar” (reverbs, limitadores, emulaciones) salen mejor."
+                    />
+                    {tipo === "stems" && (
+                      <Casilla
+                        activo={sinFx}
+                        onClick={() => setSinFx((v) => !v)}
+                        icono={<VolumeX size={13} />}
+                        titulo="Stems sin FX"
+                        nota="Todos los plugins de efectos apagados, en pista y en master; los instrumentos virtuales se respetan. Salen en su propia carpeta “… STEMS SIN FX”, sin pisar los procesados."
+                      />
+                    )}
+                  </div>
                 </Seccion>
               )}
 
@@ -598,6 +627,24 @@ function Seccion({ titulo, nota, children }: { titulo: string; nota?: string; ch
       </div>
       {children}
     </div>
+  );
+}
+
+function Casilla({ activo, onClick, icono, titulo, nota }: {
+  activo: boolean; onClick: () => void; icono: React.ReactNode; titulo: string; nota: string;
+}) {
+  return (
+    <label
+      className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-colors cursor-pointer ${
+        activo ? "bg-lgb-red/10 border-lgb-red/40" : "bg-white/5 border-transparent hover:bg-white/10"
+      }`}
+    >
+      <input type="checkbox" checked={activo} onChange={onClick} className="accent-lgb-red mt-0.5" />
+      <span className="min-w-0">
+        <span className="flex items-center gap-1.5 text-sm">{icono} {titulo}</span>
+        <span className="block text-[11px] text-white/40 mt-0.5 leading-relaxed">{nota}</span>
+      </span>
+    </label>
   );
 }
 
