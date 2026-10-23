@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { AridoNavbar } from "@/components/arido/Navbar";
 import { AridoHero } from "@/components/arido/Hero";
-import { AridoAbout } from "@/components/arido/About";
 import { AridoServices } from "@/components/arido/Services";
 import { AridoCursos } from "@/components/arido/Cursos";
 import { getCursosEnVenta } from "@/lib/cursos-publico";
@@ -68,7 +67,7 @@ export default async function Home() {
       />
       <AridoNavbar />
       <AridoHero />
-      <AridoAbout />
+      {/* "Quiénes somos" oculta (23-oct). Para volver: importar AridoAbout de "@/components/arido/About", poner <AridoAbout /> aquí y devolver el link "Nosotros" en Navbar.tsx y Footer.tsx */}
       <AridoServices />
       <AridoCursos cursos={cursos} />
       <AridoWork />

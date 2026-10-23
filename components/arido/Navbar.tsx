@@ -15,7 +15,6 @@ export function AridoNavbar() {
 
   const links = [
     { label: lang === "es" ? "Inicio" : "Home", href: "/#inicio" },
-    { label: lang === "es" ? "Nosotros" : "About", href: "/#nosotros" },
     { label: lang === "es" ? "Servicios" : "Services", href: "/#servicios" },
     { label: lang === "es" ? "Cursos" : "Courses", href: "/cursos" },
     { label: lang === "es" ? "Nuestro trabajo" : "Our work", href: "/#trabajo" },

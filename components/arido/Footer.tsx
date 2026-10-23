@@ -11,7 +11,6 @@ export function AridoFooter() {
 
   const navLinks = [
     { label: lang === "es" ? "Inicio" : "Home", href: "/#inicio" },
-    { label: lang === "es" ? "Nosotros" : "About", href: "/#nosotros" },
     { label: lang === "es" ? "Servicios" : "Services", href: "/#servicios" },
     { label: lang === "es" ? "Cursos" : "Courses", href: "/cursos" },
     { label: lang === "es" ? "Diseño visual" : "Visual design", href: "/diseno" },
