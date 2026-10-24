@@ -1,6 +1,6 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { proximoVencimiento, claveDe, type EgresoLite } from "@/lib/gastos-recurrentes";
+import { proximoVencimiento, ultimasPagadas, type EgresoLite } from "@/lib/gastos-recurrentes";
 
 export interface GastoRecurrenteRow {
   id: string;
@@ -58,6 +58,18 @@ export async function getGastosRecurrentesParaPanel(diasAntes = 5): Promise<Gast
       sb.from("egresos").select("fecha, categoria, proveedor, descripcion, total_mxn, es_capex").order("fecha", { ascending: true }).limit(2000),
     ]);
     const egresos = (egresosRaw ?? []) as EgresoLite[];
+    // Misma regla de "¿ya se pagó?" que el cron: se calcula con todos los registros juntos.
+    const ultimas = ultimasPagadas(
+      registrados.map((r) => ({
+        id: r.id as string,
+        nombre: r.nombre as string,
+        categoria: (r.categoria as string | null) ?? null,
+        proveedor: (r.proveedor as string | null) ?? null,
+        montoEstimado: Number(r.monto_estimado) || 0,
+        activo: r.activo !== false,
+      })),
+      egresos,
+    );
 
     return registrados.map((r) => {
       const categoria = (r.categoria as string | null) ?? null;
@@ -74,13 +86,7 @@ export async function getGastosRecurrentesParaPanel(diasAntes = 5): Promise<Gast
 
       if (!activo) return { ...base, proximaFecha: null, pendiente: false };
 
-      const clave = claveDe(categoria, proveedor || nombre);
-      let ultimaPagada: string | null = null;
-      for (const e of egresos) {
-        if (e.es_capex) continue;
-        if (claveDe(e.categoria, e.proveedor || e.descripcion) !== clave) continue;
-        if (!ultimaPagada || e.fecha > ultimaPagada) ultimaPagada = e.fecha;
-      }
+      const ultimaPagada = ultimas.get(base.id) ?? null;
       const proximaFecha = proximoVencimiento(diaMes, ultimaPagada, hoy, cadaMeses);
 
       return { ...base, proximaFecha, pendiente: proximaFecha <= limite };

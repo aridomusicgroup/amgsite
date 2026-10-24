@@ -76,33 +76,192 @@ function unMesDespues(iso: string): string {
   return aISO(siguiente);
 }
 
+/** Minúsculas y sin acentos: "Chávez" → "chavez". */
+const sinAcentos = (s: string): string =>
+  Array.from(s.normalize("NFD"))
+    .filter((ch) => {
+      const c = ch.charCodeAt(0);
+      return c < 0x300 || c > 0x36f; // fuera del bloque de acentos combinados
+    })
+    .join("");
+
+/** Texto para comparar igualdad: sin acentos, mayúsculas ni espacios de más. Los signos SÍ cuentan ("Disney" ≠ "Disney+"). */
+const textoExacto = (s: string | null | undefined): string => sinAcentos(normaliza(s)).split(/ +/).join(" ");
+
+/** Palabras sueltas de un nombre: "Paco Chávez " → ["paco", "chavez"]. */
+const palabrasDe = (s: string | null | undefined): string[] =>
+  sinAcentos(normaliza(s)).split(/[^a-z0-9]+/).filter(Boolean);
+
+/** Las palabras del más corto están todas en el más largo: "Paco" / "Paco Chávez". Un nombre sin palabras no se parece a nada. */
+function sonParecidas(a: string[], b: string[]): boolean {
+  if (!a.length || !b.length) return false;
+  const [corto, largo] = a.length <= b.length ? [a, b] : [b, a];
+  return corto.every((p) => largo.includes(p));
+}
+
+/** Quién cobró un egreso: el proveedor, o la descripción si no se capturó proveedor. */
+const quienDe = (e: EgresoLite): string | null => (normaliza(e.proveedor) ? e.proveedor : e.descripcion);
+
+/** Lo que hace falta de un registro a mano para saber qué pagos son suyos. */
+type RegistroBasico = Pick<GastoRecurrenteRegistrado, "id" | "nombre" | "categoria" | "proveedor" | "montoEstimado" | "activo">;
+
+/** Cómo se llama un registro a mano: su proveedor, o su nombre si no tiene. */
+const proveedorONombre = (r: RegistroBasico): string | null => (normaliza(r.proveedor) ? r.proveedor : r.nombre);
+
+const etiquetaDe = (e: EgresoLite): string =>
+  [e.categoria, e.proveedor].filter(Boolean).join(" · ") || e.descripcion || e.categoria || "Gasto";
+
+/** "Escrito igual": misma categoría y mismo nombre (sin acentos ni mayúsculas). */
+const llaveDe = (categoria: string | null, nombre: string | null): string => `${textoExacto(categoria)}|${textoExacto(nombre)}`;
+
+const mesDe = (fecha: string): string => fecha.slice(0, 7);
+
+const ultimaFecha = (pagos: EgresoLite[]): string | null =>
+  pagos.reduce<string | null>((ultima, e) => (!ultima || e.fecha > ultima ? e.fecha : ultima), null);
+
+/** Cuánto puede variar el monto de un pago "escrito parecido" para contarse como pago de un gasto registrado. */
+const TOLERANCIA_MONTO = 0.1;
+
+const montoCuadra = (monto: number, referencia: number): boolean =>
+  referencia > 0 && Math.abs((Number(monto) || 0) - referencia) <= referencia * TOLERANCIA_MONTO;
+
 /**
- * Agrupa por categoría+proveedor (o categoría+descripción si no hay
+ * Qué pagos son de cada registro a mano. Regla: un pago es de un registro si
+ * está escrito IGUAL (misma categoría y nombre, sin acentos ni mayúsculas).
+ *
+ * Además, un pago escrito PARECIDO cuenta como suyo ("Paco Chávez" para el
+ * registro "Paco") solo si se cumplen las cuatro:
+ *  - misma categoría y es un proveedor de verdad (no texto libre de la descripción);
+ *  - el registro está activo y también tiene proveedor (uno pausado o solo con nombre no atrapa nada:
+ *    esconder una serie entera por un estimado parecido es peor que avisar de más);
+ *  - el nombre de uno contiene al del otro;
+ *  - el monto cuadra con el estimado del registro (±10%), y es el ÚNICO registro al que cuadra.
+ * Ante la duda NO cuenta: un aviso de más se nota y se arregla; contar un pago
+ * ajeno calla un aviso verdadero y nadie lo ve. Así "Vercel Pro upgrade" por
+ * $600 no paga la mensualidad de Vercel de $338, ni "Foco de luz LED" la luz.
+ *
+ * Lo que no es de ningún registro (`sobrantes`) es lo que se infiere solo.
+ */
+function asignarPagos(registrados: RegistroBasico[], egresos: EgresoLite[]): { pagosDe: Map<string, EgresoLite[]>; sobrantes: EgresoLite[] } {
+  const info = registrados.map((r) => ({
+    r,
+    llave: llaveDe(r.categoria, proveedorONombre(r)),
+    categoria: textoExacto(r.categoria),
+    palabras: palabrasDe(proveedorONombre(r)),
+    puedeAtrapar: r.activo && normaliza(r.proveedor) !== "",
+  }));
+  const pagosDe = new Map<string, EgresoLite[]>(registrados.map((r): [string, EgresoLite[]] => [r.id, []]));
+  const sobrantes: EgresoLite[] = [];
+
+  for (const e of egresos) {
+    if (e.es_capex) continue;
+    const quien = quienDe(e);
+    const llave = llaveDe(e.categoria, quien);
+
+    const iguales = info.filter((i) => i.llave === llave);
+    if (iguales.length > 0) {
+      for (const i of iguales) pagosDe.get(i.r.id)?.push(e);
+      continue;
+    }
+
+    const esProveedor = normaliza(e.proveedor) !== "";
+    const palabras = esProveedor ? palabrasDe(quien) : [];
+    const categoria = textoExacto(e.categoria);
+    const candidatos = esProveedor
+      ? info.filter((i) => i.puedeAtrapar && i.categoria === categoria && sonParecidas(i.palabras, palabras) && montoCuadra(e.total_mxn, i.r.montoEstimado))
+      : [];
+    if (candidatos.length === 1) pagosDe.get(candidatos[0].r.id)?.push(e);
+    else sobrantes.push(e);
+  }
+  return { pagosDe, sobrantes };
+}
+
+/**
+ * Fecha del último pago de cada registro a mano (null si nunca se ha pagado),
+ * por id. Una sola definición de "¿ya se pagó?" para el cron y el panel — con
+ * su propia copia cada uno ya se desalineó una vez (Google One).
+ */
+export function ultimasPagadas(registrados: RegistroBasico[], egresos: EgresoLite[]): Map<string, string | null> {
+  const { pagosDe } = asignarPagos(registrados, egresos);
+  return new Map(registrados.map((r): [string, string | null] => [r.id, ultimaFecha(pagosDe.get(r.id) ?? [])]));
+}
+
+/** Un gasto con pagos recientes, tal como se compara para saber si otro lo sucedió. */
+interface Vivo {
+  llave: string;
+  categoria: string;
+  palabras: string[];
+  /** Todos sus pagos tienen proveedor (no son texto libre). */
+  esProveedor: boolean;
+  meses: Set<string>;
+  ultima: string;
+  /** Monto del último pago. */
+  monto: number;
+}
+
+/** Meses en que se pagaron los dos: el relevo de un nombre a otro puede coincidir en uno, no en más. */
+const MESES_COMPARTIDOS_MAX = 1;
+
+/**
+ * `t` es la CONTINUACIÓN de `s`: el mismo tipo de gasto con otro nombre, más
+ * reciente, por un monto casi igual (±10%), y que casi nunca se pagó en el mismo
+ * mes que `s`. Una continuación reemplaza al nombre viejo en el tiempo; un gasto
+ * distinto con nombre parecido ("Plan A" y "Plan A+", "Amazon" y "Amazon Prime")
+ * convive con el otro, o cobra otra cantidad.
+ */
+function sucede(t: Vivo, s: Vivo): boolean {
+  if (t.llave === s.llave || !t.esProveedor || !s.esProveedor || t.categoria !== s.categoria) return false;
+  if (t.ultima <= s.ultima || !sonParecidas(t.palabras, s.palabras) || !montoCuadra(t.monto, s.monto)) return false;
+  return Array.from(t.meses).filter((m) => s.meses.has(m)).length <= MESES_COMPARTIDOS_MAX;
+}
+
+/** Un recurrente detectado y lo necesario para saber si otro lo sucedió. */
+interface Detectado {
+  vivo: Vivo;
+  gasto: GastoRecurrente;
+}
+
+/**
+ * Agrupa por gasto (categoría + proveedor, o categoría + descripción si no hay
  * proveedor) y se queda con los grupos donde las últimas dos ocurrencias
  * caen a 20-40 días de distancia — el margen de un "mes" con algo de
  * tolerancia (rentas que se pagan un poco antes o después, fines de semana).
  * Excluye `es_capex` (equipo/gear: inversión, no es un gasto que se repita).
+ *
+ * Cada grupo cuenta SOLO sus pagos escritos igual: un pago suelto con un nombre
+ * parecido nunca se suma ni resta a la serie de otro.
  */
-export function detectarRecurrentes(egresos: EgresoLite[]): GastoRecurrente[] {
-  const grupos = new Map<string, { etiqueta: string; fechas: string[]; montos: number[] }>();
+function detectar(egresos: EgresoLite[]): Detectado[] {
+  interface Grupo { etiqueta: string; clave: string; categoria: string; palabras: string[]; esProveedor: boolean; fechas: string[]; montos: number[] }
+  const grupos = new Map<string, Grupo>();
 
-  for (const e of egresos) {
+  // Más viejo primero; con la misma fecha, por etiqueta: el resultado no depende del orden de entrada.
+  const ordenados = [...egresos].sort((a, b) => a.fecha.localeCompare(b.fecha) || etiquetaDe(a).localeCompare(etiquetaDe(b)));
+  for (const e of ordenados) {
     if (e.es_capex) continue;
     if (!e.categoria && !e.proveedor && !e.descripcion) continue;
-    const cat = normaliza(e.categoria);
-    const quien = normaliza(e.proveedor) || normaliza(e.descripcion);
-    if (!cat && !quien) continue;
-    const clave = `${cat}::${quien}`;
+    const quien = quienDe(e);
+    if (!normaliza(e.categoria) && !normaliza(quien)) continue;
 
-    const etiqueta = [e.categoria, e.proveedor].filter(Boolean).join(" · ") || e.descripcion || e.categoria || "Gasto";
-    const g = grupos.get(clave) ?? { etiqueta, fechas: [], montos: [] };
-    g.fechas.push(e.fecha);
-    g.montos.push(Number(e.total_mxn) || 0);
-    grupos.set(clave, g);
+    const llave = llaveDe(e.categoria, quien);
+    const g = grupos.get(llave);
+    const esProveedor = normaliza(e.proveedor) !== "" && (g?.esProveedor ?? true);
+    const nuevo: Grupo = {
+      // Etiqueta y clave se quedan con la primera escritura del grupo, igual que siempre: así la clave
+      // (que identifica el aviso en la bitácora) no cambia cuando llega otra ortografía del mismo gasto.
+      etiqueta: g?.etiqueta ?? etiquetaDe(e),
+      clave: g?.clave ?? claveDe(e.categoria, quien),
+      categoria: textoExacto(e.categoria),
+      palabras: palabrasDe(quien),
+      esProveedor,
+      fechas: [...(g?.fechas ?? []), e.fecha],
+      montos: [...(g?.montos ?? []), Number(e.total_mxn) || 0],
+    };
+    grupos.set(llave, nuevo);
   }
 
-  const recurrentes: GastoRecurrente[] = [];
-  for (const [clave, g] of grupos) {
+  const recurrentes: Detectado[] = [];
+  for (const [llave, g] of grupos) {
     if (g.fechas.length < 2) continue;
     const fechasOrdenadas = [...g.fechas].sort();
     const ultima = fechasOrdenadas[fechasOrdenadas.length - 1];
@@ -111,18 +270,40 @@ export function detectarRecurrentes(egresos: EgresoLite[]): GastoRecurrente[] {
     if (gapDias < 20 || gapDias > 40) continue; // no se ve mensual
 
     recurrentes.push({
-      clave,
-      etiqueta: g.etiqueta,
-      // El último monto pagado predice mejor el próximo que un promedio
-      // histórico (las suscripciones/rentas suben de precio, no bajan).
-      montoEstimado: g.montos[g.fechas.indexOf(ultima)] ?? g.montos[g.montos.length - 1],
-      vecesVisto: g.fechas.length,
-      ultimaFecha: ultima,
-      proximaFecha: unMesDespues(ultima),
+      vivo: {
+        llave, categoria: g.categoria, palabras: g.palabras, esProveedor: g.esProveedor, meses: new Set(g.fechas.map(mesDe)), ultima,
+        monto: g.montos[g.fechas.indexOf(ultima)] ?? g.montos[g.montos.length - 1],
+      },
+      gasto: {
+        clave: g.clave,
+        etiqueta: g.etiqueta,
+        // El último monto pagado predice mejor el próximo que un promedio
+        // histórico (las suscripciones/rentas suben de precio, no bajan).
+        montoEstimado: g.montos[g.fechas.indexOf(ultima)] ?? g.montos[g.montos.length - 1],
+        vecesVisto: g.fechas.length,
+        ultimaFecha: ultima,
+        proximaFecha: unMesDespues(ultima),
+      },
     });
   }
 
-  return recurrentes.sort((a, b) => a.proximaFecha.localeCompare(b.proximaFecha));
+  return recurrentes.sort((a, b) => a.gasto.proximaFecha.localeCompare(b.gasto.proximaFecha));
+}
+
+/**
+ * Quita las series que otra con nombre parecido ya sucedió ("Paco Chávez" que
+ * pasó a ser "Paco"): ese fantasma vencía para siempre porque nadie le volvió
+ * a capturar un pago. Solo las retira una continuación VIVA — un pago suelto o
+ * una serie sin pagos recientes no basta —, así que un atraso de verdad sigue
+ * avisando. `otros` son gastos vivos que no salen de la inferencia (los registros).
+ */
+function retirarSucedidos(series: Detectado[], otros: Vivo[]): Detectado[] {
+  const vivos = [...series.map((s) => s.vivo), ...otros];
+  return series.filter((s) => !vivos.some((t) => sucede(t, s.vivo)));
+}
+
+export function detectarRecurrentes(egresos: EgresoLite[]): GastoRecurrente[] {
+  return retirarSucedidos(detectar(egresos), []).map((d) => d.gasto);
 }
 
 /** Los que vencen dentro de `diasAntes` días, o que ya se pasaron de fecha (nadie lo registró todavía). */
@@ -175,12 +356,12 @@ export function proximoVencimiento(diaMes: number, ultimaPagadaISO: string | nul
 }
 
 /**
- * Misma clave que usa `detectarRecurrentes`: categoría + (proveedor o el
- * propio nombre/descripción). Exportada a propósito: `lib/gastos-recurrentes
- * -data.ts` la reusa para "¿ya se pagó?" — antes tenía su PROPIA copia y se
- * desalineó con esta (bug real: Google One quedaba "pagado" para el cron
- * pero seguía "pendiente" en el panel, porque cada lado normalizaba distinto
- * cuándo categoría/proveedor venían vacíos).
+ * Clave estable de un gasto: categoría + (proveedor o el propio nombre/
+ * descripción). Solo IDENTIFICA (p. ej. la fila de la bitácora por ciclo).
+ * Qué pagos son de cada registro lo decide `asignarPagos`, y "¿ya se pagó?" lo
+ * responde `ultimasPagadas`, compartida por el cron y el panel — con copias
+ * separadas ya se desalinearon una vez (bug real: Google One quedaba "pagado"
+ * para el cron pero seguía "pendiente" en el panel).
  */
 export function claveDe(categoria: string | null, proveedorODescripcion: string | null): string {
   return `${normaliza(categoria)}::${normaliza(proveedorODescripcion)}`;
@@ -188,32 +369,41 @@ export function claveDe(categoria: string | null, proveedorODescripcion: string 
 
 /**
  * Combina lo registrado a mano con lo inferido, PURO (sin DB): lo registrado
- * gana para su clave (evita aviso doble de lo mismo) y no depende de que ya
+ * gana para su gasto (evita aviso doble de lo mismo) y no depende de que ya
  * se haya capturado 2 veces. Un registro pausado (`activo=false`) tampoco
- * deja pasar la inferencia para esa clave — se pausó a propósito.
+ * deja pasar la inferencia de ese gasto — se pausó a propósito.
  */
 export function combinarConRegistrados(
   registrados: GastoRecurrenteRegistrado[],
   egresos: EgresoLite[],
   hoyISO: string,
 ): GastoRecurrente[] {
-  const clavesRegistradas = new Set<string>();
+  const { pagosDe, sobrantes } = asignarPagos(registrados, egresos);
   const explicitos: GastoRecurrente[] = [];
+  const continuaciones: Vivo[] = [];
 
   for (const r of registrados) {
-    const clave = claveDe(r.categoria, r.proveedor || r.nombre);
-    clavesRegistradas.add(clave);
-    if (!r.activo) continue;
+    const pagos = pagosDe.get(r.id) ?? [];
+    const ultimaPagada = ultimaFecha(pagos);
 
-    let ultimaPagada: string | null = null;
-    for (const e of egresos) {
-      if (e.es_capex) continue;
-      if (claveDe(e.categoria, e.proveedor || e.descripcion) !== clave) continue;
-      if (!ultimaPagada || e.fecha > ultimaPagada) ultimaPagada = e.fecha;
+    // Un registro (aun pausado) con proveedor y pagos también puede ser la continuación de una serie
+    // vieja que cambió de nombre. El monto que cuenta es el de su último pago.
+    const ultimoPago = ultimaPagada ? pagos.find((p) => p.fecha === ultimaPagada) : undefined;
+    if (ultimoPago && normaliza(r.proveedor)) {
+      continuaciones.push({
+        llave: llaveDe(r.categoria, r.proveedor),
+        categoria: textoExacto(r.categoria),
+        palabras: palabrasDe(r.proveedor),
+        esProveedor: true,
+        meses: new Set(pagos.map((p) => mesDe(p.fecha))),
+        ultima: ultimoPago.fecha,
+        monto: Number(ultimoPago.total_mxn) || 0,
+      });
     }
 
+    if (!r.activo) continue;
     explicitos.push({
-      clave,
+      clave: claveDe(r.categoria, proveedorONombre(r)),
       etiqueta: [r.categoria, r.proveedor].filter(Boolean).join(" · ") || r.nombre,
       montoEstimado: r.montoEstimado,
       vecesVisto: ultimaPagada ? 1 : 0,
@@ -223,6 +413,6 @@ export function combinarConRegistrados(
     });
   }
 
-  const inferidos = detectarRecurrentes(egresos).filter((g) => !clavesRegistradas.has(g.clave));
+  const inferidos = retirarSucedidos(detectar(sobrantes), continuaciones).map((d) => d.gasto);
   return [...explicitos, ...inferidos].sort((a, b) => a.proximaFecha.localeCompare(b.proximaFecha));
 }
