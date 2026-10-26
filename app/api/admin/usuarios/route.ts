@@ -1,31 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { esRol, contarAdminsActivos } from "@/lib/usuarios";
+import { esRol, contarAdminsActivos, limpiarEmail, esEmail } from "@/lib/usuarios";
+import { enviarInvitacion } from "@/lib/invitacion";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
 
 export const dynamic = "force-dynamic";
 
-const clean = (e: unknown) => String(e ?? "").trim().toLowerCase();
-const isEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
-
-/** Agrega o actualiza un usuario ({ email, rol, nombre? }). Solo admin. */
+/**
+ * Agrega o actualiza un usuario ({ email, rol, nombre? }). Solo admin.
+ * Si el correo es nuevo, le manda su enlace de acceso; si el correo no sale, el
+ * alta se queda (el admin lo reenvía con /api/admin/usuarios/invitar).
+ */
 export async function POST(req: NextRequest) {
   const yo = await getFullAdminEmail();
   if (!yo) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const b = await req.json().catch(() => ({}));
-  const email = clean(b.email);
+  const email = limpiarEmail(b.email);
   const rol = b.rol;
-  if (!isEmail(email)) return NextResponse.json({ error: "Correo inválido." }, { status: 400 });
+  if (!esEmail(email)) return NextResponse.json({ error: "Correo inválido." }, { status: 400 });
   if (!esRol(rol)) return NextResponse.json({ error: "Rol inválido." }, { status: 400 });
 
   const sb = supabaseAdmin();
+  const nombre = b.nombre ? String(b.nombre).trim() : null;
+  // Sólo a quien todavía no estaba se le escribe: volver a "agregar" a alguien
+  // que ya tiene acceso no debe llenarle el correo de invitaciones.
+  const { data: previo } = await sb.from("usuarios").select("email").eq("email", email).maybeSingle();
+
   const { error } = await sb.from("usuarios").upsert(
-    { email, rol, nombre: (b.nombre ? String(b.nombre).trim() : null), activo: true, updated_at: new Date().toISOString() },
+    { email, rol, nombre, activo: true, updated_at: new Date().toISOString() },
     { onConflict: "email" },
   );
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  let invitacion: "enviada" | "fallida" | "no_aplica" = "no_aplica";
+  let invitacionError: string | undefined;
+  if (!previo) {
+    const r = await enviarInvitacion(sb, { email, nombre, rol });
+    invitacion = r.ok ? "enviada" : "fallida";
+    if (!r.ok) invitacionError = r.error;
+  }
 
   try {
     const quien = await nombreDeActor(sb, yo);
@@ -33,11 +48,11 @@ export async function POST(req: NextRequest) {
       tipo: "usuario_agregado",
       titulo: `${quien} dio de alta a ${email} como ${rol}`,
       actor: yo, entidad: "usuario", entidad_id: email, entidad_nombre: email,
-      meta: { rol },
+      meta: { rol, invitacion },
     });
   } catch { /* bitácora best-effort */ }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, invitacion, ...(invitacionError ? { invitacion_error: invitacionError } : {}) });
 }
 
 /** Cambia rol y/o activo de un usuario. Solo admin. Con candados anti-bloqueo. */
@@ -46,8 +61,8 @@ export async function PATCH(req: NextRequest) {
   if (!yo) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const b = await req.json().catch(() => ({}));
-  const email = clean(b.email);
-  if (!isEmail(email)) return NextResponse.json({ error: "Correo inválido." }, { status: 400 });
+  const email = limpiarEmail(b.email);
+  if (!esEmail(email)) return NextResponse.json({ error: "Correo inválido." }, { status: 400 });
 
   const sb = supabaseAdmin();
   const { data: actual } = await sb.from("usuarios").select("rol, activo").eq("email", email).maybeSingle();
@@ -91,7 +106,7 @@ export async function DELETE(req: NextRequest) {
   const yo = await getFullAdminEmail();
   if (!yo) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-  const email = clean(new URL(req.url).searchParams.get("email"));
+  const email = limpiarEmail(new URL(req.url).searchParams.get("email"));
   if (!email) return NextResponse.json({ error: "Falta el correo." }, { status: 400 });
   if (email === yo) return NextResponse.json({ error: "No puedes eliminar tu propia cuenta." }, { status: 400 });
 

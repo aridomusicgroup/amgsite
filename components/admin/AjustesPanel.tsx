@@ -1,7 +1,7 @@
 "use client";
 import { useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowUp, ArrowDown, Loader2, Lock, X, Radio, Plus, ChevronDown, ChevronRight, User, Users, Wrench } from "lucide-react";
+import { ArrowUp, ArrowDown, Loader2, Lock, X, Radio, Plus, Mail, ChevronDown, ChevronRight, User, Users, Wrench } from "lucide-react";
 import { ROLE_MODULES, MODULES, GRUPOS, GRUPO_LABEL, moduleLabel, moduleDef, type Grupo } from "@/lib/modules";
 import { toast } from "@/lib/toast";
 import { MusicosSection } from "./MusicosSection";
@@ -250,23 +250,39 @@ function EquipoSection({ usuarios, selfEmail }: { usuarios: Usuario[]; selfEmail
   const [abierta, setAbierta] = useState<string | null>(null);
   const yo = selfEmail.toLowerCase();
 
-  const call = async (method: string, body?: Record<string, unknown>, qs = "") => {
+  /** Devuelve la respuesta del servidor si salió bien, o null (ya avisó del error). */
+  const call = async (method: string, body?: Record<string, unknown>, qs = ""): Promise<Record<string, unknown> | null> => {
     setBusy(true);
     try {
       const r = await fetch(`/api/admin/usuarios${qs}`, {
         method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined,
       });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) { toast(`⚠️ ${d.error || "Error"}`); return false; }
+      if (!r.ok) { toast(`⚠️ ${d.error || "Error"}`); return null; }
       router.refresh();
-      return true;
+      return d;
     } finally { setBusy(false); }
   };
 
   const agregar = async () => {
     const email = nuevo.trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast("⚠️ Correo inválido"); return; }
-    if (await call("POST", { email, rol: rolNuevo })) { toast("✓ Usuario agregado"); setNuevo(""); }
+    const d = await call("POST", { email, rol: rolNuevo });
+    if (!d) return;
+    setNuevo("");
+    if (d.invitacion === "enviada") toast(`✓ Usuario agregado · le mandamos su acceso a ${email}`);
+    else if (d.invitacion === "fallida") toast(`⚠️ Usuario agregado, pero el correo no salió (${String(d.invitacion_error ?? "error")}). Reenvíalo con el sobre ✉`);
+    else toast("✓ Usuario agregado");
+  };
+  const reenviar = async (email: string) => {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/admin/usuarios/invitar", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }),
+      });
+      const d = await r.json().catch(() => ({}));
+      toast(r.ok ? `✓ Acceso reenviado a ${email}` : `⚠️ ${d.error || "No se pudo reenviar"}`);
+    } finally { setBusy(false); }
   };
   const cambiarRol = (email: string, rol: string) => call("PATCH", { email, rol });
   const toggleActivo = (u: Usuario) => call("PATCH", { email: u.email, activo: !u.activo });
@@ -285,6 +301,7 @@ function EquipoSection({ usuarios, selfEmail }: { usuarios: Usuario[]; selfEmail
             onAbrir={() => setAbierta(abierta === u.email ? null : u.email)}
             onRol={(rol) => cambiarRol(u.email, rol)}
             onActivo={() => toggleActivo(u)}
+            onInvitar={() => reenviar(u.email)}
             onEliminar={() => eliminar(u.email)}
           />
         ))}
@@ -303,16 +320,16 @@ function EquipoSection({ usuarios, selfEmail }: { usuarios: Usuario[]; selfEmail
       </div>
 
       <p className="text-white/30 text-[11px] mt-3">
-        Para entrar la primera vez, la persona usa <b className="text-white/50">“Entrar con enlace”</b> en el login con su correo (crea su cuenta). Después puede definir su contraseña.
+        Al agregar a alguien le llega un correo con su enlace para entrar y crear su contraseña. El enlace es de un solo uso y caduca pronto: si no le llegó o ya no sirve, reenvíalo con el sobre ✉ de su fila. También puede pedirlo solo con <b className="text-white/50">“Entrar con enlace”</b> en el login.
       </p>
     </Section>
   );
 }
 
 /** Una persona: identidad y rol arriba, sus accesos al desplegar. */
-function FilaUsuario({ u, esYo, busy, abierta, onAbrir, onRol, onActivo, onEliminar }: {
+function FilaUsuario({ u, esYo, busy, abierta, onAbrir, onRol, onActivo, onInvitar, onEliminar }: {
   u: Usuario; esYo: boolean; busy: boolean; abierta: boolean;
-  onAbrir: () => void; onRol: (rol: string) => void; onActivo: () => void; onEliminar: () => void;
+  onAbrir: () => void; onRol: (rol: string) => void; onActivo: () => void; onInvitar: () => void; onEliminar: () => void;
 }) {
   const cfg = ROLE_MODULES[u.role] ?? ROLE_MODULES.produccion;
   const [extras, setExtras] = useState<string[]>(u.modules_extra ?? cfg.defaultOn);
@@ -373,6 +390,8 @@ function FilaUsuario({ u, esYo, busy, abierta, onAbrir, onRol, onActivo, onElimi
           className={`px-2.5 py-1 rounded-full text-xs transition-colors disabled:opacity-40 cursor-pointer ${u.activo ? "bg-lgb-red/15 text-lgb-red hover:bg-lgb-red/25" : "bg-white/5 text-white/50 hover:text-white"}`}>
           {u.activo ? "Activo" : "Inactivo"}
         </button>
+        <button onClick={onInvitar} disabled={busy || esYo || !u.activo} title="Reenviar su acceso por correo" aria-label="Reenviar su acceso por correo"
+          className="text-white/25 hover:text-white disabled:opacity-20 cursor-pointer"><Mail size={15} /></button>
         <button onClick={onEliminar} disabled={busy || esYo} className="text-white/25 hover:text-red-300 disabled:opacity-20 cursor-pointer"><X size={15} /></button>
       </div>
 

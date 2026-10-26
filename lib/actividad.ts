@@ -29,7 +29,7 @@ export type ActividadTipo =
   | "contacto_creado" | "contacto_editado" | "contacto_eliminado" | "recompra_enviada"
   | "seguimiento_programado" | "seguimiento_cerrado"
   // Equipo
-  | "usuario_agregado" | "usuario_editado" | "usuario_eliminado"
+  | "usuario_agregado" | "usuario_editado" | "usuario_eliminado" | "usuario_invitado"
   // Almacenamiento
   | "almacenamiento_tipo_editado" | "almacenamiento_override_editado"
   // Cursos

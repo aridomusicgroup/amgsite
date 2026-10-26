@@ -11,6 +11,10 @@ export interface UsuarioAcceso { rol: Rol; activo: boolean }
 export interface UsuarioRow { email: string; rol: Rol; activo: boolean; nombre: string | null; foto_url: string | null }
 export interface Perfil { nombre: string | null; foto_url: string | null }
 
+/** Correo en minúsculas y sin espacios, como se guarda en `usuarios`. */
+export const limpiarEmail = (e: unknown): string => String(e ?? "").trim().toLowerCase();
+export const esEmail = (e: string): boolean => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
+
 const parseEnv = (v?: string) => (v ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
 const ROLES: Rol[] = ["admin", "crm", "produccion"];
 export const esRol = (r: unknown): r is Rol => typeof r === "string" && (ROLES as string[]).includes(r);
