@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/supabase/auth-server";
 import { getDashboardData } from "@/lib/erp-data";
+import { getDatosOperacion } from "@/lib/operacion-data";
 import { Dashboard } from "@/components/admin/Dashboard";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,7 @@ export default async function DashboardPage() {
   if (!session) redirect("/admin/login");
   if (session.role !== "admin") redirect("/admin/produccion");
 
-  const { ventas, ingresos, egresos, contactos, proyectos } = await getDashboardData();
-  return <Dashboard ventas={ventas} ingresos={ingresos} egresos={egresos} contactos={contactos} proyectos={proyectos} />;
+  const { ventas, ingresos, egresos, contactos, proyectos, fuenteOperacion } = await getDashboardData();
+  const operacion = await getDatosOperacion(fuenteOperacion);
+  return <Dashboard ventas={ventas} ingresos={ingresos} egresos={egresos} contactos={contactos} proyectos={proyectos} operacion={operacion} />;
 }

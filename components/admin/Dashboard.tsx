@@ -3,8 +3,10 @@ import { useState, useMemo, useCallback } from "react";
 import { StatCard, money } from "@/components/admin/ui";
 import { KpiCard, Delta, HBars, ParetoBars, ComboMonthly, LineChart, Funnel, StackedBars, type ComboRow } from "@/components/admin/charts";
 import { EntregasPanel } from "@/components/admin/EntregasPanel";
+import { OperacionPanel } from "@/components/admin/OperacionPanel";
 import { ETAPA_LABEL, ETAPAS } from "@/lib/erp-data";
 import type { DashVenta, DashIngreso, DashEgreso, DashContacto, DashProyecto } from "@/lib/erp-data";
+import { hoyEnMexico, resumirOperacion, type DatosOperacion } from "@/lib/operacion";
 
 const CANAL_LABEL: Record<string, string> = {
   whatsapp: "WhatsApp", instagram: "Instagram", tiktok: "TikTok", beatstars: "BeatStars", facebook: "Facebook", sitio: "Sitio web",
@@ -16,7 +18,7 @@ const PERIODOS = [
   { k: "365", label: "12 meses" },
   { k: "todo", label: "Todo" },
 ] as const;
-const TABS = ["Resumen", "Ingresos", "Egresos", "Comercial", "Clientes", "Entregas"] as const;
+const TABS = ["Resumen", "Ingresos", "Egresos", "Operación", "Comercial", "Clientes", "Entregas"] as const;
 // Etapas que forman el embudo lineal (perdido/inactivo son salidas, no pasos).
 const EMBUDO = ["lead", "negociacion", "cliente", "recurrente"] as const;
 
@@ -46,9 +48,11 @@ function Panel({ title, children, hint }: { title: string; children: React.React
 
 interface RevEvent { fecha: string; monto: number; canal: string | null; tipo: string | null; beat_nombre: string | null; cliente: string | null }
 
-export function Dashboard({ ventas, ingresos, egresos, contactos, proyectos }: {
+export function Dashboard({ ventas, ingresos, egresos, contactos, proyectos, operacion }: {
   ventas: DashVenta[]; ingresos: DashIngreso[]; egresos: DashEgreso[]; contactos: DashContacto[];
   proyectos: DashProyecto[];
+  /** null = no se pudo armar en el servidor (la pestaña Operación lo avisa; el resto sigue igual). */
+  operacion: DatosOperacion | null;
 }) {
   const [periodo, setPeriodo] = useState<string>("mes");
   const [canal, setCanal] = useState("todos");
@@ -56,9 +60,16 @@ export function Dashboard({ ventas, ingresos, egresos, contactos, proyectos }: {
   const [clienteF, setClienteF] = useState("todos");
   const [base, setBase] = useState<"caja" | "devengado">("caja");
   const [incluirCapex, setIncluirCapex] = useState(false);
+  const [incluirSocios, setIncluirSocios] = useState(true);
   const [tab, setTab] = useState<string>("Resumen");
 
   const thisMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
+  // Cuánto cuesta operar contra lo que entra: siempre sobre el mes en curso (hora de México), sin filtros.
+  const hoyMexico = useMemo(() => hoyEnMexico(), []);
+  const resumenOp = useMemo(
+    () => (operacion ? resumirOperacion(operacion, hoyMexico, incluirSocios) : null),
+    [operacion, hoyMexico, incluirSocios],
+  );
   const cutoffDays = useMemo(() => {
     if (!/^\d+$/.test(periodo)) return null;
     const d = new Date(); d.setDate(d.getDate() - Number(periodo));
@@ -265,6 +276,16 @@ export function Dashboard({ ventas, ingresos, egresos, contactos, proyectos }: {
 
   const recurrentes = contactos.filter((c) => c.etapa === "recurrente").length;
 
+  // "Día N" en que lo cobrado (ya sin músicos ni impuestos) alcanza para pagar el mes de operación.
+  const quienCuenta = incluirSocios ? "con socios" : "solo operar";
+  const mesCubierto = resumenOp?.actual;
+  const [cubresElMes, cubresSub] = !resumenOp || !mesCubierto || resumenOp.sinCostos || resumenOp.costoMensual <= 0
+    ? ["—", `mes en curso · ${quienCuenta}`]
+    : mesCubierto.cubre ? [`Día ${mesCubierto.diaEquilibrio}`, `ya cubierto · ${quienCuenta}`]
+    : mesCubierto.ritmo === "llega" ? [`Día ${mesCubierto.diaProyectado}`, `al ritmo de hoy · ${quienCuenta}`]
+    : mesCubierto.ritmo === "pronto" ? ["Aún es pronto", `van ${mesCubierto.transcurridos} días · ${quienCuenta}`]
+    : ["No alcanza", `al ritmo de hoy · ${quienCuenta}`];
+
   const periodLabel = periodo === "mes" ? "Este mes"
     : /^\d{4}-\d{2}$/.test(periodo) ? mesLargo(periodo)
     : (PERIODOS.find((p) => p.k === periodo)?.label ?? "Todo");
@@ -322,6 +343,15 @@ export function Dashboard({ ventas, ingresos, egresos, contactos, proyectos }: {
         <KpiCard label="Ventas" value={num(fv.length)} delta={<Delta curr={fv.length} prev={prevWin ? pfv.length : null} />} sub={`ticket ${money(ticket)}`} />
         <KpiCard label="Costos+gastos" value={money(costosDir + gastosOp)} delta={<Delta curr={costosDir + gastosOp} prev={prevWin ? costosPrev + gastosPrev : null} invert />} />
         <KpiCard label="Clientes nuevos" value={num(fc.length)} delta={<Delta curr={fc.length} prev={prevWin ? pfc.length : null} />} />
+        <button
+          type="button" onClick={() => setTab("Operación")} title="Ver la pestaña Operación"
+          className="col-span-2 lg:col-span-6 w-full flex items-center flex-wrap gap-x-4 gap-y-1 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-left transition-colors hover:border-white/20"
+        >
+          <span className="text-white/40 text-[11px] uppercase tracking-wider">Cubres el mes</span>
+          <span className="text-white font-coolvetica text-2xl leading-none tabular-nums">{cubresElMes}</span>
+          <span className="text-white/40 text-xs">{cubresSub}</span>
+          <span className="ml-auto text-white/40 text-xs">Ver Operación →</span>
+        </button>
       </div>
 
       {/* Tabs */}
@@ -363,6 +393,10 @@ export function Dashboard({ ventas, ingresos, egresos, contactos, proyectos }: {
           <Panel title="Gastos por categoría"><HBars rows={gastosCategoria} fmt={money} color="#fb7185" /></Panel>
           <Panel title="Egresos por mes" hint={incluirCapex ? "incl. CAPEX" : "solo OPEX"}><LineChart data={egresosMensual} fmt={money} color="#fb7185" /></Panel>
         </div>
+      )}
+
+      {tab === "Operación" && (
+        <OperacionPanel resumen={resumenOp} incluirSocios={incluirSocios} onIncluirSocios={setIncluirSocios} ventas={fv} periodLabel={periodLabel} />
       )}
 
       {tab === "Comercial" && (

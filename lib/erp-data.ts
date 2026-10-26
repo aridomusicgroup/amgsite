@@ -7,6 +7,7 @@ import { pasoDe, ESPERA_PROYECTO, ESPERA_TEMA, type EstadoEntrega, type PasoEntr
 import { mapaDeEntregas, claveUnidad, type ResumenEntrega } from "@/lib/entrega-estado";
 import { AJUSTES_DEFAULT, type AjustesBolsas, type EscalonSueldo, type MesFinanzas } from "@/lib/bolsas";
 import { limpiarAbonos, restaPorPagar, type AbonoMusico } from "@/lib/abonos-musico";
+import { armarFuente, type FuenteOperacion } from "@/lib/operacion";
 
 export type { DashProyecto };
 
@@ -462,6 +463,23 @@ export interface PagoMusicoRow {
   abonos: AbonoMusico[];
 }
 
+/** Los ajustes de las bolsas (`finanzas_ajustes`); sin la fila o sin la tabla, los valores por defecto. */
+function ajustesDeFila(aj: FilaLibre | null): AjustesBolsas {
+  if (!aj) return AJUSTES_DEFAULT;
+  const num = (v: unknown, d: number) => (v === null || v === undefined || isNaN(Number(v)) ? d : Number(v));
+  return {
+    impuestosPct: num(aj.impuestos_pct, AJUSTES_DEFAULT.impuestosPct),
+    colchonPct: num(aj.colchon_pct, AJUSTES_DEFAULT.colchonPct),
+    colchonMeta: num(aj.colchon_meta, AJUSTES_DEFAULT.colchonMeta),
+    colchonInicial: num(aj.colchon_inicial, 0),
+    inicio: (aj.inicio as string | null) ?? AJUSTES_DEFAULT.inicio,
+    escalones: Array.isArray(aj.escalones) && aj.escalones.length
+      ? (aj.escalones as EscalonSueldo[]).map((e) => ({ desde: Number(e.desde) || 0, semanal: Number(e.semanal) || 0 }))
+      : AJUSTES_DEFAULT.escalones,
+    guardado: true,
+  };
+}
+
 const quarterOf = (fecha: string) => {
   const d = new Date(fecha + "T12:00:00");
   const q = Math.floor(d.getMonth() / 3) + 1;
@@ -645,21 +663,7 @@ export async function getFinanzasERP() {
   const repartidoPorTrimestre: Record<string, number> = {};
   for (const r of repartos) repartidoPorTrimestre[r.periodo] = (repartidoPorTrimestre[r.periodo] ?? 0) + r.total;
 
-  const aj = ajustesRes.data as FilaLibre | null;
-  const num = (v: unknown, d: number) => (v === null || v === undefined || isNaN(Number(v)) ? d : Number(v));
-  const ajustes: AjustesBolsas = aj
-    ? {
-        impuestosPct: num(aj.impuestos_pct, AJUSTES_DEFAULT.impuestosPct),
-        colchonPct: num(aj.colchon_pct, AJUSTES_DEFAULT.colchonPct),
-        colchonMeta: num(aj.colchon_meta, AJUSTES_DEFAULT.colchonMeta),
-        colchonInicial: num(aj.colchon_inicial, 0),
-        inicio: (aj.inicio as string | null) ?? AJUSTES_DEFAULT.inicio,
-        escalones: Array.isArray(aj.escalones) && aj.escalones.length
-          ? (aj.escalones as EscalonSueldo[]).map((e) => ({ desde: Number(e.desde) || 0, semanal: Number(e.semanal) || 0 }))
-          : AJUSTES_DEFAULT.escalones,
-        guardado: true,
-      }
-    : AJUSTES_DEFAULT;
+  const ajustes = ajustesDeFila(ajustesRes.data as FilaLibre | null);
 
   return {
     meses: [...meses.values()].sort((a, b) => a.mes.localeCompare(b.mes)),
@@ -706,16 +710,22 @@ export interface DashContacto { created_at: string; etapa: string; origen: strin
 export async function getDashboardData(): Promise<{
   ventas: DashVenta[]; ingresos: DashIngreso[]; egresos: DashEgreso[]; contactos: DashContacto[];
   proyectos: DashProyecto[];
+  /** Para la pestaña Operación: se arma con lo ya leído aquí, sin volver a consultar tablas grandes. */
+  fuenteOperacion: FuenteOperacion;
 }> {
   const sb = supabaseAdmin();
-  const [vRes, eRes, cRes, pRes, iRes, nRes, prRes] = await Promise.all([
+  const [vRes, eRes, cRes, pRes, iRes, nRes, prRes, equipoRes, ajustesRes] = await Promise.all([
     sb.from("ventas").select("id, fecha, total_mxn, costo_extra, canal, tipo, beat_nombre, contactos(nombre)").limit(5000),
-    sb.from("egresos").select("fecha, total_mxn, es_capex, categoria").limit(5000),
+    sb.from("egresos").select("fecha, total_mxn, es_capex, categoria, proveedor, descripcion").limit(5000),
     sb.from("contactos").select("created_at, etapa, origen, ltv, nombre").is("merged_into", null).limit(5000),
     sb.from("pagos").select("venta_id, fecha, monto_mxn").limit(5000),
     sb.from("ingresos").select("fecha, monto_mxn, fuente").limit(5000),
-    sb.from("nomina").select("periodo_inicio, fecha_pago, monto, estado").limit(5000),
+    sb.from("nomina").select("persona_id, periodo_inicio, fecha_pago, monto, estado").limit(5000),
     sb.from("proyectos").select("id, folio, titulo, clase, tipo, estado, venta_id, created_at, fecha_entrega, fecha_entrega_real").limit(5000),
+    // Quién es del equipo y cuánto se le paga: de ahí sale el costo de operar.
+    sb.from("equipo").select("id, nombre, rol, pago_base, periodicidad, activo"),
+    // Ajustes de las bolsas (supabase-bolsas.sql). Sin la tabla → valores por defecto.
+    sb.from("finanzas_ajustes").select("*").eq("id", 1).maybeSingle(),
   ]);
 
   // Pagos por venta (si la tabla no existe, queda vacío → todo se cobra al 100%).
@@ -791,7 +801,14 @@ export async function getDashboardData(): Promise<{
     fechaEntregaReal: (p.fecha_entrega_real as string | null) ?? null,
   }));
 
-  return { ventas, ingresos, egresos, contactos, proyectos };
+  // Para la pestaña Operación: las filas crudas de las tablas (no `egresos` de arriba, que ya trae la nómina
+  // mezclada como egreso "Nómina" y se contaría dos veces).
+  const fuenteOperacion = armarFuente({
+    ventas: vRes.data ?? [], pagos: pRes.data ?? [], ingresos: iRes.data ?? [], egresos: eRes.data ?? [],
+    nomina: nRes.data ?? [], equipo: equipoRes.data ?? [], ajustes: ajustesDeFila(ajustesRes.data as FilaLibre | null),
+  });
+
+  return { ventas, ingresos, egresos, contactos, proyectos, fuenteOperacion };
 }
 
 // ─── Producción / Proyectos ──────────────────────────────────────────────────
