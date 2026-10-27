@@ -13,6 +13,7 @@ import { AvisoCorreoPedido } from "./AvisoCorreoPedido";
 import { CrmTimeline } from "./CrmTimeline";
 import { CrmSeguimiento } from "./CrmSeguimiento";
 import { useDestacar } from "@/lib/useDestacar";
+import { NuevoClienteForm } from "./NuevoClienteForm";
 
 const ETAPA_STYLE: Record<string, string> = {
   lead: "bg-white/10 text-white/60",
@@ -273,6 +274,8 @@ export function CrmList({ contactos, isAdmin = false, focoInicial, contactoInici
 
   return (
     <div>
+      <div className="flex justify-end mb-3 flex-wrap"><NuevoClienteForm /></div>
+
       {/* Buscador */}
       <div className="relative mb-3">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />

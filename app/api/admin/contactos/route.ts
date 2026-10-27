@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getFullAdminEmail } from "@/lib/supabase/auth-server";
+import { getFullAdminEmail, getSession } from "@/lib/supabase/auth-server";
+import { buscarContacto } from "@/lib/contacto-match";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
 import { anclarCarpeta, type CarpetaPendiente } from "@/lib/carpeta-reaper";
@@ -8,6 +9,55 @@ import { limpiarEnlace } from "@/lib/origenes";
 export const dynamic = "force-dynamic";
 
 const ETAPAS = ["lead", "negociacion", "cliente", "recurrente", "perdido", "inactivo"];
+
+// ── Crear un cliente a mano (admin o CRM) ──
+// Avisa si ya existe uno con ese correo, teléfono o nombre en vez de duplicarlo.
+export async function POST(req: NextRequest) {
+  const s = await getSession();
+  if (!s || (s.role !== "admin" && s.role !== "crm")) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const actor = s.email;
+
+  const b = await req.json().catch(() => ({}));
+  const nombre = String(b.nombre || "").trim();
+  const email = String(b.email || "").trim().toLowerCase();
+  const telefono = String(b.telefono || "").trim();
+  const direccion = String(b.direccion || "").trim();
+  if (!nombre) return NextResponse.json({ error: "Escribe el nombre del cliente." }, { status: 400 });
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ error: "El correo no parece válido." }, { status: 400 });
+  }
+  const etapa = ETAPAS.includes(b.etapa) ? b.etapa : "lead";
+
+  const sb = supabaseAdmin();
+  const repetido = await buscarContacto(sb, { nombre, email, telefono });
+  if (repetido) {
+    return NextResponse.json(
+      { error: `Ya existe "${repetido.nombre || repetido.email}" con ese correo, teléfono o nombre.` },
+      { status: 409 },
+    );
+  }
+
+  const { data, error } = await sb
+    .from("contactos")
+    .insert({
+      nombre, email: email || null, telefono: telefono || null, direccion: direccion || null,
+      etapa, origen: b.origen ? String(b.origen) : null,
+    })
+    .select("id, nombre")
+    .single();
+  if (error || !data) return NextResponse.json({ error: error?.message || "No se pudo crear." }, { status: 500 });
+
+  try {
+    const quien = await nombreDeActor(sb, actor);
+    await registrarActividad(sb, {
+      tipo: "contacto_creado",
+      titulo: `${quien} creó el contacto ${nombre}`,
+      actor, entidad: "contacto", entidad_id: data.id as string, entidad_nombre: nombre,
+    });
+  } catch { /* bitácora best-effort */ }
+
+  return NextResponse.json({ ok: true, id: data.id });
+}
 
 // ── Editar un contacto (solo admin total) ──
 export async function PATCH(req: NextRequest) {

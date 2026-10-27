@@ -818,7 +818,17 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalo
   const pickCliente = (val: string) => {
     setNombre(val);
     const c = clientes.find((x) => x.nombre === val);
-    if (c) { setEmail(c.email ?? ""); setTelefono(c.telefono ?? ""); setDireccion(c.direccion ?? ""); setContactoId(c.id); }
+    if (c) { setEmail(c.email ?? ""); setTelefono(c.telefono ?? ""); setDireccion(c.direccion ?? ""); setContactoId(c.id); return; }
+    // El nombre ya no es el de un cliente de la lista (se retocó o es otra
+    // persona): se suelta el cliente ligado y los datos que se le habían
+    // copiado. Si no, el documento se queda ligado al cliente anterior.
+    const previo = contactoId ? clientes.find((x) => x.id === contactoId) : null;
+    if (previo) {
+      if (email === (previo.email ?? "")) setEmail("");
+      if (telefono === (previo.telefono ?? "")) setTelefono("");
+      if (direccion === (previo.direccion ?? "")) setDireccion("");
+    }
+    setContactoId(null);
   };
 
   const save = async () => {
@@ -892,6 +902,13 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalo
         </div>
       )}
       <ClienteFields {...{ nombre, email, telefono, direccion, clientes, pickCliente, setEmail, setTelefono, setDireccion }} />
+      {nombre.trim() && (
+        <p className={`text-[11px] mt-1 ${contactoId ? "text-green-300/70" : "text-amber-300/70"}`}>
+          {contactoId
+            ? "✓ Ligado al cliente que ya existe en Clientes."
+            : "Cliente nuevo: se crea en Clientes al guardar (o se une si ya existe con ese correo o teléfono)."}
+        </p>
+      )}
       <MonedaYCambio moneda={moneda} setMoneda={ponerMoneda} tipoCambio={tipoCambio}
         setTipoCambio={setTipoCambio} monto={total} sugerido={tcSugerido}
         onReexpresar={(factor) => {
@@ -1043,7 +1060,17 @@ function ContratoModal({ initial, tipos, clientes, onClose, tcSugerido }: { init
   const pickCliente = (val: string) => {
     setNombre(val);
     const c = clientes.find((x) => x.nombre === val);
-    if (c) { setEmail(c.email ?? ""); setTelefono(c.telefono ?? ""); setDireccion(c.direccion ?? ""); setContactoId(c.id); }
+    if (c) { setEmail(c.email ?? ""); setTelefono(c.telefono ?? ""); setDireccion(c.direccion ?? ""); setContactoId(c.id); return; }
+    // El nombre ya no es el de un cliente de la lista (se retocó o es otra
+    // persona): se suelta el cliente ligado y los datos que se le habían
+    // copiado. Si no, el documento se queda ligado al cliente anterior.
+    const previo = contactoId ? clientes.find((x) => x.id === contactoId) : null;
+    if (previo) {
+      if (email === (previo.email ?? "")) setEmail("");
+      if (telefono === (previo.telefono ?? "")) setTelefono("");
+      if (direccion === (previo.direccion ?? "")) setDireccion("");
+    }
+    setContactoId(null);
   };
 
   const save = async () => {
@@ -1071,6 +1098,13 @@ function ContratoModal({ initial, tipos, clientes, onClose, tcSugerido }: { init
         </select>
       </Field>
       <ClienteFields {...{ nombre, email, telefono, direccion, clientes, pickCliente, setEmail, setTelefono, setDireccion }} />
+      {nombre.trim() && (
+        <p className={`text-[11px] mt-1 ${contactoId ? "text-green-300/70" : "text-amber-300/70"}`}>
+          {contactoId
+            ? "✓ Ligado al cliente que ya existe en Clientes."
+            : "Cliente nuevo: se crea en Clientes al guardar (o se une si ya existe con ese correo o teléfono)."}
+        </p>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Concepto (beat/producción/servicio)"><input value={concepto} onChange={(e) => setConcepto(e.target.value)} className="input" placeholder="Ej. Corrido a la medida" /></Field>
         <Field label="Monto"><input type="number" min={0} value={monto} onChange={(e) => setMonto(Number(e.target.value) || 0)} className="input" /></Field>

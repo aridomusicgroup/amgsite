@@ -4,7 +4,7 @@ import { comisionValida, desglose, redondea } from "@/lib/comision";
 import { getSession } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { nextFolio } from "@/lib/folio";
-import { matchOrCreateContacto } from "@/lib/contacto-match";
+import { resolverContacto } from "@/lib/contacto-match";
 import { COT_ESTADOS } from "@/lib/cotizaciones-data";
 import { seguimientoAuto, DIAS_TRAS_COTIZACION } from "@/lib/seguimiento-auto";
 import { CONTRACT_TIPOS } from "@/lib/pdf/contracts";
@@ -114,21 +114,13 @@ export async function POST(req: NextRequest) {
 
   // ── Contacto: liga el elegido o crea/une por email→teléfono→nombre.
   //    Una cotización SIEMPRE aterriza un contacto en el CRM.
-  const direccion = (b.cliente_direccion || "").trim();
-  let contactoId: string | null = b.contacto_id || null;
-  if (contactoId) {
-    // Rellena la dirección en la ficha si no la tenía (sin pisar).
-    if (direccion) {
-      const { data: cur } = await sb.from("contactos").select("direccion").eq("id", contactoId).single();
-      if (cur && !cur.direccion) {
-        await sb.from("contactos").update({ direccion, updated_at: new Date().toISOString() }).eq("id", contactoId);
-      }
-    }
-  } else {
-    contactoId = await matchOrCreateContacto(sb, {
-      nombre: b.cliente_nombre, email: b.cliente_email, telefono: b.cliente_telefono, direccion,
-    });
-  }
+  //    Si viene un contacto ligado, se respeta salvo que sea otra persona
+  //    (otro nombre y otro correo): ver `resolverContacto`.
+  const contactoId = await resolverContacto(sb, {
+    contactoId: b.contacto_id,
+    nombre: b.cliente_nombre, email: b.cliente_email, telefono: b.cliente_telefono,
+    direccion: (b.cliente_direccion || "").trim(),
+  });
 
   // ── Fidelidad: el % SIEMPRE se recalcula aquí, en el servidor, contra el
   //    nivel ACTUAL del contacto — nunca se confía en un % que mande el
@@ -272,6 +264,16 @@ export async function PATCH(req: NextRequest) {
   if ("musicos" in b) patch.musicos = parseMusicos(b.musicos);
 
   const sb = supabaseAdmin();
+
+  // Mismo candado que al crear: un id pegado de otra persona se suelta, y sin id
+  // se busca o se crea el cliente (antes quedaba la cotización sin contacto).
+  if ("contacto_id" in b) {
+    patch.contacto_id = await resolverContacto(sb, {
+      contactoId: b.contacto_id,
+      nombre: b.cliente_nombre, email: b.cliente_email, telefono: b.cliente_telefono,
+      direccion: (b.cliente_direccion || "").trim(),
+    });
+  }
 
   // El total se rehace si cambió cualquiera de sus ingredientes — conceptos,
   // descuento, comisión, o cualquier cosa que mueva el descuento de fidelidad
