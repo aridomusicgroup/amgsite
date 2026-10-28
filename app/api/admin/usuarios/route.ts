@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { esRol, contarAdminsActivos, limpiarEmail, esEmail } from "@/lib/usuarios";
 import { enviarInvitacion } from "@/lib/invitacion";
 import { asegurarEnNomina } from "@/lib/equipo-nomina";
+import { variablesDelEntorno, avisoEnEntorno } from "@/lib/usuarios-entorno";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
 
 export const dynamic = "force-dynamic";
@@ -114,7 +115,12 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-/** Elimina un usuario (?email=). Solo admin. No a ti mismo ni al último admin. */
+/**
+ * Elimina un usuario (?email=). Solo admin. No a ti mismo ni al último admin.
+ * Quien está en las variables de entorno de Vercel no se puede quitar de aquí:
+ * se volvería a crear solo (Ajustes y el login lo siembran), así que se avisa
+ * con 409 en vez de fingir que se quitó. Para sacarlo: Inactivo o quitarlo de la variable.
+ */
 export async function DELETE(req: NextRequest) {
   const yo = await getFullAdminEmail();
   if (!yo) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -122,6 +128,11 @@ export async function DELETE(req: NextRequest) {
   const email = limpiarEmail(new URL(req.url).searchParams.get("email"));
   if (!email) return NextResponse.json({ error: "Falta el correo." }, { status: 400 });
   if (email === yo) return NextResponse.json({ error: "No puedes eliminar tu propia cuenta." }, { status: 400 });
+
+  const delEntorno = variablesDelEntorno(email);
+  if (delEntorno.length) {
+    return NextResponse.json({ error: avisoEnEntorno(email, delEntorno), entorno: delEntorno }, { status: 409 });
+  }
 
   const sb = supabaseAdmin();
   const { data: actual } = await sb.from("usuarios").select("rol, activo").eq("email", email).maybeSingle();

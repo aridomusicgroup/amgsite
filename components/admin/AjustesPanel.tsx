@@ -259,7 +259,13 @@ function EquipoSection({ usuarios, selfEmail }: { usuarios: Usuario[]; selfEmail
         method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined,
       });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) { toast(`⚠️ ${d.error || "Error"}`); return null; }
+      if (!r.ok) {
+        // El aviso de "viene del entorno" es largo y trae instrucciones: un toast de
+        // 2.6 s no alcanza para leerlo, así que va en un cuadro que se queda.
+        if (d.entorno) window.alert(String(d.error));
+        else toast(`⚠️ ${d.error || "Error"}`);
+        return null;
+      }
       router.refresh();
       return d;
     } finally { setBusy(false); }
