@@ -3,6 +3,7 @@ import { getSession } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { ENTIDADES_SENSIBLES, purgarActividadVieja } from "@/lib/actividad";
 import { ENTIDADES_DE, type Modulo } from "@/lib/actividad-modulos";
+import { conContexto } from "@/lib/actividad-contexto";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +74,12 @@ export async function GET(req: NextRequest) {
     // Retención: borra lo de más de 6 meses (best-effort, no bloquea).
     void purgarActividadVieja(sb);
 
-    return NextResponse.json({ actividad: data ?? [] });
+    // Proyecto y cliente de cada aviso. El puntito del menú solo cuenta fechas
+    // y pide `contexto=0` para no hacer esas consultas cada minuto.
+    const filas = data ?? [];
+    return NextResponse.json({
+      actividad: url.searchParams.get("contexto") === "0" ? filas : await conContexto(sb, filas),
+    });
   } catch {
     return NextResponse.json({ actividad: [] });
   }

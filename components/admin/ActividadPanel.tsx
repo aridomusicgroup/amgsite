@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Search, RefreshCw } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
+import { ContextoActividad } from "./ContextoActividad";
 
 interface Item {
   id: string;
@@ -11,6 +12,8 @@ interface Item {
   entidad_nombre: string | null;
   actor: string | null;
   created_at: string;
+  proyecto_titulo?: string | null;
+  cliente_nombre?: string | null;
 }
 
 // Módulos para filtrar (los sensibles solo se muestran al admin).
@@ -128,6 +131,7 @@ export function ActividadPanel({ isAdmin }: { isAdmin: boolean }) {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-white/85 leading-snug">{a.titulo}</p>
+                <ContextoActividad it={a} className="mt-1" />
                 <p className="text-white/30 text-[11px] mt-0.5">
                   {fechaLegible(a.created_at)}
                   {a.entidad_nombre ? ` · ${a.entidad_nombre}` : ""}

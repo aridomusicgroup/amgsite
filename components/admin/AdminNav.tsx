@@ -71,7 +71,7 @@ export function AdminNav({ email, nombre, foto, modules, order, colapsado }: {
       // Al volver a la pestaña, el `focus` lo pone al día.
       if (document.visibilityState !== "visible") return;
       try {
-        const r = await fetch("/api/admin/actividad?limit=60", { cache: "no-store" });
+        const r = await fetch("/api/admin/actividad?limit=60&contexto=0", { cache: "no-store" });
         const d = await r.json();
         const items: { created_at: string }[] = Array.isArray(d.actividad) ? d.actividad : [];
         let visto = "";

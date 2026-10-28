@@ -38,6 +38,32 @@ export interface ItemActividad {
   entidad_nombre: string | null;
   actor: string | null;
   created_at: string;
+  /** Proyecto y cliente a los que pertenece el aviso: los pone la API al leer
+   *  (ver `lib/actividad-contexto.ts`), no se guardan en la bitácora. */
+  proyecto_titulo?: string | null;
+  cliente_nombre?: string | null;
+}
+
+const sinAcentos = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const escaparRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Qué decir debajo del aviso: el proyecto y el cliente. Se calla lo que el
+ * texto del aviso ya menciona (una venta nueva ya trae "(cliente)"), para no
+ * repetirlo. La comparación es por palabra completa: un cliente "Luis" no se
+ * esconde porque otra palabra del aviso contenga esas letras.
+ */
+export function contextoDe(
+  it: Pick<ItemActividad, "titulo" | "proyecto_titulo" | "cliente_nombre">,
+): { proyecto: string | null; cliente: string | null } {
+  const texto = sinAcentos(it.titulo);
+  const nuevo = (v: string | null | undefined): string | null => {
+    const limpio = v?.trim();
+    if (!limpio) return null;
+    const palabra = new RegExp(`(^|[^\\p{L}\\p{N}])${escaparRegex(sinAcentos(limpio))}($|[^\\p{L}\\p{N}])`, "u");
+    return palabra.test(texto) ? null : limpio;
+  };
+  return { proyecto: nuevo(it.proyecto_titulo), cliente: nuevo(it.cliente_nombre) };
 }
 
 /** Entidades que sí llenan la columna, por módulo. */

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { destinoDe, DOT_ACTIVIDAD, type ItemActividad, type Modulo } from "@/lib/actividad-modulos";
 import { avisarDestacar } from "@/lib/useDestacar";
+import { ContextoActividad } from "./ContextoActividad";
 
 /**
  * Campanita de un módulo.
@@ -115,6 +116,7 @@ export function ActividadFeed({ modulo, titulo }: { modulo: Modulo; titulo: stri
                       <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${DOT_ACTIVIDAD[it.tipo] || "bg-white/40"}`} />
                       <div className="min-w-0 flex-1">
                         <p className="text-[13px] text-white/80 leading-snug break-words">{it.titulo}</p>
+                        <ContextoActividad it={it} className="mt-1" />
                         <p className="text-[11px] text-white/35 mt-0.5">{hace(it.created_at)}</p>
                       </div>
                     </button>
