@@ -3,6 +3,7 @@ import { getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { esRol, contarAdminsActivos, limpiarEmail, esEmail } from "@/lib/usuarios";
 import { enviarInvitacion } from "@/lib/invitacion";
+import { asegurarEnNomina } from "@/lib/equipo-nomina";
 import { registrarActividad, nombreDeActor } from "@/lib/actividad";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,9 @@ export const dynamic = "force-dynamic";
  * Agrega o actualiza un usuario ({ email, rol, nombre? }). Solo admin.
  * Si el correo es nuevo, le manda su enlace de acceso; si el correo no sale, el
  * alta se queda (el admin lo reenvía con /api/admin/usuarios/invitar).
+ * También lo deja en la nómina (`equipo`), que es de donde salen los
+ * responsables: sin esa fila entra al panel pero no se le puede asignar nada.
+ * Volver a "agregar" un correo que ya tenía acceso completa esa fila si faltaba.
  */
 export async function POST(req: NextRequest) {
   const yo = await getFullAdminEmail();
@@ -26,13 +30,18 @@ export async function POST(req: NextRequest) {
   const nombre = b.nombre ? String(b.nombre).trim() : null;
   // Sólo a quien todavía no estaba se le escribe: volver a "agregar" a alguien
   // que ya tiene acceso no debe llenarle el correo de invitaciones.
-  const { data: previo } = await sb.from("usuarios").select("email").eq("email", email).maybeSingle();
+  const { data: previo } = await sb.from("usuarios").select("email, nombre").eq("email", email).maybeSingle();
 
+  // El nombre sólo se escribe si vino uno: volver a agregar a alguien sin
+  // escribirlo no debe borrar el que ya puso en su perfil.
   const { error } = await sb.from("usuarios").upsert(
-    { email, rol, nombre, activo: true, updated_at: new Date().toISOString() },
+    { email, rol, activo: true, updated_at: new Date().toISOString(), ...(nombre ? { nombre } : {}) },
     { onConflict: "email" },
   );
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Si esto falla el acceso ya quedó dado: se avisa, no se deshace.
+  const nomina = await asegurarEnNomina(sb, { email, nombre: nombre ?? (previo?.nombre as string | null | undefined) });
 
   let invitacion: "enviada" | "fallida" | "no_aplica" = "no_aplica";
   let invitacionError: string | undefined;
@@ -48,11 +57,15 @@ export async function POST(req: NextRequest) {
       tipo: "usuario_agregado",
       titulo: `${quien} dio de alta a ${email} como ${rol}`,
       actor: yo, entidad: "usuario", entidad_id: email, entidad_nombre: email,
-      meta: { rol, invitacion },
+      meta: { rol, invitacion, nomina: nomina.estado },
     });
   } catch { /* bitácora best-effort */ }
 
-  return NextResponse.json({ ok: true, invitacion, ...(invitacionError ? { invitacion_error: invitacionError } : {}) });
+  return NextResponse.json({
+    ok: true, invitacion, nomina: nomina.estado,
+    ...(invitacionError ? { invitacion_error: invitacionError } : {}),
+    ...(nomina.estado === "fallida" ? { nomina_error: nomina.error } : {}),
+  });
 }
 
 /** Cambia rol y/o activo de un usuario. Solo admin. Con candados anti-bloqueo. */

@@ -243,6 +243,7 @@ export function AjustesPanel({ fontSize, theme, moduleOrder, modules, isAdmin, u
 function EquipoSection({ usuarios, selfEmail }: { usuarios: Usuario[]; selfEmail: string }) {
   const router = useRouter();
   const [nuevo, setNuevo] = useState("");
+  const [nombreNuevo, setNombreNuevo] = useState("");
   const [rolNuevo, setRolNuevo] = useState<string>("produccion");
   const [busy, setBusy] = useState(false);
   // Una fila abierta a la vez: doce interruptores por usuario, todos visibles a
@@ -267,12 +268,17 @@ function EquipoSection({ usuarios, selfEmail }: { usuarios: Usuario[]; selfEmail
   const agregar = async () => {
     const email = nuevo.trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast("⚠️ Correo inválido"); return; }
-    const d = await call("POST", { email, rol: rolNuevo });
+    const d = await call("POST", { email, rol: rolNuevo, nombre: nombreNuevo.trim() || undefined });
     if (!d) return;
     setNuevo("");
-    if (d.invitacion === "enviada") toast(`✓ Usuario agregado · le mandamos su acceso a ${email}`);
-    else if (d.invitacion === "fallida") toast(`⚠️ Usuario agregado, pero el correo no salió (${String(d.invitacion_error ?? "error")}). Reenvíalo con el sobre ✉`);
-    else toast("✓ Usuario agregado");
+    setNombreNuevo("");
+    // Los responsables salen de la nómina, no de los accesos: se avisa si esa fila no quedó.
+    const nomina = d.nomina === "creada" ? " · ya se le puede asignar trabajo"
+      : d.nomina === "fallida" ? ` · ⚠️ no quedó en la nómina (${String(d.nomina_error ?? "error")}): no saldrá al asignar responsables, vuelve a agregarlo para reintentar`
+      : "";
+    if (d.invitacion === "enviada") toast(`✓ Usuario agregado · le mandamos su acceso a ${email}${nomina}`);
+    else if (d.invitacion === "fallida") toast(`⚠️ Usuario agregado, pero el correo no salió (${String(d.invitacion_error ?? "error")}). Reenvíalo con el sobre ✉${nomina}`);
+    else toast(`✓ Usuario agregado${nomina}`);
   };
   const reenviar = async (email: string) => {
     setBusy(true);
@@ -311,6 +317,9 @@ function EquipoSection({ usuarios, selfEmail }: { usuarios: Usuario[]; selfEmail
         <input value={nuevo} onChange={(e) => setNuevo(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") agregar(); }}
           placeholder="correo@ejemplo.com" type="email"
           className="flex-1 min-w-[160px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-lgb-red" />
+        <input value={nombreNuevo} onChange={(e) => setNombreNuevo(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") agregar(); }}
+          placeholder="Nombre (así sale al asignar)" aria-label="Nombre" maxLength={80}
+          className="flex-1 min-w-[160px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-lgb-red" />
         <select value={rolNuevo} onChange={(e) => setRolNuevo(e.target.value)}
           className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-lgb-red">
           {ROLES.map((r) => <option key={r} value={r} className="bg-lgb-dark">{ROL_LABEL[r]}</option>)}
@@ -320,7 +329,7 @@ function EquipoSection({ usuarios, selfEmail }: { usuarios: Usuario[]; selfEmail
       </div>
 
       <p className="text-white/30 text-[11px] mt-3">
-        Al agregar a alguien le llega un correo con su enlace para entrar y crear su contraseña. El enlace es de un solo uso y caduca pronto: si no le llegó o ya no sirve, reenvíalo con el sobre ✉ de su fila. También puede pedirlo solo con <b className="text-white/50">“Entrar con enlace”</b> en el login.
+        Al agregar a alguien también queda en la nómina (colaborador, pago 0) para poder asignarle proyectos y tareas; si no escribes su nombre se arma con su correo. Le llega un correo con su enlace para entrar y crear su contraseña. El enlace es de un solo uso y caduca pronto: si no le llegó o ya no sirve, reenvíalo con el sobre ✉ de su fila. También puede pedirlo solo con <b className="text-white/50">“Entrar con enlace”</b> en el login.
       </p>
     </Section>
   );
