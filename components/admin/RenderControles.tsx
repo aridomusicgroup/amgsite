@@ -155,6 +155,7 @@ export function EnCurso({ job }: { job: RenderJob }) {
   const etiquetas = [
     job.opciones?.doble === true && "doble",
     job.opciones?.sinFx === true && "sin FX",
+    (job.opciones?.silenciar?.length ?? 0) > 0 && `${job.opciones?.silenciar?.length} silenciado(s)`,
   ].filter(Boolean).join(", ");
 
   const detalle =

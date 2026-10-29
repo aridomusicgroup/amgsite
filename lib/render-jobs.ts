@@ -33,6 +33,10 @@ const TIPOS_ALBUM = ["ep", "album"];
 
 /** Una pista del .rpp, tal como la publica el script local. */
 export interface PistaRpp {
+  /** GUID de REAPER. Lo único que identifica una pista: los nombres se repiten
+   *  (C414, TLM103, LINE). `undefined` en filas publicadas antes de este dato;
+   *  el script las vuelve a leer solo en la siguiente corrida. */
+  id?: string | null;
   nombre: string;
   /** Si el script la exportaría por su cuenta (regla automática). */
   esStem: boolean;
@@ -110,6 +114,9 @@ export interface OpcionesRender {
   /** Sólo en 'stems': todos los plugins de efectos apagados (los instrumentos
    *  virtuales se respetan). Salen en su propia carpeta "… STEMS SIN FX". */
   sinFx?: boolean;
+  /** Canales que salen en silencio en la mezcla (previo, previo de músico y
+   *  entregables). No aplica a stems: ahí se elige qué pistas salen. */
+  silenciar?: { id: string; nombre: string }[];
   /** Sólo en 'musico': a quién se le manda, y los datos que van en el nombre
    *  del archivo. El músico los necesita para ensayar, así que son obligatorios. */
   musicoId?: string;

@@ -157,6 +157,7 @@ export function EntregaModal({ proyectoId, tareaId, onCerrar }: {
           <p className="font-coolvetica text-lg truncate">Aviso al cliente · {datos.titulo}</p>
           <p className="text-white/40 text-xs mt-0.5">
             Se encolan: Entregables{opEnt?.doble ? " (doble)" : ""}
+            {opEnt?.silenciar?.length ? ` (sin ${opEnt.silenciar.map((s) => s.nombre).join(", ")})` : ""}
             {opStems ? ` + Stems${opStems.sinFx ? " sin FX" : ""}${opStems.doble ? " (doble)" : ""}` : ""}
             {" "}· ≈{minutos} min en REAPER, más la subida
           </p>

@@ -9,6 +9,7 @@ import type {
   OpcionesRender,
   MusicoLite,
 } from "@/lib/render-jobs";
+import { SilenciarPistas } from "@/components/admin/SilenciarPistas";
 
 /**
  * Cuadro de opciones antes de encolar un render.
@@ -154,6 +155,10 @@ export function RenderOpciones({
   const [marcadas, setMarcadas] = useState<Set<string>>(
     () => new Set(pistas.filter((t) => t.esStem).map((t) => t.nombre)),
   );
+  // Canales que salen en silencio (por GUID de REAPER). Sólo en las mezclas: en
+  // stems ya se elige qué pistas salen, y cuadrar a la rejilla no renderiza.
+  const puedeSilenciar = tipo === "previo" || tipo === "entregables" || tipo === "musico";
+  const [silenciadas, setSilenciadas] = useState<ReadonlySet<string>>(() => new Set());
 
   /** Cambiar de .rpp reinicia lo que dependía del anterior: sus marcadores y
    *  pistas son otros, y arrastrar la elección vieja daría un render
@@ -165,6 +170,7 @@ export function RenderOpciones({
     setDesde(0);
     setHasta(Math.max(0, (a?.marcadores.length ?? 1) - 1));
     setMarcadas(new Set((a?.pistas ?? []).filter((t) => t.esStem).map((t) => t.nombre)));
+    setSilenciadas(new Set());
     // Lo del proyecto manda sobre lo que traiga el .rpp.
     setBpm(String(p.bpm ?? a?.bpm ?? ""));
     setTonalidad(p.tonalidad ?? a?.tonalidad ?? "");
@@ -206,6 +212,9 @@ export function RenderOpciones({
     if (tipo === "stems") op.pistas = [...marcadas];
     if (tipo !== "cuantizar") op.doble = doble;
     if (tipo === "stems" && sinFx) op.sinFx = true;
+    if (puedeSilenciar && silenciadas.size) {
+      op.silenciar = pistas.flatMap((t) => (t.id && silenciadas.has(t.id) ? [{ id: t.id, nombre: t.nombre }] : []));
+    }
     if (esMusico) {
       op.bpm = bpmNum;
       op.tonalidad = tonalidad.trim();
@@ -339,6 +348,20 @@ export function RenderOpciones({
                   )}
                 </div>
               </Seccion>
+
+              {puedeSilenciar && (
+                <SilenciarPistas
+                  pistas={pistas}
+                  elegidas={silenciadas}
+                  onChange={setSilenciadas}
+                  ayuda={!esMusico
+                    ? "El render sale sin estos canales."
+                    : enGrupo
+                      // Es UN archivo que se reenvía a todos: lo que se silencie lo pierden todos.
+                      ? "Es un solo archivo para todos los músicos: todos lo reciben sin estos canales. Si a cada quien le toca quedar sin su propio instrumento, desmarca «A todos» y manda un previo por músico."
+                      : "Útil para quitar lo que va a grabar el músico: el previo le llega sin su propio instrumento."}
+                />
+              )}
 
               {tipo === "stems" && (
                 <Seccion

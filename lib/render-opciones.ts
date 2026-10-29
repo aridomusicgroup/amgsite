@@ -3,6 +3,10 @@ import type { OpcionesRender } from "@/lib/render-jobs";
 /** Tope de pistas por render: más que esto es que algo va mal, no una elección. */
 const MAX_PISTAS = 200;
 
+/** El GUID con que REAPER identifica una pista: `{E9F2C49E-24E1-…}`. */
+const RE_GUID_PISTA = /^\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\}$/i;
+const MAX_NOMBRE_PISTA = 120;
+
 /**
  * Valida lo que eligió el usuario en el cuadro de opciones.
  *
@@ -83,6 +87,26 @@ export function leerOpciones(raw: unknown): { ok: true; op: OpcionesRender | nul
     if (!pistas.length) return { ok: false, error: "Hay que elegir al menos una pista." };
     if (pistas.length > MAX_PISTAS) return { ok: false, error: "Demasiadas pistas." };
     op.pistas = pistas;
+  }
+
+  // Canales a silenciar en la mezcla. Cada uno se señala por el GUID de REAPER y
+  // no por nombre: la plantilla repite C414/TLM103/LINE en varias carpetas.
+  // El script escribe esto en un .rpp, así que el formato se exige aquí.
+  if (b.silenciar !== undefined && b.silenciar !== null) {
+    if (!Array.isArray(b.silenciar) || b.silenciar.length > MAX_PISTAS) {
+      return { ok: false, error: "La lista de canales a silenciar no es válida." };
+    }
+    const vistos = new Set<string>();
+    const silenciar: { id: string; nombre: string }[] = [];
+    for (const raw of b.silenciar as { id?: unknown; nombre?: unknown }[]) {
+      const id = String(raw?.id ?? "").trim();
+      if (!RE_GUID_PISTA.test(id)) return { ok: false, error: "Uno de los canales a silenciar no es válido." };
+      if (vistos.has(id.toUpperCase())) continue;
+      vistos.add(id.toUpperCase());
+      const nombre = String(raw?.nombre ?? "").trim().slice(0, MAX_NOMBRE_PISTA);
+      silenciar.push({ id, nombre: nombre || id });
+    }
+    if (silenciar.length) op.silenciar = silenciar;
   }
 
   // `entrega` NUNCA se lee del navegador: la pone el servidor al armar el lote.

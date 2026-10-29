@@ -75,6 +75,11 @@ export async function POST(req: NextRequest) {
   if (tipo !== "stems" && op.op?.sinFx) {
     return NextResponse.json({ error: "Sólo los stems pueden salir sin FX." }, { status: 400 });
   }
+  // Silenciar canales es de las mezclas. En stems ya se elige qué pistas salen,
+  // y cuadrar a la rejilla no renderiza audio.
+  if ((tipo === "stems" || tipo === "cuantizar") && op.op?.silenciar) {
+    return NextResponse.json({ error: "Sólo el previo, el previo de músico y los entregables permiten silenciar canales." }, { status: 400 });
+  }
   // Cuadrar a la rejilla no renderiza audio: no hay pasadas que contar.
   if (tipo === "cuantizar" && op.op?.doble !== undefined) {
     return NextResponse.json({ error: "Cuadrar a la rejilla no tiene render doble." }, { status: 400 });

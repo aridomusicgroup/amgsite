@@ -81,6 +81,10 @@ export async function POST(req: NextRequest) {
   if (!ent.op?.rpp) return NextResponse.json({ error: "Elige el proyecto base de los entregables." }, { status: 400 });
   const stems = b.stems ? leerOpciones(b.stems) : null;
   if (stems && !stems.ok) return NextResponse.json({ error: stems.error }, { status: 400 });
+  // Los canales silenciados son de la mezcla (entregables); en stems no aplican.
+  if (stems?.ok && stems.op?.silenciar) {
+    return NextResponse.json({ error: "En los stems no se silencian canales: elige qué pistas salen." }, { status: 400 });
+  }
 
   const marca: MarcaEntrega = { lote: randomUUID(), avisar: b.avisar === true, conPago: b.conPago === true };
 
