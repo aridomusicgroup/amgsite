@@ -5,6 +5,7 @@ import { CalendarClock, CircleDollarSign, ListChecks, AlertTriangle } from "luci
 import { KpiCard } from "@/components/admin/charts";
 import { money } from "@/components/admin/ui";
 import { ESTADO_PROY_LABEL, type ProyectoDetalle, type SaludEntrega } from "@/lib/erp-data";
+import { FichaProyecto } from "@/components/admin/proyecto-detalle/FichaProyecto";
 
 const SALUD_LABEL: Record<SaludEntrega, string> = {
   a_tiempo: "A tiempo", en_riesgo: "En riesgo", atrasado: "Atrasado", entregado: "Entregado", sin_fecha: "Sin fecha",
@@ -47,7 +48,9 @@ function proximaAccion(p: ProyectoDetalle): string | null {
   return null;
 }
 
-export function ResumenTab({ proyecto }: { proyecto: ProyectoDetalle }) {
+export function ResumenTab({ proyecto, ventaLabel, isAdmin, onEditar }: {
+  proyecto: ProyectoDetalle; ventaLabel: string | null; isAdmin: boolean; onEditar: () => void;
+}) {
   const accion = proximaAccion(proyecto);
   const hechas = proyecto.tareas.filter((t) => t.hecho).length;
   const reduce = useReducedMotion();
@@ -79,6 +82,8 @@ export function ResumenTab({ proyecto }: { proyecto: ProyectoDetalle }) {
         />
         <KpiCard label="Ronda de revisión" value={proyecto.revisionActual > 0 ? `R${proyecto.revisionActual}` : "Original"} icon={<ListChecks size={12} />} />
       </div>
+
+      <FichaProyecto proyecto={proyecto} ventaLabel={ventaLabel} isAdmin={isAdmin} onEditar={onEditar} />
 
       <Cronograma proyecto={proyecto} />
     </div>

@@ -206,7 +206,10 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
 
       <AnimatePresence mode="wait">
         <motion.div key={tab} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.15 }}>
-          {tab === "resumen" && <ResumenTab proyecto={proyecto} />}
+          {tab === "resumen" && (
+            <ResumenTab proyecto={proyecto} isAdmin={isAdmin} onEditar={() => setEditOpen(true)}
+              ventaLabel={ventas.find((v) => v.id === proyecto.venta_id)?.label ?? null} />
+          )}
           {tab === "tareas" && <TareasTab proyecto={proyecto} equipo={equipo} recordatorios={recordatorios} miId={miId} musicos={musicos} />}
           {tab === "cliente" && <ClienteVentaTab proyecto={proyecto} isAdmin={isAdmin} />}
           {tab === "contrato" && <ContratoTab proyecto={proyecto} />}

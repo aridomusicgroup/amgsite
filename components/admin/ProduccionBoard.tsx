@@ -30,15 +30,15 @@ const hoy = () => new Date().toISOString().slice(0, 10);
 const fechaCorta = (s: string | null) =>
   s ? new Date(s + "T12:00:00").toLocaleDateString("es-MX", { day: "2-digit", month: "short" }) : null;
 
-const PRIOR_DOT: Record<string, string> = { alta: "bg-red-400", media: "bg-amber-400", baja: "bg-white/30" };
+export const PRIOR_DOT: Record<string, string> = { alta: "bg-red-400", media: "bg-amber-400", baja: "bg-white/30" };
 const PRIOR_ORDER: Record<string, number> = { alta: 0, media: 1, baja: 2 };
 
 // Antigüedad de un proyecto abierto: días desde que arrancó el reloj. El reloj
 // del cliente arranca con la VENTA; si el proyecto no tiene venta ligada (tareas
 // internas, contenido) se usa su fecha de creación. Mismo criterio que la
 // pestaña Entregas del Dashboard (lib/entregas.ts).
-const EDAD_ALERTA = 21;   // rojo: más de 3 semanas abierto
-const EDAD_AVISO = 14;    // ámbar: más de 2 semanas
+export const EDAD_ALERTA = 21;   // rojo: más de 3 semanas abierto
+export const EDAD_AVISO = 14;    // ámbar: más de 2 semanas
 export function edadDe(p: { fechaVenta: string | null; creado: string }): number | null {
   const inicio = p.fechaVenta || p.creado;
   if (!inicio) return null;
