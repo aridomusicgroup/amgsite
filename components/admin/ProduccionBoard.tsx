@@ -47,7 +47,7 @@ export function edadDe(p: { fechaVenta: string | null; creado: string }): number
 }
 const COLS_BASE = ["cola", "produccion", "revision", "entregado"];
 const COLS_FIN = ["cerrado", "pausado", "cancelado"];
-export const TIPOS_PROD = ["beat_personalizado", "bp_letra", "grabacion", "mezcla_master", "ep", "album", "diseno", "beat", "creacion_contenido"];
+export const TIPOS_PROD = ["beat_personalizado", "bp_letra", "grabacion", "mezcla_master", "mezcla_voces", "ep", "album", "diseno", "beat", "creacion_contenido"];
 export const TIPOS_INT = ["contenido", "creacion_contenido", "distribucion", "admin"];
 const TIPOS_CONTENIDO = ["creacion_contenido", "contenido", "beat"];
 export const esContenido = (tipo: string | null) => !!tipo && TIPOS_CONTENIDO.includes(tipo);
@@ -59,9 +59,11 @@ export const esContenidoPub = (tipo: string | null) => tipo === "creacion_conten
  * En un EP/álbum NO: cada canción tiene los suyos y se ponen al abrir el tema
  * (proyecto_tareas). Tampoco una tarea interna ni creación de contenido, que no
  * pasan por REAPER. Sí un beat de catálogo: ese sí es un proyecto de verdad.
+ * Tampoco una mezcla de voces: trabaja en la sesión de un tema que ya tiene su
+ * tempo, y capturarlo aquí de nuevo solo daría pie a que no coincidan.
  */
 export const llevaFicha = (clase: string | null, tipo: string | null) =>
-  clase === "produccion" && !["ep", "album", "creacion_contenido", "contenido", "diseno"].includes(String(tipo ?? ""));
+  clase === "produccion" && !["ep", "album", "creacion_contenido", "contenido", "diseno", "mezcla_voces"].includes(String(tipo ?? ""));
 export const PLATAFORMAS = ["Instagram", "TikTok", "YouTube", "Facebook", "Spotify", "Otro"];
 
 // Se mudaron a ./tareas/estilos; se re-exportan para no tocar a quien ya los importaba de aquí.

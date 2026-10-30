@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { Pencil, Trash2, Copy } from "lucide-react";
+import { Pencil, Trash2, Copy, Plus } from "lucide-react";
+import { SERVICIO_MEZCLA_VOCES, urlAgregarServicio } from "@/lib/agregar-servicio";
+import { TIPO_PROYECTO_MEZCLA_VOCES } from "@/lib/mezcla-voces";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { toast } from "@/lib/toast";
 import type { MiRecordatorio } from "@/lib/recordatorios";
@@ -25,7 +27,7 @@ import { ActividadTab } from "@/components/admin/proyecto-detalle/ActividadTab";
 import { ProduccionTab } from "@/components/admin/proyecto-detalle/ProduccionTab";
 import { RedesTab } from "@/components/admin/proyecto-detalle/RedesTab";
 
-const MUSICA_TIPOS = ["beat_personalizado", "bp_letra", "grabacion", "mezcla_master", "ep", "album"];
+const MUSICA_TIPOS = ["beat_personalizado", "bp_letra", "grabacion", "mezcla_master", "mezcla_voces", "ep", "album"];
 const PRIOR_DOT: Record<string, string> = { alta: "bg-red-400", media: "bg-amber-400", baja: "bg-white/30" };
 
 export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatorios, miId, musicos, musicosPrevio }: {
@@ -112,6 +114,16 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
     if (await patch({ nueva_ronda: true })) toast(`🔄 Ronda de revisión ${proyecto.revisionActual + 1}`);
   };
   const puedeRonda = proyecto.clase === "produccion" && !esContenido(proyecto.tipo) && proyecto.estado === "revision";
+  /**
+   * Un tema ya entregado al que el cliente le quiere mandar sus voces a mezclar.
+   * No es un EP/álbum (su sesión vive dentro de cada tema) ni otra mezcla de
+   * voces, y hace falta el cliente: es quien recibe la cotización.
+   */
+  const puedeAgregarMezclaDeVoces =
+    isAdmin && proyecto.clase === "produccion" && !!proyecto.contacto_id
+    && ["entregado", "cerrado"].includes(proyecto.estado)
+    && !!proyecto.tipo && MUSICA_TIPOS.includes(proyecto.tipo)
+    && !["ep", "album", TIPO_PROYECTO_MEZCLA_VOCES].includes(proyecto.tipo);
 
   const duplicar = async () => {
     setDuplicando(true);
@@ -144,8 +156,8 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
             <span>· {ESTADO_PROY_LABEL[proyecto.estado] ?? proyecto.estado}</span>
             {proyecto.contacto && <span>· {proyecto.contacto}</span>}
           </div>
-          {/* Diseño visual: de qué canción sale, o qué diseños se le hicieron. */}
-          {(proyecto.temaOrigen || proyecto.disenos.length > 0) && (
+          {/* De qué canción sale (un diseño, una mezcla de voces), o qué se le hizo después. */}
+          {(proyecto.temaOrigen || proyecto.ligados.length > 0) && (
             <div className="flex items-center gap-1.5 mt-2 flex-wrap text-[11px]">
               {proyecto.temaOrigen && (
                 <Link href={`/admin/proyectos/${proyecto.temaOrigen.id}`}
@@ -153,10 +165,10 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
                   Tema de origen: {proyecto.temaOrigen.folio} · {proyecto.temaOrigen.titulo}
                 </Link>
               )}
-              {proyecto.disenos.map((d) => (
+              {proyecto.ligados.map((d) => (
                 <Link key={d.id} href={`/admin/proyectos/${d.id}`}
                   className="px-2 py-0.5 rounded-full bg-white/5 text-white/60 hover:text-white transition-colors">
-                  Diseño: {d.folio} · {d.titulo}
+                  {d.tipo === "diseno" ? "Diseño" : TIPO_PROY_LABEL[d.tipo ?? ""] ?? "Ligado"}: {d.folio} · {d.titulo}
                 </Link>
               ))}
             </div>
@@ -175,6 +187,13 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
               className="flex items-center gap-1.5 text-xs text-amber-300/90 hover:text-amber-200 border border-amber-400/25 hover:border-amber-400/50 rounded-lg px-2.5 py-1.5 disabled:opacity-50">
               🔄 {proyecto.revisionActual === 0 ? "Abrir ronda" : `Nueva ronda (R${proyecto.revisionActual + 1})`}
             </button>
+          )}
+          {puedeAgregarMezclaDeVoces && (
+            <Link href={urlAgregarServicio(SERVICIO_MEZCLA_VOCES, proyecto)}
+              title="Cotiza la mezcla de voces de este tema: se trabaja en esta misma sesión de REAPER y no se rehace la venta"
+              className="flex items-center gap-1.5 bg-white/8 hover:bg-white/15 text-white px-3 py-1.5 rounded-lg text-xs">
+              <Plus size={13} /> Mezcla de voces
+            </Link>
           )}
           <button onClick={() => setEditOpen(true)} className="flex items-center gap-1.5 bg-white/8 hover:bg-white/15 text-white px-3 py-1.5 rounded-lg text-xs">
             <Pencil size={13} /> Editar

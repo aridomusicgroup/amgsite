@@ -26,7 +26,7 @@ const hoy = () => new Date().toISOString().slice(0, 10);
 const ESTADOS = ["cola", "produccion", "revision", "entregado", "cerrado", "pausado", "cancelado"];
 const TIPO_LABEL: Record<string, string> = {
   beat_personalizado: "Beat personalizado", bp_letra: "BP + Letra", grabacion: "Grabación",
-  mezcla_master: "Mezcla / Master", exclusividad: "Exclusividad", ep: "EP", album: "Álbum",
+  mezcla_master: "Mezcla / Master", mezcla_voces: "Mezcla de voces", exclusividad: "Exclusividad", ep: "EP", album: "Álbum",
 };
 // Tareas que dispara cada producción (caen a Tozi)
 const DISTRIBUCION = ["Subir a BeatStars", "Portada de YouTube", "Portada de BeatStars", "Subir archivos a Drive", "Actualizar catálogo"];

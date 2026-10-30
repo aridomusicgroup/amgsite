@@ -1,4 +1,5 @@
 import "server-only";
+import { comparteSesionDelOriginal } from "@/lib/mezcla-voces";
 
 /**
  * La carpeta de REAPER de un cliente, un proyecto o un tema de EP, vista desde
@@ -51,14 +52,14 @@ async function algunaCreada(sb: SB, proyectos: { id: string; tipo: string | null
   return (count ?? 0) > 0;
 }
 
-/** ¿Ya tiene carpeta en disco? Y su ancla, si la hay. */
-async function estado(sb: SB, tabla: TablaCarpeta, id: string): Promise<{ existe: boolean; ancla: string | null; sinColumna: boolean }> {
+/** ¿Ya tiene carpeta en disco? Y su ancla, si la hay. `ajena`: la carpeta es de otro proyecto (una mezcla de voces). */
+async function estado(sb: SB, tabla: TablaCarpeta, id: string): Promise<{ existe: boolean; ancla: string | null; sinColumna: boolean; ajena: boolean }> {
   const cols = tabla === "proyectos" ? "id, tipo, reaper_creado" : tabla === "proyecto_tareas" ? "id, es_cancion, reaper_creado" : "id";
   let sinColumna = false;
   let r = await sb.from(tabla).select(`${cols}, reaper_carpeta`).eq("id", id).maybeSingle();
   if (r.error) { sinColumna = true; r = await sb.from(tabla).select(cols).eq("id", id).maybeSingle(); }
   const f = r.data;
-  if (!f) return { existe: false, ancla: null, sinColumna };
+  if (!f) return { existe: false, ancla: null, sinColumna, ajena: false };
 
   let existe: boolean;
   if (tabla === "proyecto_tareas") existe = Boolean(f.es_cancion && f.reaper_creado);
@@ -68,7 +69,9 @@ async function estado(sb: SB, tabla: TablaCarpeta, id: string): Promise<{ existe
     const { data: ps } = await sb.from("proyectos").select("id, tipo, reaper_creado").eq("contacto_id", id);
     existe = await algunaCreada(sb, ps ?? []);
   }
-  return { existe, ancla: (f.reaper_carpeta as string | null) ?? null, sinColumna };
+  const ancla = (f.reaper_carpeta as string | null) ?? null;
+  const ajena = tabla === "proyectos" && comparteSesionDelOriginal({ tipo: (f.tipo as string | null) ?? null, reaper_carpeta: ancla });
+  return { existe, ancla, sinColumna, ajena };
 }
 
 /**
@@ -81,7 +84,9 @@ export async function anclarCarpeta(
 ): Promise<CarpetaPendiente | null> {
   try {
     const e = await estado(sb, tabla, id);
-    if (!e.existe) return null;
+    // Una mezcla de voces trabaja en la carpeta de OTRO proyecto: cambiarle el
+    // nombre no es motivo para mover esa carpeta.
+    if (!e.existe || e.ajena) return null;
     const actual = e.ancla || nombreCarpeta(viejo);
     const nueva = nombreCarpeta(nuevo);
     if (!actual || !nueva) return null;
@@ -104,17 +109,20 @@ export async function anclarCarpeta(
  * guarda el título mientras se escribe y pregunta al cerrarse.
  */
 export async function carpetaPendiente(sb: SB, tabla: TablaCarpeta, id: string): Promise<CarpetaPendiente | null> {
-  const { data: f, error } = await sb.from(tabla).select(`${CAMPO[tabla]}, reaper_carpeta, reaper_renombrar`).eq("id", id).maybeSingle();
+  const { data: f, error } = await sb.from(tabla).select(`${CAMPO[tabla]}, reaper_carpeta, reaper_renombrar${tabla === "proyectos" ? ", tipo" : ""}`).eq("id", id).maybeSingle();
   if (error || !f?.reaper_carpeta || f.reaper_renombrar) return null;
+  if (tabla === "proyectos" && comparteSesionDelOriginal({ tipo: f.tipo ?? null, reaper_carpeta: f.reaper_carpeta })) return null;
   const nueva = nombreCarpeta(f[CAMPO[tabla]]);
   return f.reaper_carpeta === nueva ? null : { tabla, id, actual: f.reaper_carpeta, nueva };
 }
 
 /** "Sí, renómbrala": deja el encargo para el script del estudio. */
 export async function pedirRenombre(sb: SB, tabla: TablaCarpeta, id: string): Promise<boolean> {
-  const { data: f } = await sb.from(tabla).select(CAMPO[tabla]).eq("id", id).maybeSingle();
+  const { data: f } = await sb.from(tabla).select(tabla === "proyectos" ? `${CAMPO[tabla]}, reaper_carpeta, tipo` : CAMPO[tabla]).eq("id", id).maybeSingle();
   const nueva = nombreCarpeta(f?.[CAMPO[tabla]]);
   if (!nueva) return false;
+  // Ni a petición: esa carpeta es del proyecto original, no de la mezcla de voces.
+  if (tabla === "proyectos" && comparteSesionDelOriginal({ tipo: f?.tipo ?? null, reaper_carpeta: f?.reaper_carpeta ?? null })) return false;
   const { error } = await sb.from(tabla).update({ reaper_renombrar: nueva }).eq("id", id);
   return !error;
 }

@@ -53,7 +53,7 @@ export interface QuoteData {
   temas?: { nombre: string; conceptos: string[] }[] | null;
   /** `cotizaciones.tipo`. Sin `terminos`, "diseno" cae a la semilla de diseño. */
   tipo?: string | null;
-  /** Diseño visual: la canción que produjimos y para la que es este diseño. */
+  /** Diseño visual o mezcla de voces: la canción que produjimos y para la que es. */
   temaOrigen?: string | null;
 }
 

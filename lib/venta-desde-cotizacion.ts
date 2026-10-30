@@ -12,6 +12,8 @@ import { nextFolio } from "@/lib/folio";
 import { sincronizarFidelidadVenta } from "@/lib/fidelidad-server";
 import { disenoDeCotizacion, registrarPagoDiseno, temaDeOrigen } from "@/lib/diseno-sync";
 import { tituloConTema } from "@/lib/diseno";
+import { esMezclaDeVoces, TIPO_PROYECTO_MEZCLA_VOCES, TIPO_VENTA_MEZCLA_VOCES } from "@/lib/mezcla-voces";
+import { herenciaReaperDeOrigen } from "@/lib/mezcla-voces-sync";
 
 /**
  * Cuando llega CUALQUIER pago de Stripe contra una cotización (aunque sea
@@ -162,6 +164,12 @@ export async function crearVentaDesdeCotizacionPagada(
     const mapa = MAPA_TIPO[cot.tipo as string];
     ventaTipo = mapa?.ventaTipo ?? items[0]?.label ?? "Producción";
     tproy = mapa?.tproy ?? null;
+    // Solo mezcla de voces (de un tema que ya produjimos): sin esto caía en
+    // "grabación" y nacía con las tareas de grabar e instrumentos.
+    if (cot.tipo !== "diseno" && esMezclaDeVoces(items)) {
+      ventaTipo = TIPO_VENTA_MEZCLA_VOCES;
+      tproy = TIPO_PROYECTO_MEZCLA_VOCES;
+    }
   }
 
   // ── Venta ──
@@ -241,11 +249,15 @@ export async function crearVentaDesdeCotizacionPagada(
         titulo: tituloConTema(items[0]?.label ?? cot.folio, tema?.titulo), tipo: tproy, estado: "cola", prioridad: "media",
         contacto_id: cot.contacto_id, venta_id: ventaId, cotizacion_id: cotizacionId, creado_por: "stripe",
       };
-      // El tema sólo si lo hay. Y si `proyectos.proyecto_origen_id` todavía no
-      // existe (SQL a medias), el proyecto nace igual, sin la liga.
+      // Una mezcla de voces se hace en la sesión de REAPER del tema original:
+      // nace ya "creada" y apuntando a su carpeta, para que el script del estudio
+      // no le copie una plantilla nueva.
+      const sesion = tproy === TIPO_PROYECTO_MEZCLA_VOCES ? await herenciaReaperDeOrigen(sb, tema?.id, cot.contacto_id) : null;
+      // El tema sólo si lo hay. Y si `proyectos.proyecto_origen_id` (o el ancla de
+      // carpeta) todavía no existe (SQL a medias), el proyecto nace igual, sin ella.
       let { data: proy, error: eProy } = await sb
-        .from("proyectos").insert(tema ? { ...filaProy, proyecto_origen_id: tema.id } : filaProy).select("id").single();
-      if (eProy && tema && /proyecto_origen_id/i.test(eProy.message)) {
+        .from("proyectos").insert({ ...filaProy, ...(tema ? { proyecto_origen_id: tema.id } : {}), ...(sesion ?? {}) }).select("id").single();
+      if (eProy && (tema || sesion) && /proyecto_origen_id|reaper_carpeta/i.test(eProy.message)) {
         ({ data: proy, error: eProy } = await sb.from("proyectos").insert(filaProy).select("id").single());
       }
       if (eProy) console.error("Proyecto automático desde cotización pagada:", eProy.message);

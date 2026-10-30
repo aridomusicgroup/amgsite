@@ -9,6 +9,7 @@ export const TIPOS_CON_SUBIDA = [
   "exclusividad",
   "grabacion",
   "mezcla_master",
+  "mezcla_voces",
   "ep",
   "album",
 ] as const;
@@ -19,6 +20,7 @@ export const TIPO_ALMACENAMIENTO_LABEL: Record<string, string> = {
   exclusividad: "Exclusividad",
   grabacion: "Grabación",
   mezcla_master: "Mezcla / Master",
+  mezcla_voces: "Mezcla de voces",
   ep: "EP",
   album: "Álbum",
 };
@@ -31,6 +33,8 @@ export const DEFAULTS_MB_FALLBACK: Record<string, number> = {
   exclusividad: 500,
   grabacion: 3072,
   mezcla_master: 5120,
+  // Solo sus voces (un tema, pocas pistas): el resto de la sesión ya está en el estudio.
+  mezcla_voces: 2048,
   ep: 8192,
   album: 15360,
 };

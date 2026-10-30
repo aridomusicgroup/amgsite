@@ -16,6 +16,9 @@ import { useCatalogo } from "@/components/admin/CatalogoContext";
 import type { Cotizacion, Contrato, RastroCot, ProyectoTema } from "@/lib/cotizaciones-data";
 import { costoSugerido, incluyeDeDiseno, llevaDiseno, tituloConTema, validarCosto, type ServicioDiseno } from "@/lib/diseno";
 import { DisenoCotizacion } from "@/components/admin/DisenoCotizacion";
+import { MezclaVocesCotizacion } from "@/components/admin/OrigenTema";
+import { esMezclaDeVoces, TIPO_VENTA_MEZCLA_VOCES } from "@/lib/mezcla-voces";
+import { itemsDePrecarga, precargaDeUrl, type Precarga } from "@/lib/agregar-servicio";
 import type { QuoteItem } from "@/lib/pdf/quote";
 import { familiaDeCotizacion } from "@/lib/acuerdos/familias";
 import { aplicaDescuentoFidelidad } from "@/lib/fidelidad";
@@ -92,11 +95,28 @@ async function api(url: string, method: string, body?: unknown) {
 export function CotizacionesPanel({ cotizaciones, contratos, clientes, tipos, rastro, isAdmin, plantillas, tcSugerido, equipo, catalogoDiseno, proveedorDiseno, proyectosTema }: Props) {
   // Llegando de otra pantalla con ?destacar=… y ?vista=contratos, se abre la
   // pestaña correcta: si no, el resplandor caería en una lista que no se ve.
-  const vistaInicial = useSearchParams().get("vista");
+  const params = useSearchParams();
+  const vistaInicial = params.get("vista");
   const [tab, setTab] = useState<"cotizaciones" | "contratos" | "plantillas">(
     vistaInicial === "contratos" ? "contratos" : "cotizaciones",
   );
-  const [cotOpen, setCotOpen] = useState<Cotizacion | "new" | null>(null);
+  // Llegando desde un proyecto con "Agregar servicio" (?nueva=mezcla-voces&cliente=…&origen=…)
+  // la cotización se abre sola, ya con el cliente, el tema y el concepto puestos.
+  const [precarga, setPrecarga] = useState<Precarga | null>(() =>
+    precargaDeUrl((k) => params.get(k), {
+      cliente: (id) => clientes.some((c) => c.id === id),
+      proyecto: (id) => proyectosTema.some((p) => p.id === id),
+    }),
+  );
+  const [cotOpen, setCotOpen] = useState<Cotizacion | "new" | null>(precarga ? "new" : null);
+  const cerrarCot = () => {
+    setCotOpen(null);
+    if (precarga) {
+      setPrecarga(null);
+      // La URL ya cumplió: si la pantalla se recarga, no debe volver a abrirse sola.
+      window.history.replaceState(null, "", "/admin/cotizaciones");
+    }
+  };
   const [conOpen, setConOpen] = useState<Contrato | "new" | Partial<Contrato> | null>(null);
   const [ventaOpen, setVentaOpen] = useState<Cotizacion | null>(null);
 
@@ -177,7 +197,8 @@ export function CotizacionesPanel({ cotizaciones, contratos, clientes, tipos, ra
           catalogoDiseno={catalogoDiseno}
           proveedorDiseno={proveedorDiseno}
           proyectosTema={proyectosTema}
-          onClose={() => setCotOpen(null)}
+          precarga={cotOpen === "new" ? precarga : null}
+          onClose={cerrarCot}
         />
       )}
       {conOpen && (
@@ -718,27 +739,31 @@ function ItemsEditor({ items, onChange, moneda, diseno = [] }: {
 }
 
 // ── Modal de cotización ──
-function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalogoDiseno, proveedorDiseno, proyectosTema }: {
+function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalogoDiseno, proveedorDiseno, proyectosTema, precarga }: {
   initial: Cotizacion | null; clientes: ClienteLite[]; tipos: TipoLite[]; onClose: () => void; tcSugerido: number;
   catalogoDiseno: ServicioDiseno[]; proveedorDiseno: string; proyectosTema: ProyectoTema[];
+  /** "Agregar servicio" desde un proyecto: cliente, tema de origen y concepto ya puestos. */
+  precarga: Precarga | null;
 }) {
   const router = useRouter();
   const catalogo = useCatalogo();
-  const [tipo, setTipo] = useState(initial?.tipo ?? "");
+  const clientePre = precarga?.contactoId ? clientes.find((c) => c.id === precarga.contactoId) ?? null : null;
+  // "Servicio suelto" es el tipo de la mezcla de voces; si el catálogo de tipos ya no lo trae, sin clasificar.
+  const [tipo, setTipo] = useState(initial?.tipo ?? (precarga && tipos.some((t) => t.id === "servicio") ? "servicio" : ""));
   const [esquemaPago, setEsquemaPago] = useState(initial?.esquema_pago ?? "estandar");
   const [numCanciones, setNumCanciones] = useState(initial?.num_canciones ?? 5);
   // Siempre uno de los dos: sin formato, la venta por Stripe no sabía qué armar.
   const [epAlbumFormato, setEpAlbumFormato] = useState<"ep" | "album">(initial?.ep_album_formato ?? "ep");
   // Qué lleva cada tema. Se reajusta al cambiar conceptos o número de temas.
   const [temas, setTemas] = useState<Tema[]>(() => (initial?.tipo === "ep_album" ? temasDeCotizacion(initial) : []));
-  const [nombre, setNombre] = useState(initial?.cliente_nombre ?? "");
-  const [email, setEmail] = useState(initial?.cliente_email ?? "");
-  const [telefono, setTelefono] = useState(initial?.cliente_telefono ?? "");
-  const [direccion, setDireccion] = useState(initial?.cliente_direccion ?? "");
-  const [contactoId, setContactoId] = useState<string | null>(initial?.contacto_id ?? null);
+  const [nombre, setNombre] = useState(initial?.cliente_nombre ?? clientePre?.nombre ?? "");
+  const [email, setEmail] = useState(initial?.cliente_email ?? clientePre?.email ?? "");
+  const [telefono, setTelefono] = useState(initial?.cliente_telefono ?? clientePre?.telefono ?? "");
+  const [direccion, setDireccion] = useState(initial?.cliente_direccion ?? clientePre?.direccion ?? "");
+  const [contactoId, setContactoId] = useState<string | null>(initial?.contacto_id ?? clientePre?.id ?? null);
   const [moneda, setMoneda] = useState(initial?.moneda ?? "MXN");
   const [tipoCambio, setTipoCambio] = useState(initial?.tipo_cambio ? String(initial.tipo_cambio) : "");
-  const [items, setItems] = useState<QuoteItem[]>(initial?.items ?? []);
+  const [items, setItems] = useState<QuoteItem[]>(initial?.items ?? itemsDePrecarga(catalogo, precarga));
   const [descuento, setDescuento] = useState(initial?.descuento ?? 0);
   const [comisionPct, setComisionPct] = useState(initial?.comision_pct ?? 0);
   /**
@@ -757,7 +782,7 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalo
   const instrumentosCot = useMemo(() => inferirInstrumentos(items.map((i) => i.label), catalogo).join(", "), [items, catalogo]);
   // Diseño visual: de qué canción nuestra es y cuánto se le paga al diseñador.
   // El pago sigue al catálogo mientras nadie lo escriba a mano.
-  const [origenId, setOrigenId] = useState(initial?.proyecto_origen_id ?? "");
+  const [origenId, setOrigenId] = useState(initial?.proyecto_origen_id ?? precarga?.origenId ?? "");
   const sugeridoDiseno = useMemo(() => costoSugerido(items, catalogoDiseno), [items, catalogoDiseno]);
   const [costoManual, setCostoManual] = useState<number | null>(() => {
     const guardado = initial?.costo_proveedor;
@@ -766,6 +791,8 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalo
   });
   const costoDiseno = costoManual ?? sugeridoDiseno;
   const esDiseno = tipo === "diseno" || llevaDiseno(items, catalogoDiseno);
+  // Solo mezcla de voces: se liga al tema y se trabaja en su sesión de REAPER.
+  const esMezclaVoces = esMezclaDeVoces(items);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -855,7 +882,7 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalo
       sin_descuento_fidelidad: fidelidadElegible && sinDescuentoFidelidad,
       musicos,
       // El servidor lo vuelve a validar contra el total que él calcula.
-      proyecto_origen_id: esDiseno ? origenId || null : null,
+      proyecto_origen_id: esDiseno || esMezclaVoces ? origenId || null : null,
       costo_proveedor: esDiseno ? costoDiseno : null,
     };
     try {
@@ -932,6 +959,9 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalo
           costo={costoDiseno} sugerido={sugeridoDiseno} manual={costoManual !== null} onCosto={setCostoManual}
           totalMxn={totalMxn} proveedor={proveedorDiseno}
         />
+      )}
+      {esMezclaVoces && (
+        <MezclaVocesCotizacion proyectos={proyectosTema} contactoId={contactoId} origenId={origenId} onOrigen={setOrigenId} />
       )}
       {instrumentosCot && (
         <div className="mt-2">
@@ -1361,7 +1391,7 @@ function RastroLinea({ c, r, onContratos }: { c: Cotizacion; r: RastroCot; onCon
   );
 }
 
-const VENTA_TIPOS = ["Beat personalizado", "BP + Letra", "Grabación", "Mezcla / Master", "Exclusividad", "EP", "Álbum", "Diseño visual"];
+const VENTA_TIPOS = ["Beat personalizado", "BP + Letra", "Grabación", "Mezcla / Master", TIPO_VENTA_MEZCLA_VOCES, "Exclusividad", "EP", "Álbum", "Diseño visual"];
 const TIPO_VENTA_DISENO = "Diseño visual";
 
 // Convierte una cotización en venta (folio I####) + proyecto con tareas (reusa /api/admin/ventas).
@@ -1382,12 +1412,19 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo, temaT
   // y, cambiándolo a mano a EP, el proyecto salía sin una sola tarea (TRiP MX).
   const esDisco = c.tipo === "ep_album";
   const [tipo, setTipo] = useState(
-    esDisco ? (c.ep_album_formato === "album" ? "Álbum" : "EP") : c.tipo === "diseno" ? TIPO_VENTA_DISENO : "Beat personalizado",
+    esDisco ? (c.ep_album_formato === "album" ? "Álbum" : "EP")
+      : c.tipo === "diseno" ? TIPO_VENTA_DISENO
+      : esMezclaDeVoces(c.items) ? TIPO_VENTA_MEZCLA_VOCES
+      : "Beat personalizado",
   );
   const tipoDisco = tipo === "EP" || tipo === "Álbum";
   // Diseño: nace con la plantilla "Diseño visual" (brief → diseño → revisión →
   // entrega). Ni instrumentos, ni tonalidad, ni "solo estos conceptos".
   const tipoDiseno = tipo === TIPO_VENTA_DISENO;
+  // Mezcla de voces: igual, con su propia plantilla (recibir voces → editar →
+  // mezclar → entrega) y en la sesión de REAPER del tema original.
+  const tipoMezclaVoces = tipo === TIPO_VENTA_MEZCLA_VOCES;
+  const sinPlantillaDeMusica = tipoDiseno || tipoMezclaVoces;
   // Los temas de la cotización, editables aquí por si el nombre cambió desde que se cotizó.
   const [temas, setTemas] = useState<Tema[]>(() => temasDeCotizacion(c));
   // Se guardan en el proyecto: el previo para músico los toma de aquí en vez de
@@ -1456,11 +1493,11 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo, temaT
         total_mxn: enPesos,
         medio_pago: medioPago || null, quien_cerro: quienCerro || null,
         anticipo: Number(anticipo) || 0,
-        extras: tipoDiseno ? null : modo === "plantilla" || tipoDisco ? extras || null : null,
+        extras: sinPlantillaDeMusica ? null : modo === "plantilla" || tipoDisco ? extras || null : null,
         // Plantilla → tareas "Grabar {instrumento}". Libre → una tarea por concepto.
-        instrumentos: tipoDiseno ? "" : modo === "plantilla" || tipoDisco ? extras : "",
-        musicos_elegidos: tipoDiseno ? [] : modo === "plantilla" || tipoDisco ? musicosElegidos : [],
-        tareas_libres: modo === "libre" && !tipoDisco && !tipoDiseno ? tareasLibres : "",
+        instrumentos: sinPlantillaDeMusica ? "" : modo === "plantilla" || tipoDisco ? extras : "",
+        musicos_elegidos: sinPlantillaDeMusica ? [] : modo === "plantilla" || tipoDisco ? musicosElegidos : [],
+        tareas_libres: modo === "libre" && !tipoDisco && !sinPlantillaDeMusica ? tareasLibres : "",
         // EP/Álbum: un tema = una tarea con lo que lleva ese tema.
         temas: tipoDisco ? temas : undefined,
         crear_proyecto: crearProyecto,
@@ -1514,12 +1551,19 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo, temaT
           El proyecto nace con la plantilla de Diseño visual: brief → diseño → revisión con el cliente → entrega.
         </p>
       )}
+      {tipoMezclaVoces && crearProyecto && (
+        <p className="mt-2 text-[11px] text-white/45">
+          {temaTitulo
+            ? `El proyecto nace con la plantilla de Mezcla de voces, ligado a ${temaTitulo}. Si es del mismo cliente y no es un EP/álbum, trabaja en su sesión de REAPER.`
+            : "El proyecto nace con la plantilla de Mezcla de voces y su propia carpeta de REAPER (la cotización no trae el tema de origen)."}
+        </p>
+      )}
       {(c.costo_proveedor ?? 0) > 0 && (
         <p className="mt-1 text-[11px] text-white/45">
           El pago a {proveedorDiseno.split(" ")[0]} ({fmt(c.costo_proveedor ?? 0)}) queda pendiente en Finanzas → Pagos.
         </p>
       )}
-      {crearProyecto && !tipoDisco && !tipoDiseno && (
+      {crearProyecto && !tipoDisco && !sinPlantillaDeMusica && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <Field label="Tonalidad (opcional)">
             <input value={tonalidad} onChange={(e) => setTonalidad(e.target.value)} maxLength={12} placeholder="Am" className="input" />
@@ -1544,7 +1588,7 @@ function ConvertirVentaModal({ cotizacion: c, onClose, tcSugerido, equipo, temaT
           </div>
         </div>
       )}
-      {crearProyecto && !tipoDisco && !tipoDiseno && (
+      {crearProyecto && !tipoDisco && !sinPlantillaDeMusica && (
         <div className="mt-3">
           <div className="flex items-center gap-2 flex-wrap mb-2">
             <span className="text-white/60 text-xs mr-1">Tareas del proyecto:</span>

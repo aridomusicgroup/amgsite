@@ -65,6 +65,7 @@ const POR_PROYECTO: Record<string, Familia> = {
   bp_letra: "personalizado",
   grabacion: "servicio",
   mezcla_master: "servicio",
+  mezcla_voces: "servicio",
   exclusividad: "exclusiva",
   ep: "ep_album",
   album: "ep_album",

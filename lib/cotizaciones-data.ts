@@ -163,18 +163,21 @@ export interface ProyectoTema {
   contacto_id: string | null;
   cliente: string | null;
   estado: string | null;
+  /** Para saber si comparte sesión de REAPER (un EP no). Opcional: las maquetas de prueba no lo traen. */
+  tipo?: string | null;
 }
 
 /**
  * Las producciones de cliente a las que se les puede ligar un diseño (portada,
- * canvas…): todo lo que es canción de un cliente, terminado o no. Fuera los
- * beats de catálogo, el contenido propio y los propios diseños.
+ * canvas…) o una mezcla de voces: todo lo que es canción de un cliente,
+ * terminado o no. Fuera los beats de catálogo, el contenido propio y los
+ * propios diseños.
  */
 export async function getProyectosParaDiseno(): Promise<ProyectoTema[]> {
   const sb = supabaseAdmin();
   const { data } = await sb
     .from("proyectos")
-    .select("id, folio, titulo, contacto_id, estado, contactos(nombre)")
+    .select("id, folio, titulo, tipo, contacto_id, estado, contactos(nombre)")
     .eq("clase", "produccion")
     .not("tipo", "in", "(diseno,beat,creacion_contenido,contenido)")
     .order("folio", { ascending: false })
@@ -186,6 +189,7 @@ export async function getProyectosParaDiseno(): Promise<ProyectoTema[]> {
     contacto_id: (p.contacto_id as string | null) ?? null,
     cliente: ((p.contactos as { nombre?: string | null } | null)?.nombre as string | null) ?? null,
     estado: (p.estado as string | null) ?? null,
+    tipo: (p.tipo as string | null) ?? null,
   }));
 }
 

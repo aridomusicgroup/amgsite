@@ -19,6 +19,8 @@ import { normalizarOrigen } from "@/lib/origenes";
 import { fijarOrigenContacto } from "@/lib/origen-contacto";
 import { disenoDeCotizacion, registrarPagoDiseno, temaDeOrigen } from "@/lib/diseno-sync";
 import { tituloConTema } from "@/lib/diseno";
+import { esMezclaDeVoces, TIPO_PROYECTO_MEZCLA_VOCES } from "@/lib/mezcla-voces";
+import { herenciaReaperDeOrigen } from "@/lib/mezcla-voces-sync";
 
 const peso = (n: unknown) => `$${(Number(n) || 0).toLocaleString("es-MX")}`;
 
@@ -246,14 +248,19 @@ export async function POST(req: NextRequest) {
       const canciones = String(b.canciones || "").split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
       const tproy = /álbum|album/i.test(tv) ? "album" : /\bep\b/i.test(tv) ? "ep"
         : /personaliz/i.test(tv) ? "beat_personalizado" : /letra/i.test(tv) ? "bp_letra"
+        : esMezclaDeVoces([{ label: tv }]) ? TIPO_PROYECTO_MEZCLA_VOCES
         : /mezcla|master/i.test(tv) ? "mezcla_master" : /grabaci/i.test(tv) ? "grabacion"
         : /exclusiv/i.test(tv) ? "exclusividad" : /diseñ|disen/i.test(tv) ? "diseno" : "beat_personalizado";
       // Diseño de un tema que produjimos: el proyecto recuerda de cuál.
       const tema = await temaDeOrigen(sb, diseno?.origenId);
+      // Mezcla de voces: se hace en la sesión de REAPER del tema original, así
+      // que nace "creada" y apuntando a su carpeta (el script no le copia plantilla).
+      const sesion = tproy === TIPO_PROYECTO_MEZCLA_VOCES ? await herenciaReaperDeOrigen(sb, tema?.id, contactoId) : null;
       const filaProy = {
         folio: proyectoFolio, clase: "produccion",
         titulo: tituloConTema(b.beat_nombre || tv || "Producción", tema?.titulo), tipo: tproy, estado: "cola", prioridad: "media",
         ...(tema ? { proyecto_origen_id: tema.id } : {}),
+        ...(sesion ?? {}),
         contacto_id: contactoId, venta_id: ventaRow.id, cotizacion_id: b.cotizacion_id || null,
         responsable_id: responsableId, responsables: responsables.length ? responsables : null,
         // Los toma el previo para músico, y el script los pone en el .rpp
@@ -267,11 +274,12 @@ export async function POST(req: NextRequest) {
       let { data: proy, error: eProy } = await sb.from("proyectos").insert(fila).select("id").single();
       // Sin supabase-diseno.sql (liga al tema) o supabase-compas.sql, el proyecto
       // nace igual: se suelta SÓLO la columna que falta (Supabase la nombra).
-      for (const col of ["proyecto_origen_id", "compas"]) {
+      for (const col of ["proyecto_origen_id", "compas", "reaper_carpeta"]) {
         if (!eProy || !new RegExp(col, "i").test(eProy.message)) continue;
-        const { [col]: _fuera, ...resto } = fila;
-        void _fuera;
-        fila = resto;
+        // Sin el ancla de carpeta tampoco se marca "creado": nacería sin sesión
+        // en lugar de con su propia carpeta.
+        const fuera = col === "reaper_carpeta" ? ["reaper_carpeta", "reaper_creado"] : [col];
+        fila = Object.fromEntries(Object.entries(fila).filter(([k]) => !fuera.includes(k)));
         ({ data: proy, error: eProy } = await sb.from("proyectos").insert(fila).select("id").single());
       }
       // Tareas del proyecto, en orden de prioridad:

@@ -26,6 +26,8 @@ const SUBS_EDITAR = [
   "Eliminar silencios", "Corregir empalmes", "Mandarlo a mezcla",
 ];
 
+const SUBS_EDITAR_VOCES = ["Eliminar ruidos", "Eliminar silencios", "Corregir empalmes", "Mandarlo a mezcla"];
+
 /** Tareas que dispara cada producción de catálogo (caen a Tozi). */
 export const DISTRIBUCION = [
   "Subir a BeatStars", "Portada de YouTube", "Portada de BeatStars",
@@ -75,6 +77,17 @@ function plantillaTareas(tipo: string | undefined, instrumentos: string[]): TplT
       ];
     case "mezcla_master":
       return [{ titulo: "Editar y cuantizar", resp: "diego", subs: SUBS_EDITAR }, APROBADA, SUBIR("luis")];
+    // Las voces del cliente sobre un tema que ya produjimos, en la MISMA sesión
+    // de REAPER (ver lib/mezcla-voces.ts). No hay instrumentos que grabar ni
+    // guitarras que cuantizar: llegan las voces, se limpian y se mezclan.
+    case "mezcla_voces":
+      return [
+        { titulo: "Recibir las voces del cliente", resp: "luis" },
+        { titulo: "Editar voces", resp: "diego", subs: SUBS_EDITAR_VOCES },
+        { titulo: "Mezclar voces", resp: "luis" },
+        APROBADA,
+        SUBIR("luis"),
+      ];
     case "beat_personalizado":
       return [
         { titulo: "Hacer maqueta", resp: "eliud" },
