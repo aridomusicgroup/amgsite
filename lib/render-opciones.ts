@@ -40,7 +40,9 @@ export function leerOpciones(raw: unknown): { ok: true; op: OpcionesRender | nul
     if (!Number.isFinite(inicio) || !Number.isFinite(fin) || inicio < 0) {
       return { ok: false, error: "El rango de tiempo no es válido." };
     }
-    if (fin - inicio < 1) return { ok: false, error: "El rango tiene que durar al menos un segundo." };
+    // Con margen: la UI trabaja a centésimas y (inicio + 1) - inicio a veces da
+    // 0.9999999999999999, que no es un tramo corto sino un error de redondeo.
+    if (fin - inicio < 1 - 1e-6) return { ok: false, error: "El rango tiene que durar al menos un segundo." };
     op.rango = { inicio, fin };
   }
 

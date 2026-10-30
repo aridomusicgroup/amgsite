@@ -10,6 +10,10 @@ import type {
   MusicoLite,
 } from "@/lib/render-jobs";
 import { SilenciarPistas } from "@/components/admin/SilenciarPistas";
+import { OndaRango, TOPE_SIN_ONDA, ejeDe } from "@/components/admin/OndaRango";
+import {
+  decodificarPicos, detectarSonido, formatearTiempo, normalizarRango, rangoMuyCorto, type OndaDatos, type Rango,
+} from "@/lib/onda-rango";
 
 /**
  * Cuadro de opciones antes de encolar un render.
@@ -35,7 +39,17 @@ const FORMATO: Record<TipoRender, string> = {
   cuantizar: "Proyecto nuevo “… AUTO.rpp” al lado. El tuyo no se toca.",
 };
 
-type ModoRango = "todo" | "seleccion" | "marcadores";
+type ModoRango = "todo" | "seleccion" | "marcadores" | "manual";
+
+/** La onda de una versión del .rpp, o null si todavía no se calcula (ver /api/admin/render/onda). */
+async function cargarOndaDeApi(clave: string, archivo: string): Promise<OndaDatos | null> {
+  const r = await fetch(
+    `/api/admin/render/onda?clave=${encodeURIComponent(clave)}&archivo=${encodeURIComponent(archivo)}`,
+    { cache: "no-store" },
+  );
+  if (!r.ok) return null;
+  return ((await r.json()) as { onda?: OndaDatos | null }).onda ?? null;
+}
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
@@ -52,6 +66,7 @@ function cuando(ms: number): string {
 export function RenderOpciones({
   p, tipo, musicos, enviando, onCerrar, onConfirmar,
   encabezado, etiquetaConfirmar, ocultarAviso, onSaltar, etiquetaSaltar,
+  cargarOnda = cargarOndaDeApi,
 }: {
   p: Renderizable;
   tipo: TipoRender;
@@ -70,6 +85,8 @@ export function RenderOpciones({
   ocultarAviso?: boolean;
   onSaltar?: () => void;
   etiquetaSaltar?: string;
+  /** De dónde sale la forma de onda. Sólo el banco de pruebas pone otra. */
+  cargarOnda?: (clave: string, archivo: string) => Promise<OndaDatos | null>;
 }) {
   const esMusico = tipo === "musico";
   // Sólo se puede mandar a quien tenga correo registrado.
@@ -149,6 +166,30 @@ export function RenderOpciones({
   const [doble, setDoble] = useState(tipo === "stems");
   const [sinFx, setSinFx] = useState(false);
   const [modo, setModo] = useState<ModoRango>("todo");
+  // El tramo "a la medida": lo que se arrastra en la onda o se escribe en los campos.
+  const [manual, setManual] = useState<Rango>({ inicio: 0, fin: 0 });
+
+  // La onda de la versión elegida. Se guarda con el nombre del archivo para saber
+  // si la respuesta que llegó todavía corresponde a lo que se ve (cambiar de .rpp
+  // a media carga no debe pintar la onda del anterior).
+  const archivoActual = actual?.archivo;
+  const [onda, setOnda] = useState<{ archivo: string; datos: OndaDatos | null } | null>(null);
+  useEffect(() => {
+    if (!archivoActual) return;
+    let vivo = true;
+    cargarOnda(p.key, archivoActual)
+      .then((datos) => { if (vivo) setOnda({ archivo: archivoActual, datos }); })
+      .catch(() => { if (vivo) setOnda({ archivo: archivoActual, datos: null }); });
+    return () => { vivo = false; };
+  }, [archivoActual, p.key, cargarOnda]);
+  const cargandoOnda = Boolean(archivoActual) && onda?.archivo !== archivoActual;
+  const datosOnda = onda && onda.archivo === archivoActual ? onda.datos : null;
+  const picos = useMemo(() => (datosOnda ? decodificarPicos(datosOnda.picos) : new Uint8Array(0)), [datosOnda]);
+  const sonido = useMemo(() => (datosOnda ? detectarSonido(picos, datosOnda.duracion) : null), [datosOnda, picos]);
+  // Se calculó con otra versión del archivo (se guardó el proyecto desde entonces).
+  const ondaVieja = Boolean(datosOnda && actual && datosOnda.mtime !== actual.mtime);
+  const topeOnda = datosOnda ? ejeDe(datosOnda.duracion) : TOPE_SIN_ONDA;
+
   const [desde, setDesde] = useState(0);
   const [hasta, setHasta] = useState(Math.max(0, marcadores.length - 1));
   // Elegidas: arranca con lo que el script propondría solo.
@@ -184,17 +225,30 @@ export function RenderOpciones({
       return n;
     });
 
-  const rango =
-    modo === "seleccion" && seleccion
-      ? { inicio: seleccion.inicio, fin: seleccion.fin }
-      : modo === "marcadores" && marcadores[desde] && marcadores[hasta]
-        ? { inicio: marcadores[desde].seg, fin: marcadores[hasta].seg }
-        : null;
+  const rango: Rango | null =
+    modo === "manual"
+      ? manual
+      : modo === "seleccion" && seleccion
+        ? { inicio: seleccion.inicio, fin: seleccion.fin }
+        : modo === "marcadores" && marcadores[desde] && marcadores[hasta]
+          ? { inicio: marcadores[desde].seg, fin: marcadores[hasta].seg }
+          : null;
+
+  /** "A la medida" arranca donde ya estaba el tramo; si era todo, donde se oye el tema. */
+  const activarManual = () => {
+    if (modo !== "manual") {
+      const base = rango ?? sonido ?? { inicio: 0, fin: Math.max(60, ...marcadores.map((m) => m.seg)) };
+      setManual(normalizarRango(base, topeOnda));
+    }
+    setModo("manual");
+  };
+  /** Arrastrar o escribir en la onda, venga el tramo de donde venga, lo vuelve "a la medida". */
+  const elegirDesdeOnda = (r: Rango) => { setManual(r); setModo("manual"); };
 
   // Proyecto que sigue siendo la plantilla sin tocar: REAPER no produce nada y
   // el render falla diez minutos después. Mejor no dejar encolarlo.
   const vacio = actual?.items === 0;
-  const rangoMalo = modo === "marcadores" && (!rango || rango.fin - rango.inicio < 1);
+  const rangoMalo = (modo === "marcadores" || modo === "manual") && (!rango || rangoMuyCorto(rango));
   const sinPistas = tipo === "stems" && marcadas.size === 0;
   // BPM y tonalidad son obligatorios: van en el nombre del archivo y son lo que
   // el músico necesita para ensayar. Sin eso el botón no se habilita.
@@ -341,12 +395,38 @@ export function RenderOpciones({
                       <SelectMarcador valor={hasta} onChange={setHasta} marcadores={marcadores} />
                     </div>
                   )}
+
+                  <Opcion activo={modo === "manual"} onClick={activarManual}>
+                    A la medida
+                    {modo === "manual" ? (
+                      <span className="text-white/40 ml-2">
+                        {formatearTiempo(manual.inicio)} – {formatearTiempo(manual.fin)}
+                      </span>
+                    ) : (
+                      <span className="text-white/30 ml-2">— arrastra en la onda o escribe los tiempos</span>
+                    )}
+                  </Opcion>
+
                   {rangoMalo && (
                     <p className="text-[11px] text-red-300 pl-8 pt-1">
-                      El segundo marcador tiene que ir después del primero.
+                      {modo === "manual"
+                        ? "El tramo tiene que durar al menos un segundo."
+                        : "El segundo marcador tiene que ir después del primero."}
                     </p>
                   )}
                 </div>
+
+                <OndaRango
+                  cargando={cargandoOnda}
+                  datos={datosOnda}
+                  picos={picos}
+                  vieja={ondaVieja}
+                  marcadores={marcadores}
+                  sonido={sonido}
+                  rango={rango}
+                  onElegir={elegirDesdeOnda}
+                  onTodo={() => setModo("todo")}
+                />
               </Seccion>
 
               {puedeSilenciar && (
