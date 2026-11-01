@@ -15,6 +15,7 @@ import {
   type Proyecto, type ProyectoTarea,
 } from "@/lib/erp-data";
 import { toast } from "@/lib/toast";
+import { AbrirReaper } from "@/components/admin/AbrirReaper";
 import { InstrumentosPicker } from "@/components/admin/InstrumentosPicker";
 import { ConfirmCascadeDialog } from "@/components/admin/ui/ConfirmCascadeDialog";
 import { CompasSelect } from "@/components/admin/CompasSelect";
@@ -73,12 +74,14 @@ type Cliente = { nombre: string; email: string | null; telefono: string | null }
 
 const norm = (s: string) => (s || "").replace(/\s+/g, " ").trim().toLowerCase();
 
-export function ProduccionBoard({ proyectos, equipo, clientes, ventas, isAdmin, defaultResp = "todos", recordatorios = {}, miId = null }: {
+export function ProduccionBoard({ proyectos, equipo, clientes, ventas, isAdmin, defaultResp = "todos", recordatorios = {}, miId = null, conReaper = [] }: {
   proyectos: Proyecto[]; equipo: Equipo[]; clientes: Cliente[]; ventas: VentaLite[]; isAdmin: boolean; defaultResp?: string;
   /** MIS recordatorios (los de quien tiene la sesión abierta), por tarea. */
   recordatorios?: Record<string, MiRecordatorio>;
   /** Mi ficha del equipo: sirve para saber si una tarea ya es mía. */
   miId?: string | null;
+  /** Proyectos con .rpp en disco (último escaneo): llevan el botón "Abrir en REAPER". */
+  conReaper?: string[];
 }) {
   const [q, setQ] = useState("");
   const [clase, setClase] = useState("todos");
@@ -303,7 +306,7 @@ export function ProduccionBoard({ proyectos, equipo, clientes, ventas, isAdmin, 
                 </div>
                 <div className="flex flex-col gap-2">
                   {items.map((p) => (
-                    <ProyectoCard key={p.id} p={p} equipo={equipo} ventas={ventas} isAdmin={isAdmin} overdue={overdue(p)} recordatorios={recordatorios} destacado={destacado} miId={miId} />
+                    <ProyectoCard key={p.id} p={p} equipo={equipo} ventas={ventas} isAdmin={isAdmin} overdue={overdue(p)} recordatorios={recordatorios} destacado={destacado} miId={miId} reaper={conReaper.includes(p.id)} />
                   ))}
                   {items.length === 0 && <p className="text-white/20 text-xs text-center py-6 border border-dashed border-white/8 rounded-xl">—</p>}
                 </div>
@@ -448,12 +451,14 @@ function CalendarioProduccion({ proyectos, resp }: { proyectos: Proyecto[]; resp
 }
 
 // ── Tarjeta de proyecto ───────────────────────────────────────────────────────
-function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, destacado, miId }: {
+function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, destacado, miId, reaper }: {
   p: Proyecto; equipo: Equipo[]; ventas: VentaLite[]; isAdmin: boolean; overdue: boolean;
   recordatorios: Record<string, MiRecordatorio>;
   miId: string | null;
   /** Id (de proyecto o de tarea) al que hay que llevar a la persona, si llegó desde un aviso. */
   destacado: string | null;
+  /** Tiene .rpp en disco: lleva el botón para abrirlo en REAPER. */
+  reaper: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -621,6 +626,7 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
               {p.contacto && <span>· {p.contacto}</span>}
             </div>
           </div>
+          {reaper && <AbrirReaper proyectoId={p.id} />}
           <button onClick={() => setOpen((o) => !o)} className="text-white/30 hover:text-white shrink-0">
             <ChevronDown size={15} className={`transition-transform ${open ? "rotate-180" : ""}`} />
           </button>

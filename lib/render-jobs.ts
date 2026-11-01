@@ -364,6 +364,16 @@ export async function renderizables(filtro: { proyectoId?: string } = {}): Promi
 }
 
 /**
+ * Los proyectos que tienen al menos un .rpp en disco según el último escaneo:
+ * a ésos el tablero de Producción les pone el botón "Abrir en REAPER". Sólo dos
+ * columnas a propósito: la lista de archivos se pide al hacer clic.
+ */
+export async function proyectosConRpp(): Promise<string[]> {
+  const { data } = await supabaseAdmin().from("render_inventario").select("proyecto_id").is("error", null);
+  return [...new Set((data ?? []).map((r) => r.proyecto_id as string))];
+}
+
+/**
  * Encola un render. Devuelve el id del trabajo, o un mensaje de por qué no.
  *
  * Rechaza si ya hay uno del mismo tipo en vuelo para lo mismo: dos renders

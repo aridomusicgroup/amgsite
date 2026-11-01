@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/supabase/auth-server";
 import { getProyectos, getEquipoActivo, getContactos, getVentas } from "@/lib/erp-data";
 import { misRecordatorios } from "@/lib/recordatorios-server";
+import { proyectosConRpp } from "@/lib/render-jobs";
 import { ProduccionBoard } from "@/components/admin/ProduccionBoard";
 import { ActividadFeed } from "@/components/admin/ActividadFeed";
 import { PushToggle } from "@/components/admin/PushToggle";
@@ -17,8 +18,10 @@ export default async function ProduccionPage() {
 
   // Los recordatorios se piden aparte porque dependen de QUIÉN abre el tablero:
   // cada quien ve los suyos, no los del equipo.
-  const [proyectos, equipo, contactos, ventas, recordatorios] = await Promise.all([
+  const [proyectos, equipo, contactos, ventas, recordatorios, conReaper] = await Promise.all([
     getProyectos(), getEquipoActivo(), getContactos(), getVentas(), misRecordatorios(session.email),
+    // Sin inventario el tablero sigue igual, sólo sin el botón de REAPER.
+    proyectosConRpp().catch(() => []),
   ]);
   // Lista ligera para autocompletar el cliente al crear una producción
   const clientes = contactos
@@ -51,7 +54,7 @@ export default async function ProduccionPage() {
           <ActividadFeed modulo="produccion" titulo="Actividad de Producción" />
         </div>
       </div>
-      <ProduccionBoard proyectos={proyectos} equipo={equipo} clientes={clientes} ventas={ventasLite} isAdmin={session.role === "admin"} defaultResp={defaultResp} recordatorios={recordatorios} miId={yo?.id ?? null} />
+      <ProduccionBoard proyectos={proyectos} equipo={equipo} clientes={clientes} ventas={ventasLite} isAdmin={session.role === "admin"} defaultResp={defaultResp} recordatorios={recordatorios} miId={yo?.id ?? null} conReaper={conReaper} />
     </div>
   );
 }

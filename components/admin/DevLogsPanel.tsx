@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Cloud, ChevronRight } from "lucide-react";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { BotonesRender, EnCurso, EN_VUELO, TIPO_TXT, useEncolarRender } from "./RenderControles";
+import { AbrirReaper } from "./AbrirReaper";
+import { opcionesRpp } from "@/lib/abrir-reaper";
 import { ESTADO_PROY_LABEL, ESTADO_PROY_COLOR, ESTADO_PROY_BORDE } from "@/lib/erp-data";
 import type { Renderizable, TipoRender, MusicoLite } from "@/lib/render-jobs";
 
@@ -113,6 +115,7 @@ function RenderList({ proyectos, onAbrir }: {
         const enVuelo = p.jobs.find((j) => EN_VUELO.includes(j.estado));
         const ultimoError = !enVuelo && p.jobs[0]?.estado === "error" ? p.jobs[0] : null;
         const enDrive = p.jobs.find((j) => j.estado === "listo" && j.driveUrls?.length);
+        const abribles = opcionesRpp([p]);
 
         return (
           <div
@@ -153,6 +156,7 @@ function RenderList({ proyectos, onAbrir }: {
               </div>
 
               <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
+                {abribles.length > 0 && <AbrirReaper opciones={abribles} variante="boton" />}
                 <BotonesRender p={p} onAbrir={onAbrir} />
               </div>
             </div>
