@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { anclarCarpeta } from "@/lib/carpeta-reaper";
 import { saldoDeVenta } from "@/lib/cobranza";
 import { finiquitadoProyecto, liberarEntregas, marcaDe, urlDePago, ventaLiquidada, cuentaCobro, retenidoHastaLiquidar, avisoRetenido } from "@/lib/entrega";
 
@@ -132,6 +133,14 @@ export async function upsertClienteProfile(
   if (patch.direccion !== undefined) campos.direccion = patch.direccion?.trim() || null;
 
   if (prof.contactoId) {
+    // Su nombre es el de su carpeta de REAPER (RAÍZ / CLIENTE / PROYECTO): si
+    // lo cambia aquí, se ancla la de siempre o el estudio la pierde (pasó con
+    // "Bryan De La Cruz" → "Brayan Allan De La Cruz"). Sin preguntar: mover
+    // carpetas lo decide el estudio desde el panel, no el cliente.
+    const nuevo = campos.nombre as string | null | undefined;
+    if (nuevo && nuevo !== (prof.nombre ?? "").trim()) {
+      await anclarCarpeta(sb, "contactos", prof.contactoId, prof.nombre, nuevo);
+    }
     await sb.from("contactos").update(campos).eq("id", prof.contactoId);
   } else {
     await sb.from("contactos").insert({ email: clean, etapa: "cliente", origen: "sitio", ...campos });
