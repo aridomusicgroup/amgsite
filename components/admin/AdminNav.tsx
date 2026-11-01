@@ -12,7 +12,9 @@ import { VersionWatcher } from "./VersionWatcher";
 import { EntregaLanzador } from "./entrega/EntregaLanzador";
 import { CarpetaLanzador } from "./entrega/CarpetaLanzador";
 import { PagoMusicoLanzador } from "./PagoMusicoLanzador";
+import { IndicadorRender } from "./IndicadorRender";
 import { toast } from "@/lib/toast";
+import type { RendersEnCurso } from "@/lib/render-jobs";
 
 // Dashboard del chatbot (proyecto aparte en Vercel, con su propio login).
 const CHATBOT_URL = "https://arido-chat-dashboard.vercel.app";
@@ -42,6 +44,9 @@ const PORTADA = "/admin";
 
 const VISTO_KEY = "arido-actividad-visto";
 
+/** La sección de REAPER: junto a ella va la onda de renders en curso. */
+const REAPER = "/admin/dev-logs";
+
 /** Respaldo del avatar cuando la persona todavía no sube foto. */
 function inicialesDe(nombre: string | null | undefined, email: string): string {
   const base = (nombre || "").trim() || email.split("@")[0];
@@ -49,9 +54,11 @@ function inicialesDe(nombre: string | null | undefined, email: string): string {
   return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase() || base[0].toUpperCase();
 }
 
-export function AdminNav({ email, nombre, foto, modules, order, colapsado }: {
+export function AdminNav({ email, nombre, foto, modules, order, colapsado, renders }: {
   email: string; nombre?: string | null; foto?: string | null;
   modules: string[]; order?: string[] | null; colapsado?: string[] | null;
+  /** Lo calcula el layout; se pone al día solo con el tiempo real de `render_jobs`. */
+  renders?: RendersEnCurso | null;
 }) {
   const pathname = usePathname();
 
@@ -168,6 +175,7 @@ export function AdminNav({ email, nombre, foto, modules, order, colapsado }: {
         {l.href === "/admin/produccion" && hayNovedades && (
           <span className="ml-auto w-2 h-2 rounded-full bg-lgb-red" title="Hay novedades" />
         )}
+        {l.href === REAPER && renders && <IndicadorRender r={renders} activo={isActive(l.href)} className="ml-auto" />}
       </Link>
     );
   };
@@ -219,6 +227,8 @@ export function AdminNav({ email, nombre, foto, modules, order, colapsado }: {
                 // Si Producción quedó escondida, su puntito sube al encabezado:
                 // un aviso que no se ve es un aviso perdido.
                 const avisa = !abierta && hayNovedades && s.items.some((l) => l.href === "/admin/produccion");
+                // Igual la onda de REAPER: un render en curso no se esconde con el área.
+                const renderEnArea = !abierta && renders && s.items.some((l) => l.href === REAPER) ? renders : null;
                 return (
                   <div key={s.grupo} className="mt-3 first:mt-0">
                     <button
@@ -235,6 +245,7 @@ export function AdminNav({ email, nombre, foto, modules, order, colapsado }: {
                         {GRUPO_LABEL[s.grupo]}
                       </span>
                       {avisa && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-lgb-red" title="Hay novedades adentro" />}
+                      {renderEnArea && <IndicadorRender r={renderEnArea} chico className="ml-auto" />}
                     </button>
 
                     {/* 0fr → 1fr: se desliza sin tener que saber de antemano cuánto mide. */}
@@ -317,6 +328,9 @@ export function AdminNav({ email, nombre, foto, modules, order, colapsado }: {
               {l.label}
               {l.href === "/admin/produccion" && hayNovedades && (
                 <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-lgb-red" />
+              )}
+              {l.href === REAPER && renders && (
+                <IndicadorRender r={renders} chico className="absolute top-1.5 right-1.5" />
               )}
             </Link>
           );

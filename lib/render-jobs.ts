@@ -443,3 +443,42 @@ export async function musicosParaPrevio(): Promise<MusicoLite[]> {
     portalActivo: m.portal_activo === true,
   }));
 }
+
+/** Lo que la PC del estudio tiene entre manos, para la onda del menú. */
+export interface RendersEnCurso {
+  enCola: number;
+  renderizando: number;
+  subiendo: number;
+}
+
+/** El mismo plazo con que la barredora de reaper-sync (jobs.js) suelta un render. */
+const ATASCO_MIN = 45;
+
+/**
+ * Cuántos renders hay en vuelo, para la onda junto a "REAPER" en el menú.
+ *
+ * Un 'renderizando' o 'subiendo' que lleva ATASCO_MIN sin moverse no cuenta:
+ * si la PC se apagó a medio render, la barredora no corre hasta que vuelva a
+ * prender, y el menú se quedaría animado toda la noche por algo que no está
+ * pasando. Los de la cola sí cuentan siempre: ésos sí van a salir.
+ *
+ * Null si la consulta falla: sin dato, el menú no enseña nada (mejor que un 0
+ * que diga "no hay nada" cuando no lo sabemos).
+ */
+export async function rendersEnCurso(): Promise<RendersEnCurso | null> {
+  const { data, error } = await supabaseAdmin()
+    .from("render_jobs")
+    .select("estado, updated_at")
+    .in("estado", ["pendiente", "renderizando", "subiendo"])
+    .limit(50);
+  if (error) return null;
+
+  const limite = Date.now() - ATASCO_MIN * 60_000;
+  const vivo = (j: { updated_at: string | null }) => !j.updated_at || Date.parse(j.updated_at) > limite;
+  const filas = (data ?? []) as { estado: string; updated_at: string | null }[];
+  return {
+    enCola: filas.filter((j) => j.estado === "pendiente").length,
+    renderizando: filas.filter((j) => j.estado === "renderizando" && vivo(j)).length,
+    subiendo: filas.filter((j) => j.estado === "subiendo" && vivo(j)).length,
+  };
+}

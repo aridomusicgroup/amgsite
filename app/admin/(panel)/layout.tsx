@@ -4,6 +4,7 @@ import { getSession, getUserPrefs } from "@/lib/supabase/auth-server";
 import { effectiveModules } from "@/lib/modules";
 import { getPerfil } from "@/lib/usuarios";
 import { getCatalogo } from "@/lib/servicios-catalogo";
+import { rendersEnCurso } from "@/lib/render-jobs";
 import { CatalogoProvider } from "@/components/admin/CatalogoContext";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { Toaster } from "@/components/admin/Toaster";
@@ -27,7 +28,12 @@ export default async function PanelLayout({
   const session = await getSession();
   if (!session) redirect("/admin/login");
 
-  const [prefs, perfil, catalogo] = await Promise.all([getUserPrefs(session.email), getPerfil(session.email), getCatalogo()]);
+  // Los renders van en paralelo aunque luego resulte que no ve REAPER: esperar
+  // a saber sus módulos para preguntar alargaría cada carga del panel. El
+  // tiempo real de `render_jobs` (AdminNav) refresca el layout, y con él la onda.
+  const [prefs, perfil, catalogo, renders] = await Promise.all([
+    getUserPrefs(session.email), getPerfil(session.email), getCatalogo(), rendersEnCurso(),
+  ]);
   const modules = effectiveModules(session.role, prefs?.modules_extra);
   const light = prefs?.theme === "light";
 
@@ -36,7 +42,7 @@ export default async function PanelLayout({
       <PrefsApplier fontSize={prefs?.font_size ?? "md"} />
       <NotificacionRouter />
       <DiagnosticoScroll />
-      <AdminNav email={session.email} nombre={perfil.nombre} foto={perfil.foto_url} modules={modules} order={prefs?.module_order ?? null} colapsado={prefs?.nav_colapsado ?? null} />
+      <AdminNav email={session.email} nombre={perfil.nombre} foto={perfil.foto_url} modules={modules} order={prefs?.module_order ?? null} colapsado={prefs?.nav_colapsado ?? null} renders={modules.includes("/admin/dev-logs") ? renders : null} />
       <main className="flex-1 min-w-0 md:ml-60 p-5 sm:p-8 pb-32 md:pb-8">
         <CatalogoProvider catalogo={catalogo}>{children}</CatalogoProvider>
       </main>

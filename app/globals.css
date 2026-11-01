@@ -346,3 +346,20 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .panel-entra { animation: none; }
 }
+
+/* ── Onda de render (menú, junto a "REAPER") ──────────────────────────────────
+   Cada barra se enciende y crece a su turno (el desfase lo pone
+   IndicadorRender con animation-delay), así que la onda se va "escribiendo"
+   de izquierda a derecha como en la ventana de render de REAPER. Sólo
+   transform y opacity: corre en el compositor aunque dure todo el render.
+   `backwards`: antes de que le toque, cada barra ya está apagada. */
+@keyframes onda-render {
+  0%, 100% { opacity: 0.3; transform: scaleY(0.45); }
+  20%, 55% { opacity: 1;   transform: scaleY(1); }
+}
+.onda-render { animation: onda-render 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite backwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Quieta pero encendida: el color sigue diciendo si renderiza o sube. */
+  .onda-render { animation: none; }
+}
