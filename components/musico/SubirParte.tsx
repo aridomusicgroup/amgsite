@@ -11,9 +11,10 @@ const MAX_PISTAS = 4;
 /**
  * Lo que el músico sube, directo del navegador a Google Drive.
  *
- * Mismo mecanismo que `components/cuenta/SubirArchivos.tsx`: el servidor solo
- * presta un token corto y dice a qué carpeta, y los bytes nunca pasan por
- * Vercel — un stem en WAV son decenas de MB y no caben en una función
+ * Mismo mecanismo que `components/cuenta/SubirArchivos.tsx`: el servidor abre
+ * la sesión de subida de ESE archivo en la carpeta MUSICOS del proyecto (con el
+ * nombre que él arma) y el navegador sólo recibe su URL, nunca un token de
+ * Drive. Los bytes nunca pasan por Vercel — un stem en WAV son decenas de MB y no caben en una función
  * serverless.
  *
  * Son DOS botones y no uno porque los dos archivos van a lugares distintos: el
@@ -141,30 +142,21 @@ export function SubirParte({ asignacionId, archivos, canales, destino, duracionR
     setProgreso(0);
     canceladaRef.current = false;
     try {
-      const r = await fetch(`/api/musico/asignacion/${asignacionId}/drive-token`);
-      if (!r.ok) throw new Error("no-token");
-      const t = await r.json();
-      if (canceladaRef.current) throw new Error("cancelada");
-
-      const init = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable", {
+      // El nombre y la carpeta los decide el servidor; aquí sólo va qué canal es.
+      const r = await fetch(`/api/musico/asignacion/${asignacionId}/subida`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${t.accessToken}`,
-          "Content-Type": "application/json",
-          "X-Upload-Content-Type": file.type || "application/octet-stream",
-        },
-        // El nombre lo arma el servidor para que en Drive se lea de quién es y
-        // de qué instrumento, sin depender de cómo lo haya nombrado el músico.
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // El canal entra en el nombre para que en Drive se distingan las dos
-          // charchetas sin abrirlas — y para que la segunda no pise a la primera.
-          name: `${t.prefijo}${clase === "stem" && canales[slot] ? canales[slot] + " - " : clase === "stem" && variasLibres ? `Pista ${slot + 1} - ` : ""}${file.name.replace(/^.*[\\/]/, "")}`,
-          parents: [t.folderId],
+          clase,
+          nombre: file.name,
+          bytes: file.size,
+          mime: file.type,
+          canal: clase === "stem" && canales[slot] ? canales[slot] : clase === "stem" && variasLibres ? `Pista ${slot + 1}` : "",
         }),
       });
-      if (!init.ok) throw new Error("google");
-      const location = init.headers.get("Location");
-      if (!location) throw new Error("google");
+      const t = await r.json().catch(() => ({}));
+      if (!r.ok || !t.uploadUrl) throw new Error("google");
+      const location = String(t.uploadUrl);
       sesionRef.current = location;
       if (canceladaRef.current) throw new Error("cancelada");
 
@@ -172,7 +164,7 @@ export function SubirParte({ asignacionId, archivos, canales, destino, duracionR
         const xhr = new XMLHttpRequest();
         xhrRef.current = xhr;
         xhr.open("PUT", location);
-        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+        xhr.setRequestHeader("Content-Type", t.mime || file.type || "application/octet-stream");
         xhr.upload.onprogress = (e) => { if (e.lengthComputable) setProgreso(Math.round((e.loaded / e.total) * 100)); };
         xhr.onload = () => {
           if (xhr.status < 200 || xhr.status >= 300) return reject(new Error("subida"));

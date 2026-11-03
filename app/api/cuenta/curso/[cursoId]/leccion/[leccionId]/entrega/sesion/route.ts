@@ -5,14 +5,11 @@ import { carpetaEntregas } from "@/lib/curso-entregas";
 import { driveOAuthConfigured, iniciarSubidaResumible } from "@/lib/drive-oauth";
 import { FORMATOS_ENTREGA, MAX_ENTREGA_BYTES, extension } from "@/lib/cursos-tipos";
 import { rateLimit } from "@/lib/rate-limit";
-import { DOMAINS } from "@/lib/site";
+import { origenDeSubida } from "@/lib/subida-servidor";
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ cursoId: string; leccionId: string }> };
-
-/** Orígenes desde los que el navegador puede subir (CORS de la sesión de Google). */
-const ORIGENES = new Set([DOMAINS.main, "https://www.aridomusicgroup.com", "http://localhost:3000"]);
 
 /**
  * Prepara la subida de una entrega: valida formato y tamaño, arma la carpeta
@@ -46,8 +43,7 @@ export async function POST(req: NextRequest, { params }: Props) {
   const carpeta = await carpetaEntregas(curso.slug, g.email);
   if (!carpeta) return NextResponse.json({ error: "No se pudo preparar tu carpeta. Intenta en un momento." }, { status: 503 });
 
-  const origenPedido = req.headers.get("origin") ?? "";
-  const origin = ORIGENES.has(origenPedido) ? origenPedido : DOMAINS.main;
+  const origin = origenDeSubida(req);
   const fecha = new Date().toISOString().slice(0, 10);
   const uploadUrl = await iniciarSubidaResumible({
     nombre: `${fecha} ${g.leccion.titulo.replace(/[\/:*?"<>|]/g, "").slice(0, 60)} - ${nombre}`,

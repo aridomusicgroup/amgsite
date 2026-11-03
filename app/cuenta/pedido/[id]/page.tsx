@@ -7,6 +7,7 @@ import { getPedidoDetalle, rendersDelPedido, entregaDelPedido } from "@/lib/cuen
 import { acuerdosPendientes } from "@/lib/acuerdos/server";
 import { PedidoProgreso, EntregaChip } from "@/components/cuenta/PedidoProgreso";
 import { SubirArchivos } from "@/components/cuenta/SubirArchivos";
+import { SubirVoces } from "@/components/cuenta/SubirVoces";
 import { RendersPedido } from "@/components/cuenta/RendersPedido";
 import { SOCIALS } from "@/lib/site";
 import { WhatsappIcon } from "@/components/shared/BrandIcons";
@@ -136,6 +137,8 @@ export default async function PedidoPage({ params }: Props) {
 
         {d.proyectoEstado !== null && (
           <div className="mt-8">
+            {/* Se esconde sola si el pedido no lleva mezcla o falta el SQL. */}
+            <SubirVoces pedidoId={id} />
             <SubirArchivos pedidoId={id} />
           </div>
         )}

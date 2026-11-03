@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Upload, FileMusic, Loader2, ExternalLink, AlertCircle } from "lucide-react";
+import { abrirSubida, subirASesion, type SesionSubida } from "@/lib/subida-navegador";
 
 interface ArchivoSubido {
   id: string;
@@ -9,10 +10,7 @@ interface ArchivoSubido {
   url: string | null;
 }
 
-interface TokenInfo {
-  accessToken: string;
-  expiresAt: number;
-  folderId: string;
+interface Espacio {
   limiteBytes: number;
   usadoBytes: number;
 }
@@ -25,13 +23,14 @@ const formatoTamano = (bytes: number | null): string => {
 };
 
 /**
- * Sube archivos directo a Google Drive desde el navegador del cliente — sin
- * pasar por nuestro servidor (así no hay límite de tamaño de Vercel). El
- * servidor solo entrega un token de corta duración y arma la carpeta si hace
- * falta; ver `lib/drive-oauth.ts` y `lib/proyecto-carpeta.ts`.
+ * Sube archivos directo a Google Drive desde el navegador del cliente — los
+ * bytes no pasan por nuestro servidor (así no hay límite de tamaño de Vercel).
+ * El servidor abre la sesión de subida de CADA archivo en la carpeta del
+ * proyecto (`/api/cuenta/pedido/<id>/subida`) y el navegador sólo recibe la
+ * URL de esa sesión, nunca un token de Drive. Ver `lib/subida-servidor.ts`.
  */
 export function SubirArchivos({ pedidoId }: { pedidoId: string }) {
-  const [token, setToken] = useState<TokenInfo | null>(null);
+  const [espacio, setEspacio] = useState<Espacio | null>(null);
   const [archivos, setArchivos] = useState<ArchivoSubido[]>([]);
   const [cargando, setCargando] = useState(true);
   const [disponible, setDisponible] = useState(true);
@@ -40,20 +39,14 @@ export function SubirArchivos({ pedidoId }: { pedidoId: string }) {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const cargarToken = async () => {
+  const cargarEspacio = async () => {
     setCargando(true);
     try {
-      const res = await fetch(`/api/cuenta/pedido/${pedidoId}/drive-token`);
+      const res = await fetch(`/api/cuenta/pedido/${pedidoId}/espacio`);
       if (res.status === 503) { setDisponible(false); return; }
       if (!res.ok) throw new Error("No se pudo conectar con Drive.");
       const data = await res.json();
-      setToken({
-        accessToken: data.accessToken,
-        expiresAt: data.expiresAt,
-        folderId: data.folderId,
-        limiteBytes: data.limiteBytes ?? 0,
-        usadoBytes: data.usadoBytes ?? 0,
-      });
+      setEspacio({ limiteBytes: data.limiteBytes ?? 0, usadoBytes: data.usadoBytes ?? 0 });
       setArchivos(data.archivos ?? []);
     } catch {
       setError("No se pudo cargar tus archivos. Intenta de nuevo en un momento.");
@@ -62,50 +55,35 @@ export function SubirArchivos({ pedidoId }: { pedidoId: string }) {
     }
   };
 
-  useEffect(() => { cargarToken(); }, [pedidoId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { cargarEspacio(); }, [pedidoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Tus voces" sube a la misma carpeta: al terminar, lo usado cambió.
+  useEffect(() => {
+    const recargar = () => { cargarEspacio(); };
+    window.addEventListener("cuenta:archivos", recargar);
+    return () => window.removeEventListener("cuenta:archivos", recargar);
+  }, [pedidoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const subir = async (file: File) => {
     setError(null);
-    // El único tope ahora es el espacio del proyecto (ver Pedidos → Almacenamiento)
-    // — ya no hay un límite fijo de 200MB por archivo sin importar el tipo.
-    if (token && token.limiteBytes > 0 && token.usadoBytes + file.size > token.limiteBytes) {
-      setError(`"${file.name}" no cabe — ya usaste ${formatoTamano(token.usadoBytes)} de ${formatoTamano(token.limiteBytes)} disponibles. Contáctanos si necesitas más espacio.`);
+    // El único tope es el espacio del proyecto (ver Pedidos → Almacenamiento).
+    // Éste es el aviso rápido; el que vale lo revisa el servidor al abrir la sesión.
+    if (espacio && espacio.limiteBytes > 0 && espacio.usadoBytes + file.size > espacio.limiteBytes) {
+      setError(`"${file.name}" no cabe — ya usaste ${formatoTamano(espacio.usadoBytes)} de ${formatoTamano(espacio.limiteBytes)} disponibles. Contáctanos si necesitas más espacio.`);
       return;
     }
-
-    // El token vive ~1h; si ya expiró (sesión larga en la página), se renueva solo.
-    let vigente = token;
-    if (!vigente || vigente.expiresAt < Date.now() + 30_000) {
-      await cargarToken();
-      vigente = token;
-    }
-    if (!vigente) { setError("No se pudo preparar la subida."); return; }
 
     setSubiendo(true);
     setProgreso(0);
     try {
-      const init = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${vigente.accessToken}`,
-          "Content-Type": "application/json",
-          "X-Upload-Content-Type": file.type || "application/octet-stream",
-        },
-        body: JSON.stringify({ name: file.name, parents: [vigente.folderId] }),
-      });
-      if (!init.ok) throw new Error("Google no aceptó la subida.");
-      const location = init.headers.get("Location");
-      if (!location) throw new Error("Google no regresó dónde subir.");
-
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", location);
-        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-        xhr.upload.onprogress = (e) => { if (e.lengthComputable) setProgreso(Math.round((e.loaded / e.total) * 100)); };
-        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error("Falló la subida.")));
-        xhr.onerror = () => reject(new Error("Falló la subida."));
-        xhr.send(file);
-      });
+      let sesion: SesionSubida;
+      try {
+        sesion = await abrirSubida(pedidoId, file, "archivo");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : `No se pudo subir "${file.name}".`);
+        return;
+      }
+      await subirASesion(sesion, file, setProgreso);
 
       fetch(`/api/cuenta/pedido/${pedidoId}/subida-confirmada`, {
         method: "POST",
@@ -113,7 +91,7 @@ export function SubirArchivos({ pedidoId }: { pedidoId: string }) {
         body: JSON.stringify({ nombre: file.name }),
       }).catch(() => {});
 
-      await cargarToken(); // refresca la lista con el archivo nuevo
+      await cargarEspacio(); // refresca la lista con el archivo nuevo
     } catch {
       setError(`No se pudo subir "${file.name}". Intenta de nuevo.`);
     } finally {
@@ -135,15 +113,15 @@ export function SubirArchivos({ pedidoId }: { pedidoId: string }) {
         <Upload size={18} className="text-lgb-red" /> Sube tus archivos
       </h2>
 
-      {token && token.limiteBytes > 0 && (
+      {espacio && espacio.limiteBytes > 0 && (
         <div className="mb-4">
           <div className="flex items-center justify-between text-[11px] text-white/40 mb-1">
-            <span>Usado {formatoTamano(token.usadoBytes)} de {formatoTamano(token.limiteBytes)}</span>
+            <span>Usado {formatoTamano(espacio.usadoBytes)} de {formatoTamano(espacio.limiteBytes)}</span>
           </div>
           <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
             <div
-              className={`h-full transition-all ${token.usadoBytes / token.limiteBytes > 0.9 ? "bg-amber-400" : "bg-lgb-red"}`}
-              style={{ width: `${Math.min(100, (token.usadoBytes / token.limiteBytes) * 100)}%` }}
+              className={`h-full transition-all ${espacio.usadoBytes / espacio.limiteBytes > 0.9 ? "bg-amber-400" : "bg-lgb-red"}`}
+              style={{ width: `${Math.min(100, (espacio.usadoBytes / espacio.limiteBytes) * 100)}%` }}
             />
           </div>
         </div>
@@ -169,7 +147,7 @@ export function SubirArchivos({ pedidoId }: { pedidoId: string }) {
             <Upload size={22} className="mx-auto mb-2 text-white/30" />
             <p className="text-white/60 text-sm">Arrastra un archivo aquí o toca para elegir</p>
             <p className="text-white/30 text-xs mt-1">
-              Referencias, letras, audios{token && token.limiteBytes > 0 ? ` — hasta ${formatoTamano(token.limiteBytes - token.usadoBytes)} disponibles` : ""}
+              Referencias, letras, audios{espacio && espacio.limiteBytes > 0 ? ` — hasta ${formatoTamano(espacio.limiteBytes - espacio.usadoBytes)} disponibles` : ""}
             </p>
           </>
         )}
