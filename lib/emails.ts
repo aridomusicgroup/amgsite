@@ -250,6 +250,61 @@ export function firmaAcuerdoEmail(d: {
   return { subject: `📝 Firma el acuerdo de ${d.folio} — Árido Music Group`, html: wrap(content) };
 }
 
+/**
+ * Enlace para firmar el acuerdo de UNA producción (acuerdo individual).
+ *
+ * Dice la regla tal cual: el anticipo se puede pagar cuando quiera para reservar
+ * la agenda, pero el trabajo arranca hasta que firme. Es lo que el cliente
+ * aceptó pagando, así que tiene que estar a la vista antes de que pague.
+ */
+export function firmaAcuerdoProduccionEmail(d: {
+  customerName: string | null;
+  folio: string;
+  titulo: string;
+  url: string;
+}): { subject: string; html: string } {
+  const content = `
+    <tr><td>
+      <h1 style="color:#fff;font-size:24px;margin:0 0 6px;">Firma el acuerdo de tu producción 📝</h1>
+      <p style="color:#999;font-size:14px;line-height:1.6;margin:0 0 14px;">
+        ${d.customerName ? `${escHtml(d.customerName)}, este` : "Este"} acuerdo es solo para
+        <b style="color:#fff;">${escHtml(d.titulo)}</b> (cotización ${escHtml(d.folio)}). No aplica a otras producciones.
+      </p>
+      <p style="color:#999;font-size:14px;line-height:1.6;margin:0 0 18px;">
+        Puedes pagar tu anticipo cuando quieras para reservar la agenda, pero
+        <b style="color:#fff;">el trabajo arranca hasta que firmes</b>. Toma dos minutos.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:8px 0 4px;">
+        <a href="${d.url}" style="display:inline-block;background:#c42f42;color:#fff;font-size:14px;font-weight:bold;text-decoration:none;padding:12px 28px;border-radius:10px;">
+          Leer y firmar el acuerdo
+        </a>
+      </td></tr></table>
+      <p style="color:#777;font-size:12px;margin:18px 0 0;">Si el botón no funciona, copia este enlace: ${d.url}</p>
+    </td></tr>`;
+  return { subject: `📝 Firma el acuerdo de ${d.folio} — Árido Music Group`, html: wrap(content) };
+}
+
+/** Copia del acuerdo individual ya firmado, para el correo con el que firmó. */
+export function copiaAcuerdoProduccionEmail(d: {
+  customerName: string | null;
+  folio: string;
+  firmadoPor: string;
+  fecha: string;
+  texto: string;
+}): { subject: string; html: string } {
+  const content = `
+    <tr><td>
+      <h1 style="color:#fff;font-size:24px;margin:0 0 6px;">Quedó firmado ✅</h1>
+      <p style="color:#999;font-size:14px;line-height:1.6;margin:0 0 14px;">
+        ${d.customerName ? `${escHtml(d.customerName)}, gracias` : "Gracias"}. Esta es tu copia del acuerdo de la cotización
+        <b style="color:#fff;">${escHtml(d.folio)}</b>, firmado por ${escHtml(d.firmadoPor)} el ${escHtml(d.fecha)}.
+        Guárdala.
+      </p>
+      <div style="background:#141414;border:1px solid #222;border-radius:14px;padding:16px;color:#bbb;font-size:12px;line-height:1.6;white-space:pre-wrap;">${escHtml(d.texto)}</div>
+    </td></tr>`;
+  return { subject: `✅ Copia de tu acuerdo ${d.folio} — Árido Music Group`, html: wrap(content) };
+}
+
 export function contratoEmail(d: {
   customerName: string | null;
   tipoLabel: string;

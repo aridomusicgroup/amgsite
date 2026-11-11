@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { ACUERDO_VERSIONES, renderAcuerdo, validarFirma } from "@/lib/acuerdos/acuerdo-cliente";
 import { getAcuerdoTexto } from "@/lib/acuerdos/server";
 import { resolverInvitacion, sellarInvitacion } from "@/lib/acuerdos/invitaciones";
+import { registrarFirmaProduccion } from "@/lib/acuerdos/produccion-firma";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,6 +32,17 @@ export async function POST(req: NextRequest, { params }: Props) {
   if (problema) return NextResponse.json({ error: problema }, { status: 400 });
   if (b?.acepto !== true) {
     return NextResponse.json({ error: "Marca la casilla para aceptar el acuerdo." }, { status: 400 });
+  }
+
+  // Acuerdo individual de UNA producción: tiene su propia tabla (una fila por
+  // cotización) y al firmar libera la producción. No toca `cliente_acuerdos`:
+  // firmarlo no cuenta como firma de ninguna familia.
+  if (inv.familia === "produccion") {
+    const res = await registrarFirmaProduccion(supabaseAdmin(), inv, nombre, {
+      ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null,
+      userAgent: req.headers.get("user-agent")?.slice(0, 300) || null,
+    });
+    return res.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ error: res.error }, { status: res.status });
   }
 
   const { cuerpo } = await getAcuerdoTexto(inv.familia);

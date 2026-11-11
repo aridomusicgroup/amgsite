@@ -899,6 +899,8 @@ export interface Proyecto {
   tonalidad: string | null; bpm: number | null;
   /** "6/8". Con el BPM, el script lo pone en el .rpp mientras nadie lo haya guardado. */
   compas: string | null;
+  /** El cliente aún no firma el acuerdo de SU producción: el anticipo entró, pero el trabajo no arranca. */
+  acuerdo_pendiente: boolean;
   /** Carpeta de Drive donde el cliente sube sus archivos (null si aún no se crea o Drive no está configurado). */
   drive_folder_id: string | null;
   plataforma: string | null; fecha_publicacion: string | null; link_post: string | null;
@@ -1052,6 +1054,7 @@ export async function getProyectos(): Promise<Proyecto[]> {
       brief: p.brief as string | null, entregable_url: p.entregable_url as string | null, notas: p.notas as string | null,
       tonalidad: (p.tonalidad as string | null) ?? null, bpm: p.bpm == null ? null : Number(p.bpm),
       compas: (p.compas as string | null) ?? null,
+      acuerdo_pendiente: !!p.acuerdo_pendiente,
       drive_folder_id: (p.drive_folder_id as string | null) ?? null,
       plataforma: (p.plataforma as string | null) ?? null,
       fecha_publicacion: (p.fecha_publicacion as string | null) ?? null,
@@ -1365,6 +1368,7 @@ export async function getProyectoDetalle(id: string, esAdmin = false): Promise<P
     brief: p.brief as string | null, entregable_url: p.entregable_url as string | null, notas: p.notas as string | null,
     tonalidad: (p.tonalidad as string | null) ?? null, bpm: p.bpm == null ? null : Number(p.bpm),
       compas: (p.compas as string | null) ?? null,
+    acuerdo_pendiente: !!p.acuerdo_pendiente,
     drive_folder_id: (p.drive_folder_id as string | null) ?? null,
     plataforma: (p.plataforma as string | null) ?? null,
     fecha_publicacion: (p.fecha_publicacion as string | null) ?? null,

@@ -146,6 +146,8 @@ export const DOT_ACTIVIDAD: Record<string, string> = {
   contacto_editado: "bg-blue-400",
   contacto_eliminado: "bg-red-400",
   acuerdo_recordado: "bg-amber-400",
+  acuerdo_firmado: "bg-green-400",
+  produccion_liberada: "bg-amber-400",
   cobranza_enviada: "bg-amber-400",
   drive_caido: "bg-red-400",
   recompra_enviada: "bg-green-400",

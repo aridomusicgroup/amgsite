@@ -4,6 +4,9 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { SEEDS } from "@/lib/pdf/plantilla-seeds";
 import { SEEDS as ACUERDO_SEEDS } from "@/lib/acuerdos/seeds";
 import { FAMILIAS, type Familia } from "@/lib/acuerdos/familias";
+import {
+  ACUERDO_PRODUCCION_SEED, ACUERDO_PRODUCCION_TIPO, huecosSinResolver, renderProduccion,
+} from "@/lib/acuerdos/produccion";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +14,7 @@ export const dynamic = "force-dynamic";
 // acepta al entrar a su panel, uno por tipo de servicio. Viven aquí para
 // poder editarlos sin desplegar, pero NO entran en ContractTipo para no
 // aparecer como tipo de contrato en cotizaciones.
-const ACUERDO_TIPOS = FAMILIAS.map((f) => `acuerdo_${f}`);
+const ACUERDO_TIPOS = [...FAMILIAS.map((f) => `acuerdo_${f}`), ACUERDO_PRODUCCION_TIPO];
 // Términos del pie: los generales y los de diseño visual (1 ronda de cambios, no 2).
 const TERMINOS_TIPOS = ["cotizacion", "cotizacion_diseno"];
 const TIPOS = new Set([...Object.keys(SEEDS), ...TERMINOS_TIPOS, ...ACUERDO_TIPOS]);
@@ -41,8 +44,21 @@ export async function PUT(req: NextRequest) {
     const titulo = String(b.titulo || "").trim();
     const cuerpo = String(b.cuerpo || "").trim();
     if (!cuerpo) return NextResponse.json({ error: "El cuerpo no puede quedar vacío." }, { status: 400 });
+    // El acuerdo de producción lleva campos {{así}} que se rellenan solos desde la
+    // cotización. Uno inventado llegaría al cliente con las llaves a la vista.
+    if (tipo === ACUERDO_PRODUCCION_TIPO) {
+      const huecos = huecosSinResolver(renderProduccion(cuerpo, { folio: "x", fecha_cotizacion: "x", titulo: "x" }));
+      if (huecos.length) {
+        return NextResponse.json(
+          { error: `Campos que no existen: ${huecos.map((h) => `{{${h}}}`).join(", ")}. Los válidos son {{cliente}}, {{folio}}, {{fecha_cotizacion}}, {{titulo}}, {{rondas_revision}} y {{plazo_cesion}}.` },
+          { status: 400 },
+        );
+      }
+    }
     const familia = familiaDelTipo(tipo);
-    row.titulo = titulo || (familia ? ACUERDO_SEEDS[familia].titulo : SEEDS[tipo as keyof typeof SEEDS].titulo);
+    row.titulo = titulo || (tipo === ACUERDO_PRODUCCION_TIPO
+      ? ACUERDO_PRODUCCION_SEED.titulo
+      : familia ? ACUERDO_SEEDS[familia].titulo : SEEDS[tipo as keyof typeof SEEDS].titulo);
     row.cuerpo = cuerpo;
   }
 

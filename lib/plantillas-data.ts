@@ -3,6 +3,7 @@ import { SEEDS, COTIZACION_TERMINOS_SEED, COTIZACION_TERMINOS_DISENO } from "@/l
 import type { ContractTipo } from "@/lib/pdf/contracts/types";
 import { SEEDS as ACUERDO_SEEDS, type AcuerdoSeed } from "@/lib/acuerdos/seeds";
 import { FAMILIA_LABEL, FAMILIAS, type Familia } from "@/lib/acuerdos/familias";
+import { ACUERDO_PRODUCCION_SEED, ACUERDO_PRODUCCION_TIPO } from "@/lib/acuerdos/produccion";
 
 /**
  * Capa de datos de las plantillas EDITABLES (contratos + cotización).
@@ -134,6 +135,22 @@ export async function getPlantillasEditor(): Promise<PlantillaEditor[]> {
       updated_por: (r?.updated_por as string) ?? null,
       esCotizacion: false,
     };
+  });
+
+  // Acuerdo válido solo para UNA producción (cotizaciones con el interruptor
+  // "Acuerdo solo para esta producción"). Los campos {{así}} se rellenan solos.
+  const rp = rows[ACUERDO_PRODUCCION_TIPO];
+  acuerdos.push({
+    tipo: ACUERDO_PRODUCCION_TIPO,
+    label: "Acuerdo · Solo para una producción",
+    titulo: (rp?.titulo as string) || ACUERDO_PRODUCCION_SEED.titulo,
+    cuerpo: (rp?.cuerpo as string) || ACUERDO_PRODUCCION_SEED.cuerpo,
+    seedTitulo: ACUERDO_PRODUCCION_SEED.titulo,
+    seedCuerpo: ACUERDO_PRODUCCION_SEED.cuerpo,
+    editada: !!rp?.cuerpo,
+    updated_at: (rp?.updated_at as string) ?? null,
+    updated_por: (rp?.updated_por as string) ?? null,
+    esCotizacion: false,
   });
 
   return [...contratos, cotizacion, cotizacionDiseno, ...acuerdos];

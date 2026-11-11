@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { FileX, Clock, CheckCircle2 } from "lucide-react";
 import { resolverInvitacion } from "@/lib/acuerdos/invitaciones";
 import { getAcuerdoTexto } from "@/lib/acuerdos/server";
+import { cargarCotAcuerdo, textoParaFirmar } from "@/lib/acuerdos/produccion-server";
 import { FAMILIA_LABEL } from "@/lib/acuerdos/familias";
 import { FirmaPublica } from "@/components/cuenta/FirmaPublica";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -64,6 +65,42 @@ export default async function FirmarPage({ params }: Props) {
   }
 
   const { inv } = r;
+
+  // Acuerdo individual: el texto sale de la cotización de ESTE enlace, con su
+  // folio, fecha y producción ya puestos. Solo `{{cliente}}` queda para la firma.
+  if (inv.familia === "produccion") {
+    const cotInd = inv.cotizacion_id ? await cargarCotAcuerdo(supabaseAdmin(), inv.cotizacion_id) : null;
+    if (!cotInd) {
+      return (
+        <Mensaje
+          icon={<FileX size={20} />}
+          titulo="Enlace no válido"
+          texto="La cotización de este acuerdo ya no existe. Escríbenos por WhatsApp y te mandamos uno nuevo."
+        />
+      );
+    }
+    const t = await textoParaFirmar(cotInd);
+    if (t.huecos.length) {
+      return (
+        <Mensaje
+          icon={<FileX size={20} />}
+          titulo="Este acuerdo no está listo"
+          texto="Estamos terminando de preparar tu acuerdo. Escríbenos por WhatsApp y te lo mandamos en cuanto esté."
+        />
+      );
+    }
+    return (
+      <FirmaPublica
+        token={token}
+        titulo={t.titulo}
+        cuerpo={t.cuerpo}
+        nombreSugerido={cotInd.cliente_nombre || ""}
+        modo="produccion"
+        referencia={cotInd.folio}
+      />
+    );
+  }
+
   const [{ titulo, cuerpo }, cot] = await Promise.all([
     getAcuerdoTexto(inv.familia),
     inv.cotizacion_id

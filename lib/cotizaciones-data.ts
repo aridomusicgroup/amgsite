@@ -50,6 +50,8 @@ export interface Cotizacion {
   credito_aplicado: number;
   /** El staff apagó el descuento a propósito para esta cotización (aunque el esquema/tipo/nivel calificaran). */
   sin_descuento_fidelidad: boolean;
+  /** El cliente firma un acuerdo válido SOLO para esta producción (no el de la familia) y el trabajo no arranca hasta que firme. */
+  acuerdo_individual: boolean;
   /** Quién toca cada instrumento (elegido al cotizar). Vacío = el titular del catálogo. */
   musicos: { instrumento: string; musico_id: string }[];
   /** EP/Álbum: cada tema con lo cotizado para él. null = cotización vieja (se reparte por cantidad). */
@@ -138,6 +140,7 @@ export async function getCotizaciones(): Promise<Cotizacion[]> {
     descuento_fidelidad: Number(c.descuento_fidelidad) || 0,
     credito_aplicado: Number(c.credito_aplicado) || 0,
     sin_descuento_fidelidad: !!c.sin_descuento_fidelidad,
+    acuerdo_individual: !!c.acuerdo_individual,
     musicos: (Array.isArray(c.musicos) ? c.musicos : [])
       .map((e: { instrumento?: unknown; musico_id?: unknown }) => ({ instrumento: String(e?.instrumento ?? ""), musico_id: String(e?.musico_id ?? "") }))
       .filter((e: { instrumento: string; musico_id: string }) => e.instrumento && e.musico_id),
@@ -229,8 +232,13 @@ export async function getRastroCotizaciones(): Promise<Record<string, RastroCot>
     sb.from("ventas").select("folio, cotizacion_id").not("cotizacion_id", "is", null),
     sb.from("proyectos").select("id, folio, cotizacion_id").not("cotizacion_id", "is", null),
     sb.from("contratos").select("folio, cotizacion_id").not("cotizacion_id", "is", null),
-    sb.from("cotizaciones").select("id, tipo, cliente_email"),
+    sb.from("cotizaciones").select("id, tipo, cliente_email, acuerdo_individual"),
   ]);
+  // Sin supabase-acuerdo-produccion.sql la columna no existe y la consulta
+  // entera falla: se repite sin ella para que el rastro no desaparezca.
+  const cotData = cotRes.error
+    ? (await sb.from("cotizaciones").select("id, tipo, cliente_email")).data
+    : cotRes.data;
   const out: Record<string, RastroCot> = {};
   const ensure = (id: string) => (out[id] ??= {
     venta: null, proyecto: null, contrato: null, proyectoId: null,
@@ -248,8 +256,34 @@ export async function getRastroCotizaciones(): Promise<Record<string, RastroCot>
 
   // Acuerdo: solo para las cotizaciones cuyo tipo mapea a una familia (las
   // "generico" no tienen texto legal que ofrecer y se quedan en null).
-  const cots = (cotRes.data ?? []) as Array<{ id: string; tipo: string | null; cliente_email: string | null }>;
+  const cots = (cotData ?? []) as Array<{ id: string; tipo: string | null; cliente_email: string | null; acuerdo_individual?: boolean | null }>;
+
+  // Las de acuerdo INDIVIDUAL se miden contra SU firma (una por cotización), no
+  // contra la de la familia: que el cliente haya firmado antes la familia no
+  // dice nada de este acuerdo.
+  const individuales = cots.filter((c) => c.acuerdo_individual === true);
+  if (individuales.length) {
+    const ids = individuales.map((c) => c.id);
+    const [{ data: firmasInd }, { data: invitesInd }] = await Promise.all([
+      sb.from("acuerdos_produccion").select("cotizacion_id, aceptado_at").in("cotizacion_id", ids),
+      sb.from("acuerdo_invitaciones").select("cotizacion_id")
+        .eq("familia", "produccion").in("cotizacion_id", ids)
+        .is("usado_at", null).gt("expira_at", new Date().toISOString()),
+    ]);
+    const firmadasInd = new Map((firmasInd ?? []).map((f) => [f.cotizacion_id as string, (f.aceptado_at as string | null) ?? null]));
+    const invitadasInd = new Set((invitesInd ?? []).map((i) => i.cotizacion_id as string));
+    for (const c of individuales) {
+      const e = ensure(c.id);
+      e.acuerdoFamilia = null;
+      e.acuerdoLabel = "Acuerdo solo de esta producción";
+      e.acuerdoEmail = c.cliente_email;
+      e.acuerdoFirmadoEn = firmadasInd.get(c.id) ?? null;
+      e.acuerdo = firmadasInd.has(c.id) ? "firmado" : invitadasInd.has(c.id) ? "pendiente" : c.cliente_email ? "sin_pedir" : null;
+    }
+  }
+
   const relevantes = cots
+    .filter((c) => c.acuerdo_individual !== true)
     .map((c) => ({ ...c, familia: familiaDeCotizacion(c.tipo) }))
     .filter((c): c is typeof c & { familia: Familia; cliente_email: string } => !!c.familia && !!c.cliente_email);
 

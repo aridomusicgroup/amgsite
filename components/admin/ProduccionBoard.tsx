@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect, useRef, type ReactNode, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, X, Loader2, ChevronDown, GripVertical, Eye, EyeOff, Check, Trash2, Pencil, CalendarClock, CircleDollarSign, CalendarDays, LayoutGrid, ChevronLeft, ChevronRight, MoreHorizontal, Hourglass, Bell, BellOff } from "lucide-react";
+import { Plus, X, Loader2, ChevronDown, GripVertical, Eye, EyeOff, Check, Trash2, Pencil, CalendarClock, CircleDollarSign, CalendarDays, LayoutGrid, ChevronLeft, ChevronRight, MoreHorizontal, Hourglass, Bell, BellOff, FileSignature } from "lucide-react";
 import { DndContext, closestCenter, MouseSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { SortableTarea } from "@/components/admin/tareas/SortableTarea";
@@ -631,6 +631,22 @@ function ProyectoCard({ p, equipo, ventas, isAdmin, overdue, recordatorios, dest
             <ChevronDown size={15} className={`transition-transform ${open ? "rotate-180" : ""}`} />
           </button>
         </div>
+
+        {p.acuerdo_pendiente && (
+          <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-2.5 py-1.5 text-[11px] text-amber-200">
+            <FileSignature size={12} className="shrink-0" />
+            <span className="flex-1 leading-snug">Esperando la firma del acuerdo. El anticipo puede estar pagado, pero la producción no arranca hasta que firme.</span>
+            {isAdmin && (
+              <button
+                disabled={busy}
+                onClick={() => { if (confirm("¿Arrancar SIN que el cliente haya firmado el acuerdo? Queda registrado en la bitácora.")) void api("PATCH", { id: p.id, liberar_sin_firma: true }); }}
+                className="shrink-0 rounded-md bg-white/10 px-2 py-0.5 text-[10px] text-white/80 hover:bg-white/20 cursor-pointer disabled:opacity-50"
+              >
+                Liberar sin firma
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center gap-2 mt-2 flex-wrap text-[10px]">
           {p.responsablesNombres.length > 0 && <span className="text-white/50">{p.responsablesNombres.map((n) => n.split(" ")[0]).join(" · ")}</span>}

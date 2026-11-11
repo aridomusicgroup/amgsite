@@ -26,6 +26,7 @@ export type ActividadTipo =
   | "cotizacion_creada" | "cotizacion_editada" | "cotizacion_enviada" | "cotizacion_eliminada"
   | "contrato_creado" | "contrato_editado" | "contrato_enviado" | "contrato_eliminado"
   | "acuerdo_recordado" | "cobranza_enviada" | "drive_caido"
+  | "acuerdo_firmado" | "produccion_liberada"
   // CRM
   | "contacto_creado" | "contacto_editado" | "contacto_eliminado" | "recompra_enviada"
   | "seguimiento_programado" | "seguimiento_cerrado"

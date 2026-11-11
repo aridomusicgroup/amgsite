@@ -1,4 +1,5 @@
 import { resolverEquipo, crearTareasDeProyecto } from "@/lib/produccion-tareas";
+import { proyectoNaceBloqueado } from "@/lib/acuerdos/produccion-server";
 import { armarTemas } from "@/lib/armar-proyecto";
 import { temasDeCotizacion } from "@/lib/temas";
 import { crearPedidoDeProyecto } from "@/lib/pedido-sync";
@@ -244,10 +245,14 @@ export async function crearVentaDesdeCotizacionPagada(
   if (tproy) {
     try {
       const proyectoFolioGen = await nextFolio(sb, "proyectos", "P");
+      // Acuerdo individual sin firmar: el anticipo ya entró, pero el proyecto
+      // nace "esperando firma" (portal de músicos y sesión de REAPER cerrados).
+      const esperaFirma = await proyectoNaceBloqueado(sb, cotizacionId);
       const filaProy = {
         folio: proyectoFolioGen, clase: "produccion",
         titulo: tituloConTema(items[0]?.label ?? cot.folio, tema?.titulo), tipo: tproy, estado: "cola", prioridad: "media",
         contacto_id: cot.contacto_id, venta_id: ventaId, cotizacion_id: cotizacionId, creado_por: "stripe",
+        ...(esperaFirma ? { acuerdo_pendiente: true } : {}),
       };
       // Una mezcla de voces se hace en la sesión de REAPER del tema original:
       // nace ya "creada" y apuntando a su carpeta, para que el script del estudio

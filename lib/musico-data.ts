@@ -150,7 +150,7 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
   // se corre a mano. Sin el reintento, una columna ausente vaciaría el portal.
   const completo = await sb
     .from("musico_asignaciones")
-    .select("id, instrumento, nota, estado, proyecto_id, tarea_id, proyectos(titulo, estado, bpm, tonalidad, compas)")
+    .select("id, instrumento, nota, estado, proyecto_id, tarea_id, proyectos(titulo, estado, bpm, tonalidad, compas, acuerdo_pendiente)")
     .eq("musico_id", musicoId)
     .order("creado_at", { ascending: false });
   const asigs = (completo.error
@@ -162,10 +162,13 @@ export async function asignacionesDeMusico(musicoId: string): Promise<Asignacion
     : completo.data) as unknown as Fila[] | null;
   if (!asigs?.length) return [];
 
-  // Un proyecto cerrado o cancelado ya no es trabajo pendiente de nadie.
+  // Un proyecto cerrado o cancelado ya no es trabajo pendiente de nadie. Y uno
+  // que espera la firma del acuerdo del cliente todavía no es trabajo: el
+  // anticipo puede estar cobrado, pero la producción no arranca hasta que firme.
+  // (Si la columna aún no existe, la consulta cae al respaldo y nada se oculta.)
   const vivas = asigs.filter((a) => {
-    const p = a.proyectos as unknown as { titulo: string; estado: string } | null;
-    return p && !ESTADOS_CERRADOS.includes(p.estado);
+    const p = a.proyectos as unknown as { titulo: string; estado: string; acuerdo_pendiente?: boolean | null } | null;
+    return p && !ESTADOS_CERRADOS.includes(p.estado) && !p.acuerdo_pendiente;
   });
   if (!vivas.length) return [];
 

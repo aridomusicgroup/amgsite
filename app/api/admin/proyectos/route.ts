@@ -220,6 +220,28 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true, revision_actual: ronda });
   }
 
+  // Acción "Liberar sin firma": el estudio decide arrancar aunque el cliente no
+  // haya firmado el acuerdo de su producción. Es una decisión de negocio (y
+  // legal), así que solo la toma un admin, y queda en la bitácora.
+  if (b.liberar_sin_firma === true) {
+    const adminEmail = await getFullAdminEmail();
+    if (!adminEmail) return NextResponse.json({ error: "Solo un admin puede liberar una producción sin firma." }, { status: 403 });
+    const sb = supabaseAdmin();
+    const { data: cur } = await sb.from("proyectos").select("titulo, acuerdo_pendiente").eq("id", id).single();
+    if (!cur?.acuerdo_pendiente) return NextResponse.json({ ok: true, yaLiberado: true });
+    const { error } = await sb.from("proyectos").update({ acuerdo_pendiente: false, updated_at: new Date().toISOString() }).eq("id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    try {
+      const quien = await nombreDeActor(sb, adminEmail);
+      await registrarActividad(sb, {
+        tipo: "produccion_liberada",
+        titulo: `${quien} liberó “${cur?.titulo ?? ""}” SIN que el cliente firmara el acuerdo`,
+        actor: adminEmail, proyecto_id: id, meta: { sin_firma: true },
+      });
+    } catch { /* bitácora best-effort */ }
+    return NextResponse.json({ ok: true });
+  }
+
   const patch: Record<string, unknown> = {};
   if (b.titulo && String(b.titulo).trim()) patch.titulo = String(b.titulo).trim();
   if (b.clase === "produccion" || b.clase === "interna") patch.clase = b.clase;

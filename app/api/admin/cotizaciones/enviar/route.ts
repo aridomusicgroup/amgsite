@@ -14,6 +14,7 @@ import { familiaDeCotizacion, FAMILIA_LABEL } from "@/lib/acuerdos/familias";
 import { ACUERDO_VERSIONES } from "@/lib/acuerdos/acuerdo-cliente";
 import { conseguirEnlaceFirma } from "@/lib/acuerdos/invitaciones";
 import { firmaAcuerdoEmail } from "@/lib/emails";
+import { cargarCotAcuerdo, mandarEnlaceProduccion } from "@/lib/acuerdos/produccion-server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -103,9 +104,21 @@ export async function POST(req: NextRequest) {
   // al entrar al panel semanas después. Best-effort: si falla, la cotización
   // ya se mandó y el acuerdo se sigue pidiendo como red de seguridad al
   // entrar al panel (fase 4, ya en vivo).
+  //
+  // Acuerdo INDIVIDUAL (solo esta producción): reemplaza al de la familia. Aquí
+  // sí se avisa si el enlace no salió, porque es lo que desbloquea el trabajo.
+  let aviso: string | null = null;
   try {
     const familia = familiaDeCotizacion(c.tipo as string | null);
-    if (familia && to) {
+    if (c.acuerdo_individual === true) {
+      const cot = await cargarCotAcuerdo(sb, id);
+      if (!cot) {
+        aviso = "La cotización se envió, pero no se pudo preparar el acuerdo de esta producción. ¿Falta correr supabase-acuerdo-produccion.sql?";
+      } else {
+        const r = await mandarEnlaceProduccion(sb, cot, s.email);
+        if (!r.ok && !r.yaFirmo) aviso = `La cotización se envió, pero el enlace de firma NO salió: ${r.error}`;
+      }
+    } else if (familia && to) {
       const { data: yaFirmo } = await sb
         .from("cliente_acuerdos")
         .select("id")
@@ -152,5 +165,5 @@ export async function POST(req: NextRequest) {
     });
   } catch { /* bitácora best-effort */ }
 
-  return NextResponse.json({ ok: true, destinatarios });
+  return NextResponse.json({ ok: true, destinatarios, aviso });
 }

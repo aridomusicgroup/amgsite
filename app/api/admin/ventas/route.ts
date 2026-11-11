@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { proyectoNaceBloqueado } from "@/lib/acuerdos/produccion-server";
 import { getFullAdminEmail } from "@/lib/supabase/auth-server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { crearTareasDeProyecto, parseInstrumentos } from "@/lib/produccion-tareas";
@@ -269,6 +270,8 @@ export async function POST(req: NextRequest) {
         bpm: Number(b.bpm) || null,
         compas: limpiarCompas(b.compas),
         creado_por: "ventas",
+        // Convertida desde una cotización con acuerdo individual sin firmar: nace esperando firma.
+        ...((await proyectoNaceBloqueado(sb, b.cotizacion_id)) ? { acuerdo_pendiente: true } : {}),
       };
       let fila: Record<string, unknown> = filaProy;
       let { data: proy, error: eProy } = await sb.from("proyectos").insert(fila).select("id").single();

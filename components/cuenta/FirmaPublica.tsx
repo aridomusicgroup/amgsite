@@ -15,12 +15,19 @@ export function FirmaPublica({
   titulo,
   cuerpo,
   nombreSugerido,
+  modo = "familia",
+  referencia,
 }: {
   token: string;
   titulo: string;
   cuerpo: string;
   nombreSugerido: string;
+  /** `produccion` = acuerdo válido solo para una cotización (ver lib/acuerdos/produccion.ts). */
+  modo?: "familia" | "produccion";
+  /** Folio de la cotización, solo en modo `produccion`. */
+  referencia?: string;
 }) {
+  const individual = modo === "produccion";
   const [nombre, setNombre] = useState(nombreSugerido);
   const [acepto, setAcepto] = useState(false);
   const [leido, setLeido] = useState(false);
@@ -68,8 +75,10 @@ export function FirmaPublica({
           </div>
           <h1 className="font-coolvetica text-2xl mb-2">Quedó firmado</h1>
           <p className="text-white/50 text-sm leading-relaxed">
-            Gracias, {nombre.trim().split(" ")[0]}. Ya tenemos tu aceptación registrada. En cuanto llegue tu
-            anticipo arrancamos.
+            Gracias, {nombre.trim().split(" ")[0]}. Ya tenemos tu aceptación registrada.{" "}
+            {individual
+              ? "Te mandamos una copia a tu correo. La producción arranca en cuanto esté tu anticipo."
+              : "En cuanto llegue tu anticipo arrancamos."}
           </p>
         </div>
       </main>
@@ -81,10 +90,12 @@ export function FirmaPublica({
       <div className="max-w-3xl mx-auto px-5 py-8">
         <div className="flex items-center gap-2.5 mb-1">
           <FileText size={18} className="text-lgb-red" />
-          <h1 className="font-coolvetica text-2xl">Antes de tu anticipo</h1>
+          <h1 className="font-coolvetica text-2xl">{individual ? "Acuerdo de tu producción" : "Antes de tu anticipo"}</h1>
         </div>
         <p className="text-white/45 text-sm mb-5">
-          Lee y acepta este acuerdo para arrancar tu proyecto. El precio y las fechas van en tu cotización.
+          {individual
+            ? `Este acuerdo es solo para la producción de la cotización ${referencia ?? ""} y no aplica a otras. Puedes pagar tu anticipo cuando quieras para reservar la agenda, pero el trabajo arranca hasta que firmes.`
+            : "Lee y acepta este acuerdo para arrancar tu proyecto. El precio y las fechas van en tu cotización."}
         </p>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] overflow-hidden">

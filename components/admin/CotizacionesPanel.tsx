@@ -445,9 +445,10 @@ function CotizacionesList({ items, proyectosTema, proveedorDiseno, rastro, isAdm
   const enviar = async (c: Cotizacion, extra: string[]) => {
     setBusy(c.id);
     try {
-      const r = await api("/api/admin/cotizaciones/enviar", "POST", { id: c.id, emails: extra }) as { destinatarios?: string[] };
+      const r = await api("/api/admin/cotizaciones/enviar", "POST", { id: c.id, emails: extra }) as { destinatarios?: string[]; aviso?: string | null };
       const n = r?.destinatarios?.length ?? 0;
       toast(n > 1 ? `✓ Cotización enviada a ${n} correos` : "✓ Cotización enviada");
+      if (r?.aviso) alert(r.aviso);
       setEnviando(null);
       router.refresh();
     } catch (e) {
@@ -805,6 +806,9 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalo
   // Interruptor manual del staff: aunque el cliente califique, esta cotización
   // en particular no lleva descuento (ej. VIP al que igual se le cobra el 100%).
   const [sinDescuentoFidelidad, setSinDescuentoFidelidad] = useState(initial?.sin_descuento_fidelidad ?? false);
+  // Acuerdo válido solo para esta producción. Solo se manda si CAMBIÓ: así editar
+  // una cotización normal no depende de que ya exista la columna en Supabase.
+  const [acuerdoInd, setAcuerdoInd] = useState(initial?.acuerdo_individual ?? false);
 
   // El esquema de pago solo tiene sentido para un servicio a la medida — una
   // cotización "genérica" o sin tipo no tiene de qué hablar aquí.
@@ -884,6 +888,7 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalo
       // El servidor lo vuelve a validar contra el total que él calcula.
       proyecto_origen_id: esDiseno || esMezclaVoces ? origenId || null : null,
       costo_proveedor: esDiseno ? costoDiseno : null,
+      ...(acuerdoInd !== (initial?.acuerdo_individual ?? false) ? { acuerdo_individual: acuerdoInd } : {}),
     };
     try {
       const r = await api("/api/admin/cotizaciones", initial ? "PATCH" : "POST", body) as { aviso?: string | null };
@@ -905,12 +910,25 @@ function CotizacionModal({ initial, clientes, tipos, onClose, tcSugerido, catalo
           {tipos.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
         </select>
       </Field>
-      {familia && (
+      {familia && !acuerdoInd && (
         <p className="text-[11px] text-amber-300/70 -mt-1 mb-2">
           Al mandarla, si {nombre || "el cliente"} no ha firmado el acuerdo de {familia}, le llega el enlace para
           firmarlo antes del anticipo.
         </p>
       )}
+      <label className="flex items-start gap-2.5 cursor-pointer rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 mb-2">
+        <input
+          type="checkbox"
+          checked={acuerdoInd}
+          onChange={(e) => setAcuerdoInd(e.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-lgb-red cursor-pointer"
+        />
+        <span className="text-[12px] leading-snug text-white/70">
+          <b className="text-white/90 font-medium">Acuerdo solo para esta producción.</b>{" "}
+          Reemplaza al acuerdo de la familia: la firma no cubre producciones futuras. El anticipo se puede cobrar,
+          pero la producción no arranca (músicos ni sesión de REAPER) hasta que el cliente firme.
+        </span>
+      </label>
       {tipo === "ep_album" && (
         <div className="grid grid-cols-2 gap-3 mt-2">
           <Field label="¿Es EP o Álbum?">

@@ -14,6 +14,7 @@ import { nivelDeContacto, creditoDisponible, aplicarCredito } from "@/lib/fideli
 import { limpiarTemas } from "@/lib/temas";
 import { costoSugerido, llevaDiseno, validarCosto } from "@/lib/diseno";
 import { catalogoDiseno } from "@/lib/diseno-catalogo";
+import { firmaDeProduccion, marcarProyectosDeCotizacion } from "@/lib/acuerdos/produccion-server";
 
 const TIPOS_VALIDOS = new Set(CONTRACT_TIPOS.map((t) => t.id));
 
@@ -76,6 +77,7 @@ async function costoProveedorDe(
 const COLS_DISENO = ["proyecto_origen_id", "costo_proveedor"];
 const sinCols = (o: Record<string, unknown>, cols: string[]) =>
   Object.fromEntries(Object.entries(o).filter(([k]) => !cols.includes(k)));
+const AVISO_SQL_ACUERDO = "No se guardó: falta correr supabase-acuerdo-produccion.sql en Supabase para usar el acuerdo de solo esta producción.";
 const AVISO_SQL_DISENO = "Se guardó, pero sin el tema de origen ni el pago a Julio: falta correr supabase-diseno.sql.";
 
 // El total (con comisión de PayPal si aplica) vive en `lib/comision.ts`, no aquí:
@@ -109,6 +111,7 @@ export async function POST(req: NextRequest) {
   const epAlbumFormato = tipo === "ep_album" ? (b.ep_album_formato === "album" ? "album" : "ep") : null;
   const temas = tipo === "ep_album" ? limpiarTemas(b.temas) : null;
   const sinDescuentoFidelidad = !!b.sin_descuento_fidelidad;
+  const acuerdoIndividual = b.acuerdo_individual === true;
 
   const sb = supabaseAdmin();
 
@@ -181,6 +184,8 @@ export async function POST(req: NextRequest) {
   // Sólo si hay algo que guardar: así una cotización normal no depende de que
   // ya exista la columna.
   if (origenId) row.proyecto_origen_id = origenId;
+  // Solo si se pidió: una cotización normal no depende de que exista la columna.
+  if (acuerdoIndividual) row.acuerdo_individual = true;
   if (proveedor.costo !== null) row.costo_proveedor = proveedor.costo;
 
   // `tipo`/`esquema_pago`/`num_canciones`/`descuento_fidelidad`/`credito_aplicado`
@@ -188,6 +193,11 @@ export async function POST(req: NextRequest) {
   // puede tirar la creación de la cotización entera por eso — se reintenta sin
   // ellas para no dejar el flujo principal roto mientras tanto.
   let { data, error } = await sb.from("cotizaciones").insert(row).select("id, folio").single();
+  // El acuerdo individual NO se suelta en silencio como las otras columnas
+  // nuevas: si no se guardara, el cliente firmaría el acuerdo equivocado.
+  if (error && acuerdoIndividual && /acuerdo_individual/i.test(error.message)) {
+    return NextResponse.json({ error: AVISO_SQL_ACUERDO }, { status: 409 });
+  }
   const conDiseno = COLS_DISENO.some((k) => k in row);
   let soltoDiseno = false;
   if (error && /schema cache/i.test(error.message) && conDiseno) {
@@ -262,6 +272,7 @@ export async function PATCH(req: NextRequest) {
   if ("temas" in b) patch.temas = limpiarTemas(b.temas);
   if ("sin_descuento_fidelidad" in b) patch.sin_descuento_fidelidad = !!b.sin_descuento_fidelidad;
   if ("musicos" in b) patch.musicos = parseMusicos(b.musicos);
+  if ("acuerdo_individual" in b) patch.acuerdo_individual = b.acuerdo_individual === true;
 
   const sb = supabaseAdmin();
 
@@ -330,6 +341,9 @@ export async function PATCH(req: NextRequest) {
   }
 
   let { error } = await sb.from("cotizaciones").update(patch).eq("id", id);
+  if (error && "acuerdo_individual" in patch && /acuerdo_individual/i.test(error.message)) {
+    return NextResponse.json({ error: AVISO_SQL_ACUERDO }, { status: 409 });
+  }
   let soltoDiseno = false;
   if (error && /schema cache/i.test(error.message) && COLS_DISENO.some((k) => k in patch)) {
     soltoDiseno = true;
@@ -343,6 +357,12 @@ export async function PATCH(req: NextRequest) {
     ({ error } = await sb.from("cotizaciones").update(sinCols(patch, [...COLS_DISENO, ...viejas])).eq("id", id));
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Al encender o apagar el acuerdo individual, el proyecto que ya salió de esta
+  // cotización (si ya pagó el anticipo) queda esperando firma, o se libera.
+  if ("acuerdo_individual" in patch) {
+    const bloquear = patch.acuerdo_individual === true && !(await firmaDeProduccion(sb, id));
+    await marcarProyectosDeCotizacion(sb, id, bloquear);
+  }
   // Sin la migración, que el panel lo diga en vez de perder el pago a Julio en silencio.
   const pidioDiseno = !!b.proyecto_origen_id || Number(patch.costo_proveedor) > 0;
   return NextResponse.json({ ok: true, aviso: soltoDiseno && pidioDiseno ? AVISO_SQL_DISENO : null });

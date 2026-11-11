@@ -7,6 +7,7 @@ import { registrarActividad, nombreDeActor } from "@/lib/actividad";
 import { familiaDeCotizacion, FAMILIA_LABEL } from "@/lib/acuerdos/familias";
 import { ACUERDO_VERSIONES } from "@/lib/acuerdos/acuerdo-cliente";
 import { conseguirEnlaceFirma } from "@/lib/acuerdos/invitaciones";
+import { cargarCotAcuerdo, firmaDeProduccion, mandarEnlaceProduccion } from "@/lib/acuerdos/produccion-server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -52,6 +53,32 @@ export async function POST(req: NextRequest) {
     .eq("id", id)
     .maybeSingle();
   if (!c) return NextResponse.json({ error: "Esa cotización ya no existe." }, { status: 404 });
+
+  // Acuerdo individual (solo esta producción): mismo envío que al mandar la
+  // cotización, y la misma bitácora para que el panel diga "ya se le recordó".
+  const individual = await cargarCotAcuerdo(sb, id);
+  if (individual?.acuerdo_individual) {
+    const r = await mandarEnlaceProduccion(sb, individual, s.email);
+    if (!r.ok) {
+      return NextResponse.json(
+        { error: r.error, ...(r.yaFirmo ? { firmadoEn: await firmaDeProduccion(sb, id) } : {}) },
+        { status: r.status },
+      );
+    }
+    try {
+      const quien = await nombreDeActor(sb, s.email);
+      await registrarActividad(sb, {
+        tipo: "acuerdo_recordado",
+        titulo: `${quien} le mandó a ${c.cliente_nombre || individual.cliente_email} el acuerdo de la producción ${individual.folio}`,
+        actor: s.email,
+        entidad: "cotizacion",
+        entidad_id: id,
+        entidad_nombre: individual.folio,
+        meta: { email: individual.cliente_email, familia: "produccion" },
+      });
+    } catch { /* bitácora best-effort: el correo ya salió */ }
+    return NextResponse.json({ ok: true, enviado: individual.cliente_email });
+  }
 
   const familia = familiaDeCotizacion(c.tipo as string | null);
   if (!familia) {
