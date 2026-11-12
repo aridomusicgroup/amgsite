@@ -135,6 +135,7 @@ export const DOT_ACTIVIDAD: Record<string, string> = {
   voz_cliente: "bg-blue-400",
   comentario_previo: "bg-amber-400",
   render_compartido: "bg-green-400",
+  render_reintentado: "bg-amber-400",
   entrega_preparada: "bg-blue-400",
   entrega_subida: "bg-green-400",
   entrega_liberada: "bg-green-400",

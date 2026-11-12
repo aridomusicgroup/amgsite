@@ -144,6 +144,9 @@ export interface OpcionesRender {
    * palomea "Subir a Drive" y decide si el cliente lo ve (ver lib/entrega.ts).
    */
   entrega?: { lote: string; avisar: boolean; conPago: boolean; cerrado?: string };
+  /** Cuántas veces reaper-sync lo volvió a lanzar solo tras cortarse (ventana de
+   *  REAPER cerrada, archivo a medias). Lo escribe el script, nunca el navegador. */
+  reintentos?: number;
 }
 
 /** Un músico de sesión al que se le puede mandar un previo. */

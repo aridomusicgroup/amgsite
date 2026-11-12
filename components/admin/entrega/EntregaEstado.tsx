@@ -1,7 +1,9 @@
 "use client";
-import { Check, Lock, PackageCheck, RotateCcw, Cloud } from "lucide-react";
+import { useState } from "react";
+import { Check, Lock, PackageCheck, RotateCcw, Cloud, Loader2 } from "lucide-react";
 import type { EstadoEntrega, JobEntrega } from "@/lib/pasos-entrega";
 import { abrirEntrega } from "@/lib/entrega-cliente";
+import { toast } from "@/lib/toast";
 
 const ETIQUETA: Record<JobEntrega["tipo"], string> = { entregables: "Entregables", stems: "Stems" };
 
@@ -17,7 +19,7 @@ function colorDe(j: JobEntrega): string {
 }
 
 function textoDe(j: JobEntrega): string {
-  if (j.estado === "error") return "falló — toca para volver a intentar";
+  if (j.estado === "error") return "falló — toca para reintentarlo (misma entrega)";
   if (j.enDrive) return "en Drive";
   if (j.estado === "renderizando") return "renderizando en REAPER…";
   if (j.estado === "subiendo" || j.estado === "listo") return "subiendo a Drive…";
@@ -42,9 +44,45 @@ export function EntregaEstado({ e, saldo, titulo }: {
   saldo?: number | null;
   titulo?: string;
 }) {
+  const [reintentando, setReintentando] = useState(false);
+
   const abrir = (ev: React.MouseEvent) => {
     ev.stopPropagation();
     abrirEntrega({ proyectoId: e.proyectoId, tareaId: e.tareaId, titulo });
+  };
+
+  /**
+   * Reintenta los renders que fallaron SOBRE EL MISMO TRABAJO: conserva la entrega
+   * (así el correo al cliente sale al cerrarse) y no repite lo que ya subió.
+   * Abrir el cuadro de entrega crearía una entrega nueva y dejaría la vieja abierta.
+   * Si algún reintento no procede (ya corre, o ya no está en error) se avisa y no
+   * se abre nada: el estado real aparece solo por el tiempo real.
+   */
+  const reintentar = async (ev: React.MouseEvent) => {
+    ev.stopPropagation();
+    if (reintentando) return;
+    const fallidos = e.jobs.filter((j) => j.estado === "error");
+    setReintentando(true);
+    try {
+      let ok = 0;
+      let motivo: string | null = null;
+      for (const j of fallidos) {
+        const r = await fetch("/api/admin/render/reintentar", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: j.id }),
+        });
+        if (r.ok) { ok++; continue; }
+        const d = await r.json().catch(() => ({}));
+        motivo = d?.error ?? `No se pudo reintentar (${r.status})`;
+      }
+      if (ok) toast(`↻ Se volvió a lanzar ${ok === 1 ? "el render" : `${ok} renders`} · sigue la misma entrega`);
+      if (motivo) toast(`⚠️ ${motivo}`);
+    } catch {
+      toast("⚠️ No se pudo reintentar: revisa tu conexión");
+    } finally {
+      setReintentando(false);
+    }
   };
 
   if (!e.jobs.length) {
@@ -70,7 +108,9 @@ export function EntregaEstado({ e, saldo, titulo }: {
   const todos = e.jobs.every((j) => j.enDrive);
 
   const cierre = fallo ? (
-    <span className="inline-flex items-center gap-0.5 text-red-300"><RotateCcw size={9} /> reintentar</span>
+    <span className="inline-flex items-center gap-0.5 text-red-300">
+      {reintentando ? <Loader2 size={9} className="animate-spin" /> : <RotateCcw size={9} />} reintentar
+    </span>
   ) : todos && e.compartido ? (
     <span className="inline-flex items-center gap-0.5 text-green-300"><Check size={10} /> con el cliente</span>
   ) : todos && e.retenido ? (
@@ -96,7 +136,15 @@ export function EntregaEstado({ e, saldo, titulo }: {
 
   const clase = "shrink-0 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] text-white/55 transition-colors";
   return fallo ? (
-    <button onClick={abrir} className={`${clase} border-red-400/30 bg-red-500/[0.06] hover:bg-red-500/[0.12] cursor-pointer`}>{cuerpo}</button>
+    <span className="shrink-0 inline-flex items-center gap-1.5">
+      <button onClick={reintentar} disabled={reintentando} title="Volver a lanzar lo que falló, sobre la misma entrega"
+        className={`${clase} border-red-400/30 bg-red-500/[0.06] hover:bg-red-500/[0.12] cursor-pointer disabled:opacity-60 disabled:cursor-wait`}>{cuerpo}</button>
+      {/* La salida de siempre, para cuando el problema no es que se cortó (otro .rpp, otras pistas). */}
+      <button onClick={abrir} title="Preparar una entrega nueva desde cero"
+        className="text-[10px] text-white/30 hover:text-white/60 underline decoration-dotted underline-offset-2 cursor-pointer transition-colors">
+        de nuevo
+      </button>
+    </span>
   ) : (
     <span className={`${clase} ${todos && e.compartido ? "border-green-400/20 bg-green-500/[0.05]" : "border-white/10 bg-white/[0.04]"}`}>{cuerpo}</span>
   );

@@ -12,7 +12,7 @@ export type ActividadTipo =
   | "musico_asignado" | "musico_archivo" | "musico_archivo_retirado" | "musico_previo_compartido"
   | "voz_cliente"
   | "comentario_previo"
-  | "render_compartido" | "edicion_enviada" | "edicion_revision"
+  | "render_compartido" | "render_reintentado" | "edicion_enviada" | "edicion_revision"
   | "subtarea_asignada" | "contrato_auto"
   | "entrega_preparada" | "entrega_subida" | "entrega_liberada" | "nombre_sincronizado"
   // Dinero
