@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import Image from "next/image";
 import { ArrowLeft, Clock, FolderDown, Lock } from "lucide-react";
 import { getCustomerEmail } from "@/lib/cuenta-auth";
-import { getPedidoDetalle, rendersDelPedido, entregaDelPedido } from "@/lib/cuenta-cliente";
+import { getPedidoDetalle, rendersDelPedido, entregaDelPedido, comentariosDelPedido } from "@/lib/cuenta-cliente";
 import { acuerdosPendientes } from "@/lib/acuerdos/server";
 import { PedidoProgreso, EntregaChip } from "@/components/cuenta/PedidoProgreso";
 import { SubirArchivos } from "@/components/cuenta/SubirArchivos";
@@ -39,6 +39,8 @@ export default async function PedidoPage({ params }: Props) {
   const ent = await entregaDelPedido(email, id);
   // Previos y entregables que el equipo marcó para compartirle.
   const renders = await rendersDelPedido(email, id);
+  // Lo que ya comentó de sus previos. Sin la tabla (SQL sin correr) la caja no sale.
+  const coment = await comentariosDelPedido(email, id);
 
   const entregado = d.total > 0 && d.hechas >= d.total;
   // Solo enlaces http(s) (evita esquemas peligrosos como javascript:). Y sólo
@@ -133,7 +135,7 @@ export default async function PedidoPage({ params }: Props) {
           </div>
         )}
 
-        <RendersPedido pedidoId={id} renders={renders} concepto={d.concepto} />
+        <RendersPedido pedidoId={id} renders={renders} concepto={d.concepto} comentarios={coment.disponible ? coment.comentarios : null} />
 
         {d.proyectoEstado !== null && (
           <div className="mt-8">

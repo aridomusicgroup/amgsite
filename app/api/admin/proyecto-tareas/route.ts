@@ -10,6 +10,8 @@ import { anclarCarpeta } from "@/lib/carpeta-reaper";
 import { limpiarCompas } from "@/lib/compas";
 import { preguntaTrasPalomear, pagoParaQuienPalomeo } from "@/lib/pago-grabacion";
 import type { PreguntaPago } from "@/lib/pago-grabacion-tipos";
+import { preguntaPrevioCliente } from "@/lib/previo-cliente";
+import type { PreguntaPrevio } from "@/lib/previo-cliente-tipos";
 
 export const dynamic = "force-dynamic";
 
@@ -171,6 +173,16 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
+  // "Mezclar" o "Masterizar" palomeada: ¿se le manda un previo al cliente?
+  let previoCliente: PreguntaPrevio | null = null;
+  if (patch.hecho === true && !prev?.hecho && !prev?.es_cancion) {
+    previoCliente = await preguntaPrevioCliente(sb, {
+      proyectoId: (prev?.proyecto_id as string | null) ?? null,
+      temaId: null,
+      titulo: (patch.titulo as string) || (prev?.titulo as string) || null,
+    });
+  }
+
   // Bitácora: asignación y completado/reapertura (ignora ediciones de notas)
   try {
     const tareaTitulo = (patch.titulo as string) || (prev?.titulo as string) || "tarea";
@@ -207,7 +219,7 @@ export async function PATCH(req: NextRequest) {
     }
   } catch { /* bitácora best-effort */ }
 
-  return NextResponse.json({ ok: true, entrega, estado, pagoMusico });
+  return NextResponse.json({ ok: true, entrega, estado, pagoMusico, previoCliente });
 }
 
 // ── Borrar una tarea ──

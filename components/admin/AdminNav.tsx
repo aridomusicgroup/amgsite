@@ -12,6 +12,7 @@ import { VersionWatcher } from "./VersionWatcher";
 import { EntregaLanzador } from "./entrega/EntregaLanzador";
 import { CarpetaLanzador } from "./entrega/CarpetaLanzador";
 import { PagoMusicoLanzador } from "./PagoMusicoLanzador";
+import { PrevioClienteLanzador } from "./PrevioClienteLanzador";
 import { IndicadorRender } from "./IndicadorRender";
 import { toast } from "@/lib/toast";
 import type { RendersEnCurso } from "@/lib/render-jobs";
@@ -192,6 +193,8 @@ export function AdminNav({ email, nombre, foto, modules, order, colapsado, rende
       <CarpetaLanzador />
       {/* "Ya grabó: ¿le pagas al músico?" tras palomear "Grabar X". */}
       <PagoMusicoLanzador />
+      {/* "Ya mezclaste: ¿le mandas un previo al cliente?" tras palomear Mezclar o Masterizar. */}
+      <PrevioClienteLanzador />
 
       {/* Sidebar desktop */}
       <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-60 bg-lgb-dark border-r border-white/5 flex-col p-4">

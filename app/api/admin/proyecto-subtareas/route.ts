@@ -8,6 +8,8 @@ import { entregaTrasPalomear, entregaParaQuienPalomeo, type EntregaLista } from 
 import { avanzarEstadoPorTareas } from "@/lib/estado-auto";
 import { preguntaTrasPalomear, pagoParaQuienPalomeo } from "@/lib/pago-grabacion";
 import type { PreguntaPago } from "@/lib/pago-grabacion-tipos";
+import { preguntaPrevioCliente } from "@/lib/previo-cliente";
+import type { PreguntaPrevio } from "@/lib/previo-cliente-tipos";
 
 export const dynamic = "force-dynamic";
 
@@ -134,6 +136,18 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
+  // En un EP "Mezclar" y "Masterizar" son pasos de cada tema: ¿se le manda un previo al cliente?
+  let previoCliente: PreguntaPrevio | null = null;
+  if (patch.hecho === true && !prev?.hecho && prev?.tarea_id) {
+    const { data: tema } = await sb.from("proyecto_tareas")
+      .select("proyecto_id, es_cancion").eq("id", prev.tarea_id).maybeSingle();
+    previoCliente = await preguntaPrevioCliente(sb, {
+      proyectoId: (tema?.proyecto_id as string | null) ?? null,
+      temaId: tema?.es_cancion ? (prev.tarea_id as string) : null,
+      titulo: (patch.titulo as string) || (prev?.titulo as string) || null,
+    });
+  }
+
   // Bitácora: solo asignación de subtarea (no el marcar/desmarcar hecho → sería ruido)
   try {
     if ("responsable_id" in patch && (patch.responsable_id ?? null) !== (prev?.responsable_id ?? null) && patch.responsable_id) {
@@ -159,7 +173,7 @@ export async function PATCH(req: NextRequest) {
     }
   } catch { /* bitácora best-effort */ }
 
-  return NextResponse.json({ ok: true, entrega, estado, pagoMusico });
+  return NextResponse.json({ ok: true, entrega, estado, pagoMusico, previoCliente });
 }
 
 // ── Borrar subtarea ──

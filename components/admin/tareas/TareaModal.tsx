@@ -13,6 +13,7 @@ import { AsignarMusico, type MusicoLite } from "./AsignarMusico";
 import { atenderRespuesta, preguntarCarpeta } from "@/lib/entrega-cliente";
 import { EntregaEstado } from "@/components/admin/entrega/EntregaEstado";
 import { CompasSelect } from "@/components/admin/CompasSelect";
+import { PedidoDelCliente } from "./PedidoDelCliente";
 
 // ── Ventana grande: detalle de una tarea (notas, responsable, subtareas) ──────
 export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId, proyectoId, musicos, onClose, onAction }: {
@@ -181,6 +182,8 @@ export function TareaModal({ tarea, equipo, busy, contenido, recordatorio, miId,
             </div>
           </div>
         )}
+
+        <PedidoDelCliente tareaId={tarea.id} />
 
         <RecordatorioTarea tareaId={tarea.id} actual={recordatorio} responsableId={tarea.responsable_id ?? null} equipo={equipo} miId={miId} />
 

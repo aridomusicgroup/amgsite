@@ -66,6 +66,7 @@ function cuando(ms: number): string {
 export function RenderOpciones({
   p, tipo, musicos, enviando, onCerrar, onConfirmar,
   encabezado, etiquetaConfirmar, ocultarAviso, onSaltar, etiquetaSaltar,
+  avisarInicial = false,
   cargarOnda = cargarOndaDeApi,
 }: {
   p: Renderizable;
@@ -85,6 +86,12 @@ export function RenderOpciones({
   ocultarAviso?: boolean;
   onSaltar?: () => void;
   etiquetaSaltar?: string;
+  /**
+   * Abrir con "mandárselo al cliente" ya marcado. Sólo lo pone quien YA decidió
+   * mandarlo (contestó "sí" a la pregunta tras Mezclar/Masterizar): en cualquier
+   * otro camino la casilla sigue desmarcada, a propósito (ver más abajo).
+   */
+  avisarInicial?: boolean;
   /** De dónde sale la forma de onda. Sólo el banco de pruebas pone otra. */
   cargarOnda?: (clave: string, archivo: string) => Promise<OndaDatos | null>;
 }) {
@@ -157,7 +164,9 @@ export function RenderOpciones({
   // mandaba el correo sin volver a preguntar. Un previo que no acabó de
   // convencerte se iba solo. Mandarlo tiene que ser un acto, no un descuido;
   // olvidar marcarlo solo deja el archivo listo para compartirlo después.
-  const [avisar, setAvisar] = useState(false);
+  // La excepción: si ya se contestó "sí, mándalo" (avisarInicial), llega marcada,
+  // y sólo si el cliente tiene a dónde recibirlo.
+  const [avisar, setAvisar] = useState(avisarInicial && p.puedeAvisar);
   // Stems para que el cliente grabe encima (sus voces): los ve aunque deba.
   // Sin marcar, los stems son la entrega final y esperan a que liquide.
   const [trabajo, setTrabajo] = useState(false);

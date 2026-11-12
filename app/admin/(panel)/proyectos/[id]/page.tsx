@@ -7,6 +7,8 @@ import { musicosConPortal } from "@/lib/musico-data";
 import { musicosParaPrevio } from "@/lib/render-jobs";
 import { getProyectoDetalle, getEquipoActivo, getVentas } from "@/lib/erp-data";
 import { ProyectoDetalle } from "@/components/admin/ProyectoDetalle";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { comentariosDeProyecto } from "@/lib/previo-comentarios-server";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +33,9 @@ export default async function ProyectoDetallePage({ params }: Props) {
   ]);
   if (!proyecto) notFound();
 
+  // Lo que el cliente ha pedido sobre sus previos. Sin la tabla (SQL sin correr) queda vacío.
+  const { comentarios } = await comentariosDeProyecto(supabaseAdmin(), id);
+
   const ventasLite = session.role === "admin"
     ? ventas.map((v) => ({
         id: v.id,
@@ -49,6 +54,7 @@ export default async function ProyectoDetallePage({ params }: Props) {
         recordatorios={recordatorios}
         musicos={musicos}
         musicosPrevio={musicosPrevio}
+        comentarios={comentarios}
         miId={equipo.find((e) => e.email && e.email.toLowerCase() === session.email.toLowerCase())?.id ?? null}
       />
     </div>

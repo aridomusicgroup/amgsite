@@ -11,6 +11,7 @@ export type ActividadTipo =
   | "tarea_creada" | "tarea_asignada" | "tarea_completada" | "tarea_reabierta"
   | "musico_asignado" | "musico_archivo" | "musico_archivo_retirado" | "musico_previo_compartido"
   | "voz_cliente"
+  | "comentario_previo"
   | "render_compartido" | "edicion_enviada" | "edicion_revision"
   | "subtarea_asignada" | "contrato_auto"
   | "entrega_preparada" | "entrega_subida" | "entrega_liberada" | "nombre_sincronizado"

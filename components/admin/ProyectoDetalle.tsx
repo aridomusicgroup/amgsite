@@ -26,11 +26,12 @@ import { DriveTab } from "@/components/admin/proyecto-detalle/DriveTab";
 import { ActividadTab } from "@/components/admin/proyecto-detalle/ActividadTab";
 import { ProduccionTab } from "@/components/admin/proyecto-detalle/ProduccionTab";
 import { RedesTab } from "@/components/admin/proyecto-detalle/RedesTab";
+import type { ComentarioPrevio } from "@/lib/previo-comentarios";
 
 const MUSICA_TIPOS = ["beat_personalizado", "bp_letra", "grabacion", "mezcla_master", "mezcla_voces", "ep", "album"];
 const PRIOR_DOT: Record<string, string> = { alta: "bg-red-400", media: "bg-amber-400", baja: "bg-white/30" };
 
-export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatorios, miId, musicos, musicosPrevio }: {
+export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatorios, miId, musicos, musicosPrevio, comentarios }: {
   proyecto: TProyectoDetalle; equipo: Equipo[]; ventas: VentaLite[]; isAdmin: boolean;
   /** MIS recordatorios (los de los demás no se ven ni se tocan). */
   recordatorios: Record<string, MiRecordatorio>;
@@ -38,11 +39,13 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
   /** Músicos externos con portal, para asignarles una tarea. */
   musicos: MusicoLite[];
   musicosPrevio: MusicoPrevio[];
+  /** Lo que el cliente ha comentado de sus previos (cada uno nació como una tarea). */
+  comentarios: ComentarioPrevio[];
 }) {
   const router = useRouter();
   // proyectos/proyecto_tareas/proyecto_subtareas ya se cubren globalmente en AdminNav;
   // esto solo agrega lo que esa suscripción panel-wide no incluye.
-  useRealtimeRefresh("rt-proyecto-detalle", ["render_jobs", "render_inventario", "actividad", "contratos", "tarea_recordatorios"]);
+  useRealtimeRefresh("rt-proyecto-detalle", ["render_jobs", "render_inventario", "actividad", "contratos", "tarea_recordatorios", "previo_comentarios"]);
 
   const tabs = [
     { id: "resumen", label: "Resumen", show: true },
@@ -227,6 +230,7 @@ export function ProyectoDetalle({ proyecto, equipo, ventas, isAdmin, recordatori
         <motion.div key={tab} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.15 }}>
           {tab === "resumen" && (
             <ResumenTab proyecto={proyecto} isAdmin={isAdmin} onEditar={() => setEditOpen(true)}
+              comentarios={comentarios} onVerTareas={() => setTab("tareas")}
               ventaLabel={ventas.find((v) => v.id === proyecto.venta_id)?.label ?? null} />
           )}
           {tab === "tareas" && <TareasTab proyecto={proyecto} equipo={equipo} recordatorios={recordatorios} miId={miId} musicos={musicos} />}

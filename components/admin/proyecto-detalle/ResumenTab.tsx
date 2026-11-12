@@ -6,6 +6,8 @@ import { KpiCard } from "@/components/admin/charts";
 import { money } from "@/components/admin/ui";
 import { ESTADO_PROY_LABEL, type ProyectoDetalle, type SaludEntrega } from "@/lib/erp-data";
 import { FichaProyecto } from "@/components/admin/proyecto-detalle/FichaProyecto";
+import { ComentariosCliente } from "@/components/admin/proyecto-detalle/ComentariosCliente";
+import type { ComentarioPrevio } from "@/lib/previo-comentarios";
 
 const SALUD_LABEL: Record<SaludEntrega, string> = {
   a_tiempo: "A tiempo", en_riesgo: "En riesgo", atrasado: "Atrasado", entregado: "Entregado", sin_fecha: "Sin fecha",
@@ -48,8 +50,9 @@ function proximaAccion(p: ProyectoDetalle): string | null {
   return null;
 }
 
-export function ResumenTab({ proyecto, ventaLabel, isAdmin, onEditar }: {
+export function ResumenTab({ proyecto, ventaLabel, isAdmin, onEditar, comentarios, onVerTareas }: {
   proyecto: ProyectoDetalle; ventaLabel: string | null; isAdmin: boolean; onEditar: () => void;
+  comentarios: ComentarioPrevio[]; onVerTareas: () => void;
 }) {
   const accion = proximaAccion(proyecto);
   const hechas = proyecto.tareas.filter((t) => t.hecho).length;
@@ -82,6 +85,9 @@ export function ResumenTab({ proyecto, ventaLabel, isAdmin, onEditar }: {
         />
         <KpiCard label="Ronda de revisión" value={proyecto.revisionActual > 0 ? `R${proyecto.revisionActual}` : "Original"} icon={<ListChecks size={12} />} />
       </div>
+
+      {/* Lo que pidió el cliente sobre sus previos: lo primero que se ve al abrir el proyecto. */}
+      <ComentariosCliente comentarios={comentarios} onVerTareas={onVerTareas} />
 
       <FichaProyecto proyecto={proyecto} ventaLabel={ventaLabel} isAdmin={isAdmin} onEditar={onEditar} />
 

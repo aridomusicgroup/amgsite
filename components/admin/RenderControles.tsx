@@ -31,7 +31,7 @@ export function useEncolarRender() {
   const [enviando, setEnviando] = useState(false);
   // Qué cuadro de opciones está abierto. Se abre al picarle a un botón y ahí se
   // elige el .rpp base, el rango y (en stems) las pistas.
-  const [abierto, setAbierto] = useState<{ p: Renderizable; tipo: TipoRender } | null>(null);
+  const [abierto, setAbierto] = useState<{ p: Renderizable; tipo: TipoRender; avisar: boolean } | null>(null);
 
   const enviar = async (p: Renderizable, tipo: TipoRender, opciones: OpcionesRender) => {
     setEnviando(true);
@@ -64,7 +64,8 @@ export function useEncolarRender() {
     }
   };
 
-  const abrir = (p: Renderizable, tipo: TipoRender) => setAbierto({ p, tipo });
+  /** `avisar`: abrir con "mandárselo al cliente" ya marcado (lo pide quien ya decidió mandarlo). */
+  const abrir = (p: Renderizable, tipo: TipoRender, avisar = false) => setAbierto({ p, tipo, avisar });
 
   const cuadro = (musicos: MusicoLite[]) =>
     abierto && (
@@ -73,6 +74,7 @@ export function useEncolarRender() {
         tipo={abierto.tipo}
         musicos={musicos}
         enviando={enviando}
+        avisarInicial={abierto.avisar}
         onCerrar={() => !enviando && setAbierto(null)}
         onConfirmar={(op) => enviar(abierto.p, abierto.tipo, op)}
       />

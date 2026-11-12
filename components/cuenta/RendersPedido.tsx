@@ -1,7 +1,10 @@
 "use client";
+import { useRef } from "react";
 import { Music4, Package, Layers, Download, History } from "lucide-react";
 import type { RenderDelPedido } from "@/lib/cuenta-cliente";
+import type { ComentarioDelCliente } from "@/lib/previo-comentarios";
 import { DescargarTodo } from "./DescargarTodo";
+import { ComentariosPrevio } from "./ComentariosPrevio";
 
 /**
  * Lo que el estudio le compartió al cliente: previos para escuchar y archivos
@@ -37,8 +40,20 @@ const TITULO = {
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "long" });
 
-function Tarjeta({ pedidoId, r, tenue, concepto }: { pedidoId: string; r: RenderDelPedido; tenue?: boolean; concepto?: string }) {
+function Tarjeta({ pedidoId, r, tenue, concepto, comentarios, puedeComentar }: {
+  pedidoId: string; r: RenderDelPedido; tenue?: boolean; concepto?: string;
+  /** Sólo en un previo, y sólo si la tabla de comentarios ya existe. null = sin caja. */
+  comentarios?: ComentarioDelCliente[] | null;
+  puedeComentar?: boolean;
+}) {
   const Icono = ICONO[r.tipo];
+  const caja = useRef<HTMLDivElement>(null);
+  /** En qué segundo va el reproductor de este previo (null = no le ha dado play). */
+  const leerSegundo = (): number | null => {
+    const audios = Array.from(caja.current?.querySelectorAll("audio") ?? []);
+    const a = audios.find((x) => !x.paused) ?? audios.find((x) => x.currentTime > 0);
+    return a && a.currentTime > 0 ? Math.floor(a.currentTime) : null;
+  };
   const titulo = r.tipo === "previo" && r.previoNum && r.previoNum > 1
     ? `Previo ${r.previoNum}`
     : TITULO[r.tipo];
@@ -47,7 +62,7 @@ function Tarjeta({ pedidoId, r, tenue, concepto }: { pedidoId: string; r: Render
   const enLote = r.tipo !== "previo" && r.archivos.length > 1;
 
   return (
-    <div className={`border rounded-2xl p-4 ${tenue ? "bg-white/[0.02] border-white/5" : "bg-white/5 border-white/10"}`}>
+    <div ref={caja} className={`border rounded-2xl p-4 ${tenue ? "bg-white/[0.02] border-white/5" : "bg-white/5 border-white/10"}`}>
       <div className="flex items-center gap-2 mb-3">
         <Icono size={15} className={`${tenue ? "text-white/30" : "text-lgb-red"} shrink-0`} />
         <p className={`text-sm font-medium ${tenue ? "text-white/60" : ""}`}>{titulo}</p>
@@ -97,11 +112,25 @@ function Tarjeta({ pedidoId, r, tenue, concepto }: { pedidoId: string; r: Render
           );
         })}
       </div>
+
+      {r.tipo === "previo" && comentarios && (
+        <ComentariosPrevio
+          pedidoId={pedidoId}
+          jobId={r.jobId}
+          comentarios={comentarios.filter((c) => c.jobId === r.jobId)}
+          puedeComentar={Boolean(puedeComentar) && !tenue}
+          leerSegundo={leerSegundo}
+        />
+      )}
     </div>
   );
 }
 
-export function RendersPedido({ pedidoId, renders, concepto }: { pedidoId: string; renders: RenderDelPedido[]; concepto?: string }) {
+export function RendersPedido({ pedidoId, renders, concepto, comentarios }: {
+  pedidoId: string; renders: RenderDelPedido[]; concepto?: string;
+  /** null = la tabla de comentarios todavía no existe: no se muestra la caja. */
+  comentarios: ComentarioDelCliente[] | null;
+}) {
   if (!renders.length) return null;
 
   // Lo final primero: es lo que vino a buscar.
@@ -127,7 +156,7 @@ export function RendersPedido({ pedidoId, renders, concepto }: { pedidoId: strin
           return (
             <div key={k || "previos"} className="flex flex-col gap-2">
               {varios && ultimo.tema && <p className="text-white/50 text-xs mt-1">{ultimo.tema}</p>}
-              <Tarjeta pedidoId={pedidoId} r={ultimo} />
+              <Tarjeta pedidoId={pedidoId} r={ultimo} comentarios={comentarios} puedeComentar />
               {anteriores.length > 0 && (
                 <details className="group">
                   <summary className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 cursor-pointer select-none list-none px-1 py-1">
@@ -136,7 +165,7 @@ export function RendersPedido({ pedidoId, renders, concepto }: { pedidoId: strin
                     <span className="hidden group-open:inline">Ocultar previos anteriores</span>
                   </summary>
                   <div className="flex flex-col gap-2 mt-2">
-                    {anteriores.map((r) => <Tarjeta key={r.jobId} pedidoId={pedidoId} r={r} tenue />)}
+                    {anteriores.map((r) => <Tarjeta key={r.jobId} pedidoId={pedidoId} r={r} tenue comentarios={comentarios} />)}
                   </div>
                 </details>
               )}

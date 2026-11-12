@@ -1,5 +1,6 @@
 import { toast } from "@/lib/toast";
 import { EVENTO_PAGO_MUSICO, type PreguntaPago } from "@/lib/pago-grabacion-tipos";
+import { EVENTO_PREVIO_CLIENTE, type PreguntaPrevio } from "@/lib/previo-cliente-tipos";
 
 /**
  * El puente entre "guardé algo" y lo que eso desencadena en pantalla.
@@ -41,6 +42,10 @@ export function preguntarPagoMusico(d: PreguntaPago): void {
   window.dispatchEvent(new CustomEvent<PreguntaPago>(EVENTO_PAGO_MUSICO, { detail: d }));
 }
 
+export function preguntarPrevioCliente(d: PreguntaPrevio): void {
+  window.dispatchEvent(new CustomEvent<PreguntaPrevio>(EVENTO_PREVIO_CLIENTE, { detail: d }));
+}
+
 /**
  * Lee la respuesta de un guardado:
  *   · si el proyecto cambió de columna solo, lo dice (si no, la tarjeta
@@ -48,7 +53,9 @@ export function preguntarPagoMusico(d: PreguntaPago): void {
  *   · si el nombre se propagó a la venta o al pedido, lo dice;
  *   · si ya sólo falta subir a Drive, abre el cuadro de entrega;
  *   · si lo renombrado tiene carpeta de REAPER, pregunta si se renombra;
- *   · si se palomeó una grabación con el músico sin pagar, pregunta si se le paga.
+ *   · si se palomeó una grabación con el músico sin pagar, pregunta si se le paga;
+ *   · si se palomeó Mezclar o Masterizar de un proyecto de cliente, pregunta si se
+ *     le manda un previo.
  *
  * Llamarla ANTES de leer el cuerpo: saca su copia en ese mismo instante, y así
  * quien llamó puede seguir leyendo el suyo.
@@ -61,5 +68,6 @@ export async function atenderRespuesta(r: Response): Promise<void> {
     if (d?.entrega?.proyectoId) abrirEntrega(d.entrega as PedidoEntrega);
     if (d?.carpeta?.id) preguntarCarpeta(d.carpeta as PedidoCarpeta);
     if (d?.pagoMusico?.proyectoId) preguntarPagoMusico(d.pagoMusico as PreguntaPago);
+    if (d?.previoCliente?.proyectoId) preguntarPrevioCliente(d.previoCliente as PreguntaPrevio);
   } catch { /* sin cuerpo JSON: nada que hacer */ }
 }

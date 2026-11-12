@@ -1,6 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { anclarCarpeta } from "@/lib/carpeta-reaper";
 import { saldoDeVenta } from "@/lib/cobranza";
+import { paraCliente, type ComentarioDelCliente } from "@/lib/previo-comentarios";
+import { comentariosDeProyecto } from "@/lib/previo-comentarios-server";
 import { finiquitadoProyecto, liberarEntregas, marcaDe, urlDePago, ventaLiquidada, cuentaCobro, retenidoHastaLiquidar, avisoRetenido } from "@/lib/entrega";
 
 /**
@@ -523,4 +525,18 @@ export async function rendersDelPedido(email: string, orderId: string): Promise<
     // panel del cliente no debe romperse por eso.
     return [];
   }
+}
+
+/**
+ * Lo que el cliente ya comentó de sus previos, para pintarlo bajo cada uno.
+ * `disponible: false` = la tabla todavía no existe (SQL sin correr): la caja
+ * de comentarios no se muestra, igual que la de voces.
+ */
+export async function comentariosDelPedido(
+  email: string, orderId: string,
+): Promise<{ disponible: boolean; comentarios: ComentarioDelCliente[] }> {
+  const proy = await proyectoDelPedido(email, orderId);
+  if (!proy) return { disponible: false, comentarios: [] };
+  const r = await comentariosDeProyecto(supabaseAdmin(), proy.proyectoId);
+  return { disponible: r.disponible, comentarios: r.comentarios.map(paraCliente) };
 }
